@@ -1,0 +1,47 @@
+version: '3.7'
+
+services:
+  pusher:
+    image: nginx:latest
+    configs:
+      - source: pusher-nginx-config
+        target: /etc/nginx/nginx.conf
+    ports:
+      - '8050:8080'
+      - '35085:8885'
+      - '35086:8886'
+      - '35087:8887'
+      - '35088:8888'
+      - '35089:8889'
+      - '35090:8890'
+      - '35091:8891'
+    labels:
+      - traefik.enable=false
+    networks:
+      default:
+        aliases:
+          - pusher-cluster
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1500M
+        reservations:
+          cpus: '0.5'
+          memory: 800M
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 9999999
+        window: 90s
+
+networks:
+  default:
+    external:
+      name: servers-overlay
+
+configs:
+  pusher-nginx-config:
+    name: pusher-nginx-config-${CONFIG_VERSION:-0}
+    file: conf/nginx.conf

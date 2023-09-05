@@ -1,0 +1,15 @@
+management:
+  endpoint.health.show-details: always
+  endpoints.web.exposure:
+      include: '*'
+      exclude: 'shutdown'
+
+pushca:
+  coordinator:
+    secret-key: <your secret key for JWT signature>
+  pusher:
+    deploy-mode: cluster
+
+server:
+  address: 0.0.0.0
+

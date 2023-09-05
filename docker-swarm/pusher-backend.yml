@@ -1,0 +1,307 @@
+version: '3.8'
+
+services:
+
+  pusher1:
+    restart: unless-stopped
+    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    environment:
+      - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
+      - 'PUSHCA_REDIS_PORT=6379'
+      - 'PUSHCA_SERVER_SOCKET_PORT=8885'
+      - 'PUSHCA_INTERNAL_ADVERTISED_URL=ws://pusher1:8885/'
+      - 'PUSHCA_INTERNAL_CLUSTER_URL=http://pusher1:8080'
+      - 'PUSHCA_EXTERNAL_ADVERTISED_URL=ws://82.147.191.51:35085/'
+      - 'spring.config.location=/conf/application.yaml'
+    configs:
+      - source: pushca-config
+        target: /conf/application.yaml
+    networks:
+      default:
+        aliases:
+          - pusher1-cluster
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "10"
+    labels:
+      filebeats_log: "false"
+    deploy:
+      labels:
+        - traefik.enable=false
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.75'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 9999999
+        window: 90s
+
+  pusher2:
+    restart: unless-stopped
+    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    environment:
+      - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
+      - 'PUSHCA_REDIS_PORT=6379'
+      - 'PUSHCA_SERVER_SOCKET_PORT=8886'
+      - 'PUSHCA_INTERNAL_ADVERTISED_URL=ws://pusher2:8886/'
+      - 'PUSHCA_INTERNAL_CLUSTER_URL=http://pusher2:8080'
+      - 'PUSHCA_EXTERNAL_ADVERTISED_URL=ws://82.147.191.51:35086/'
+      - 'spring.config.location=/conf/application.yaml'
+    configs:
+      - source: pushca-config
+        target: /conf/application.yaml
+    networks:
+      default:
+        aliases:
+          - pusher2-cluster
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "10"
+    labels:
+      filebeats_log: "false"
+    deploy:
+      labels:
+        - traefik.enable=false
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.75'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 9999999
+        window: 90s
+
+  pusher3:
+    restart: unless-stopped
+    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    environment:
+      - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
+      - 'PUSHCA_REDIS_PORT=6379'
+      - 'PUSHCA_SERVER_SOCKET_PORT=8887'
+      - 'PUSHCA_INTERNAL_ADVERTISED_URL=ws://pusher3:8887/'
+      - 'PUSHCA_INTERNAL_CLUSTER_URL=http://pusher3:8080'
+      - 'PUSHCA_EXTERNAL_ADVERTISED_URL=ws://82.147.191.51:35087/'
+      - 'spring.config.location=/conf/application.yaml'
+    configs:
+      - source: pushca-config
+        target: /conf/application.yaml
+    networks:
+      default:
+        aliases:
+          - pusher3-cluster
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "10"
+    labels:
+      filebeats_log: "false"
+    deploy:
+      labels:
+        - traefik.enable=false
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.75'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 9999999
+        window: 90s
+
+  pusher4:
+    restart: unless-stopped
+    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    environment:
+      - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
+      - 'PUSHCA_REDIS_PORT=6379'
+      - 'PUSHCA_SERVER_SOCKET_PORT=8888'
+      - 'PUSHCA_INTERNAL_ADVERTISED_URL=ws://pusher4:8888/'
+      - 'PUSHCA_INTERNAL_CLUSTER_URL=http://pusher4:8080'
+      - 'PUSHCA_EXTERNAL_ADVERTISED_URL=ws://82.147.191.51:35088/'
+      - 'spring.config.location=/conf/application.yaml'
+    configs:
+      - source: pushca-config
+        target: /conf/application.yaml
+    networks:
+      default:
+        aliases:
+          - pusher4-cluster
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "10"
+    labels:
+      filebeats_log: "false"
+    deploy:
+      labels:
+        - traefik.enable=false
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.75'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 9999999
+        window: 90s
+
+  pusher5:
+    restart: unless-stopped
+    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    environment:
+      - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
+      - 'PUSHCA_REDIS_PORT=6379'
+      - 'PUSHCA_SERVER_SOCKET_PORT=8889'
+      - 'PUSHCA_INTERNAL_ADVERTISED_URL=ws://pusher5:8889/'
+      - 'PUSHCA_INTERNAL_CLUSTER_URL=http://pusher5:8080'
+      - 'PUSHCA_EXTERNAL_ADVERTISED_URL=ws://82.147.191.51:35089/'
+      - 'spring.config.location=/conf/application.yaml'
+    configs:
+      - source: pushca-config
+        target: /conf/application.yaml
+    networks:
+      default:
+        aliases:
+          - pusher5-cluster
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "10"
+    labels:
+      filebeats_log: "false"
+    deploy:
+      labels:
+        - traefik.enable=false
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.75'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 9999999
+        window: 90s
+
+  pusher6:
+    restart: unless-stopped
+    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    environment:
+      - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
+      - 'PUSHCA_REDIS_PORT=6379'
+      - 'PUSHCA_SERVER_SOCKET_PORT=8890'
+      - 'PUSHCA_INTERNAL_ADVERTISED_URL=ws://pusher6:8890/'
+      - 'PUSHCA_INTERNAL_CLUSTER_URL=http://pusher6:8080'
+      - 'PUSHCA_EXTERNAL_ADVERTISED_URL=ws://82.147.191.51:35090/'
+      - 'spring.config.location=/conf/application.yaml'
+    configs:
+      - source: pushca-config
+        target: /conf/application.yaml
+    networks:
+      default:
+        aliases:
+          - pusher5-cluster
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "10"
+    labels:
+      filebeats_log: "false"
+    deploy:
+      labels:
+        - traefik.enable=false
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.75'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 9999999
+        window: 90s
+
+  pusher7:
+    restart: unless-stopped
+    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    environment:
+      - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
+      - 'PUSHCA_REDIS_PORT=6379'
+      - 'PUSHCA_SERVER_SOCKET_PORT=8891'
+      - 'PUSHCA_INTERNAL_ADVERTISED_URL=ws://pusher7:8891/'
+      - 'PUSHCA_INTERNAL_CLUSTER_URL=http://pusher7:8080'
+      - 'PUSHCA_EXTERNAL_ADVERTISED_URL=ws://82.147.191.51:35091/'
+      - 'spring.config.location=/conf/application.yaml'
+    configs:
+      - source: pushca-config
+        target: /conf/application.yaml
+    networks:
+      default:
+        aliases:
+          - pusher5-cluster
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "10"
+    labels:
+      filebeats_log: "false"
+    deploy:
+      labels:
+        - traefik.enable=false
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.75'
+          memory: 8G
+        reservations:
+          cpus: '1'
+          memory: 4G
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 9999999
+        window: 90s
+
+networks:
+  default:
+    external: true
+    name: "servers-overlay"
+
+configs:
+  pushca-config:
+    name: pushca-config-${CONFIG_VERSION:-0}
+    file: conf/application.yaml
