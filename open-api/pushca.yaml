@@ -1,0 +1,125 @@
+openapi: 3.0.1
+info:
+  title: OpenAPI definition
+  version: v0
+servers:
+- url: http://localhost:8050
+  description: Generated server url
+paths:
+  /send-notification:
+    post:
+      tags:
+      - public-api-controller
+      summary: Send notification
+      operationId: sendNotification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendNotificationRequest'
+        required: true
+      responses:
+        "429":
+          description: Too many requests
+        "200":
+          description: Success
+  /send-envelops:
+    post:
+      tags:
+      - push-controller
+      operationId: sendEnvelopes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendEnvelopsRequest'
+        required: true
+      responses:
+        "200":
+          description: OK
+  /open-connection:
+    post:
+      tags:
+      - public-api-controller
+      summary: Open connection
+      operationId: openConnection
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenConnectionRequest'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenConnectionResponse'
+        "429":
+          description: Too many requests
+components:
+  schemas:
+    ClientSearchFilter:
+      type: object
+      properties:
+        workSpaceId:
+          type: string
+        accountId:
+          type: string
+        deviceId:
+          type: string
+        applicationId:
+          type: string
+        findAny:
+          type: boolean
+        exclude:
+          type: array
+          items:
+            $ref: '#/components/schemas/PClient'
+    PClient:
+      type: object
+      properties:
+        workSpaceId:
+          type: string
+        accountId:
+          type: string
+        deviceId:
+          type: string
+        applicationId:
+          type: string
+    SendNotificationRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        filter:
+          $ref: '#/components/schemas/ClientSearchFilter'
+        message:
+          type: string
+    Envelope:
+      type: object
+      properties:
+        client:
+          $ref: '#/components/schemas/PClient'
+        message:
+          type: string
+    SendEnvelopsRequest:
+      type: object
+      properties:
+        envelopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Envelope'
+    OpenConnectionRequest:
+      type: object
+      properties:
+        client:
+          $ref: '#/components/schemas/PClient'
+    OpenConnectionResponse:
+      type: object
+      properties:
+        externalAdvertisedUrl:
+          type: string
+        internalAdvertisedUrl:
+          type: string
