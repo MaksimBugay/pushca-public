@@ -4,7 +4,7 @@ services:
 
   pusher1:
     restart: unless-stopped
-    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    image: n7fr846yfa6ohlhe/mbugai:pushca-clastered-1.0
     environment:
       - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
       - 'PUSHCA_REDIS_PORT=6379'
@@ -46,7 +46,7 @@ services:
 
   pusher2:
     restart: unless-stopped
-    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    image: n7fr846yfa6ohlhe/mbugai:pushca-clastered-1.0
     environment:
       - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
       - 'PUSHCA_REDIS_PORT=6379'
@@ -88,7 +88,7 @@ services:
 
   pusher3:
     restart: unless-stopped
-    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    image: n7fr846yfa6ohlhe/mbugai:pushca-clastered-1.0
     environment:
       - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
       - 'PUSHCA_REDIS_PORT=6379'
@@ -130,7 +130,7 @@ services:
 
   pusher4:
     restart: unless-stopped
-    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    image: n7fr846yfa6ohlhe/mbugai:pushca-clastered-1.0
     environment:
       - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
       - 'PUSHCA_REDIS_PORT=6379'
@@ -172,7 +172,7 @@ services:
 
   pusher5:
     restart: unless-stopped
-    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    image: n7fr846yfa6ohlhe/mbugai:pushca-clastered-1.0
     environment:
       - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
       - 'PUSHCA_REDIS_PORT=6379'
@@ -214,7 +214,7 @@ services:
 
   pusher6:
     restart: unless-stopped
-    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    image: n7fr846yfa6ohlhe/mbugai:pushca-clastered-1.0
     environment:
       - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
       - 'PUSHCA_REDIS_PORT=6379'
@@ -256,7 +256,7 @@ services:
 
   pusher7:
     restart: unless-stopped
-    image: xxxxxxxxxxxx/mbugai:pusher-xx
+    image: n7fr846yfa6ohlhe/mbugai:pushca-clastered-1.0
     environment:
       - 'PUSHCA_REDIS_HOST_NAME=pushca-cache'
       - 'PUSHCA_REDIS_PORT=6379'

@@ -9,7 +9,19 @@ pushca:
     secret-key: <your secret key for JWT signature>
   pusher:
     deploy-mode: cluster
+  license-key: <your license key>
 
 server:
   address: 0.0.0.0
+  tomcat:
+    threads:
+      max: 1000
+      min-spare: 500
+
+springdoc:
+  packages-to-scan: bmv.org.pushca.api.controller.external
+  api-docs:
+    path: /pushca
+  swagger-ui:
+    url: /pushca.yaml
 
