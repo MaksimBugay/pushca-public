@@ -19,24 +19,27 @@ paths:
               $ref: '#/components/schemas/SendNotificationRequest'
         required: true
       responses:
-        "429":
-          description: Too many requests
         "200":
           description: Success
-  /send-envelops:
+        "429":
+          description: Too many requests
+  /send-notification-with-acknowledge:
     post:
       tags:
-      - push-controller
-      operationId: sendEnvelopes
+      - public-api-controller
+      summary: Send notification with acknowledge
+      operationId: sendNotificationWithAcknowledge
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SendEnvelopsRequest'
+              $ref: '#/components/schemas/SendNotificationWithAcknowledgeRequest'
         required: true
       responses:
+        "408":
+          description: Acknowledge time out
         "200":
-          description: OK
+          description: Success
   /open-connection:
     post:
       tags:
@@ -60,7 +63,7 @@ paths:
           description: Too many requests
 components:
   schemas:
-    ClientSearchFilter:
+    ClientSearchData:
       type: object
       properties:
         workSpaceId:
@@ -94,23 +97,18 @@ components:
         id:
           type: string
         filter:
-          $ref: '#/components/schemas/ClientSearchFilter'
+          $ref: '#/components/schemas/ClientSearchData'
         message:
           type: string
-    Envelope:
+    SendNotificationWithAcknowledgeRequest:
       type: object
       properties:
+        id:
+          type: string
         client:
           $ref: '#/components/schemas/PClient'
         message:
           type: string
-    SendEnvelopsRequest:
-      type: object
-      properties:
-        envelopes:
-          type: array
-          items:
-            $ref: '#/components/schemas/Envelope'
     OpenConnectionRequest:
       type: object
       properties:
