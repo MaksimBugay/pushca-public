@@ -53,14 +53,14 @@ paths:
               $ref: '#/components/schemas/OpenConnectionRequest'
         required: true
       responses:
+        "429":
+          description: Too many requests
         "200":
           description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenConnectionResponse'
-        "429":
-          description: Too many requests
 components:
   schemas:
     ClientSearchData:
@@ -98,6 +98,8 @@ components:
           type: string
         filter:
           $ref: '#/components/schemas/ClientSearchData'
+        preserveOrder:
+          type: boolean
         message:
           type: string
     SendNotificationWithAcknowledgeRequest:
@@ -107,6 +109,8 @@ components:
           type: string
         client:
           $ref: '#/components/schemas/PClient'
+        preserveOrder:
+          type: boolean
         message:
           type: string
     OpenConnectionRequest:
@@ -114,9 +118,13 @@ components:
       properties:
         client:
           $ref: '#/components/schemas/PClient'
+        pusherInstanceId:
+          type: string
     OpenConnectionResponse:
       type: object
       properties:
+        pusherInstanceId:
+          type: string
         externalAdvertisedUrl:
           type: string
         internalAdvertisedUrl:
