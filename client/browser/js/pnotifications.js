@@ -58,7 +58,9 @@ $(document).ready(function () {
         ws.onmessage = function (e) {
           console.log('message', e.data);
           if (e.data !== "PONG") {
-            alert(e.data);
+            //alert(e.data);
+            let history = $("textarea#p-history");
+            history.val(history.val() + e.data + "\n");
           }
         };
 

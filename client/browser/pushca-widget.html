@@ -12,6 +12,16 @@
           margin: 0 auto;
           font-family: Tahoma, Verdana, Arial, sans-serif;
       }
+
+      .textMemo {
+          width: 300pt;
+          height: 100pt;
+          background-color: bisque;
+      }
+
+      .inputText {
+          width: 220pt;
+      }
   </style>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
   <script type="text/javascript" src="/js/pnotifications.js"></script>
@@ -26,6 +36,10 @@
   <div class="vertical-center">
     <button id="p-send">Send</button>
   </div>
+  <br>
+  <label for="p-history">Message history</label>
+  <br>
+  <textarea id="p-history" class="textMemo"></textarea>
 </div>
 </body>
 </html>

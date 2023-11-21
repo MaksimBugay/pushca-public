@@ -16,6 +16,12 @@
       .inputText {
           width: 220pt;
       }
+
+      .textMemo {
+          width: 300pt;
+          height: 100pt;
+          background-color: bisque;
+      }
   </style>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
 </head>
@@ -79,7 +85,9 @@
           ws.onmessage = function (e) {
             console.log('message', e.data);
             if (e.data !== "PONG") {
-              alert(e.data);
+              //alert(e.data);
+              let history = $("textarea#p-history");
+              history.val(history.val() + e.data + "\n");
             }
           };
 
@@ -113,13 +121,17 @@
 <body>
 <h1>Push notifications demo</h1>
 <div id="bmv">
-  <label  id="l-message" for="p-message">push notification message</label>
+  <label id="l-message" for="p-message">push notification message</label>
   <input type="text" id="p-message" name="push-message" required minlength="10" maxlength="180"
          size="12" class="inputText"/>
   <br><br>
   <div class="vertical-center">
     <button id="p-send">Send</button>
   </div>
+  <br>
+  <label for="p-history">Message history</label>
+  <br>
+  <textarea id="p-history" class="textMemo"></textarea>
 </div>
 </body>
 </html>
