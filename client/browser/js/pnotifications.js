@@ -1,32 +1,54 @@
-function handleCreated(tab) {
-  console.log(tab.id);
-}
-
 $(document).ready(function () {
+  $('#p-message').val("test message" + Date.now());
+  $("#p-send").click(function () {
+    let sendRequestObj = {};
+    let filterObj = {};
+    filterObj["workSpaceId"] = "workSpaceMain";
+    filterObj["applicationId"] = "MLA_JAVA_HEADLESS";
+    sendRequestObj["filter"] = filterObj;
+    sendRequestObj["message"] = $('#p-message').val();
+    $.ajax({
+      contentType: 'application/json',
+      data: JSON.stringify(sendRequestObj),
+      dataType: 'json',
+      success: function (data) {
+        console.log("Attempt to send push notification succeeded");
+      },
+      error: function (xhr, textStatus, errorThrown) {
+        console.log(
+            "Attempt to send push notification failed " + xhr.responseText);
+        console.log(textStatus);
+        console.log(errorThrown);
+      },
+      type: 'POST',
+      url: 'https://app-rc.multiloginapp.net/pushca-with-tls-support/send-notification'
+    });
+  });
+
+  let requestObj = {};
+  let clientObj = {};
+  clientObj["workSpaceId"] = "workSpaceMain";
+  clientObj["accountId"] = "clientWeb1@test.ee";
+  clientObj["deviceId"] = "D" + Date.now();
+  clientObj["applicationId"] = "MLA_JAVA_HEADLESS";
+  requestObj["client"] = clientObj;
   $.ajax({
     contentType: 'application/json',
-    data: JSON.stringify({
-      "client": {
-        "workSpaceId": "workSpaceMain",
-        "accountId": "clientWeb1@test.ee",
-        "deviceId": "311aae05-bade-48bf-b390-47a93a66c89e",
-        "applicationId": "MLA_JAVA_HEADLESS"
-      }
-    }),
+    data: JSON.stringify(requestObj),
     dataType: 'json',
     success: function (data) {
-      var wsUrl
+      let wsUrl
       $.each(data, function (index, element) {
-        if (index === "externalAdvertisedUrl") {
+        if (index === "browserAdvertisedUrl") {
           wsUrl = element
         }
       });
-      console.log("Ws connection url was aquired: " + wsUrl);
+      console.log("Ws connection url was acquired: " + wsUrl);
 
       //alert(wsUrl)
       let ws = new WebSocket(wsUrl);
       if (ws) {
-        var intervalId = window.setInterval(function () {
+        let intervalId = window.setInterval(function () {
           ws.send(JSON.stringify({"command": "PING"}));
         }, 20000);
         ws.onopen = function () {
@@ -35,34 +57,34 @@ $(document).ready(function () {
 
         ws.onmessage = function (e) {
           console.log('message', e.data);
-          if (e.data != "PONG") {
+          if (e.data !== "PONG") {
             alert(e.data);
           }
         };
 
         ws.onerror = function (error) {
-          alert("There was an error with your websocket!");
+          console.log("There was an error with your websocket!");
         };
 
         ws.onclose = function (event) {
+          window.clearInterval(intervalId);
           if (event.wasClean) {
-            alert(
+            console.log(
                 `[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
           } else {
             // e.g. server process killed or network down
             // event.code is usually 1006 in this case
-            alert('[close] Connection died');
+            //alert('[close] Connection died');
+            $("#l-message").text("Your connection died, refresh the page please");
           }
         };
       }
     },
     error: function () {
-      console.log("Attempt to aquare ws connection url failed");
+      console.log("Attempt to acquire ws connection url failed");
     },
     processData: false,
     type: 'POST',
-    url: 'http://95.217.166.42:8050/pushca/open-connection'
-//    url: 'http://localhost:8080/open-connection'
-//    url: 'https://app-rc.multiloginapp.net/open-connection'
+    url: 'https://app-rc.multiloginapp.net/pushca-with-tls-support/open-connection'
   });
 });

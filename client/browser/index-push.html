@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="eng">
+<head>
+  <title>Welcome to nginx!</title>
+  <style>
+      html {
+          color-scheme: light dark;
+      }
+
+      body {
+          width: 35em;
+          margin: 0 auto;
+          font-family: Tahoma, Verdana, Arial, sans-serif;
+      }
+
+      .inputText {
+          width: 220pt;
+      }
+  </style>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+</head>
+
+<script>
+  $(document).ready(function () {
+    $('#p-message').val("test message" + Date.now());
+    $("#p-send").click(function () {
+      let sendRequestObj = {};
+      let filterObj = {};
+      filterObj["workSpaceId"] = "workSpaceMain";
+      filterObj["applicationId"] = "MLA_JAVA_HEADLESS";
+      sendRequestObj["filter"] = filterObj;
+      sendRequestObj["message"] = $('#p-message').val();
+      $.ajax({
+        contentType: 'application/json',
+        data: JSON.stringify(sendRequestObj),
+        dataType: 'json',
+        success: function (data) {
+          console.log("Attempt to send push notification succeeded");
+        },
+        error: function (xhr, textStatus, errorThrown) {
+          console.log("Attempt to send push notification failed " + xhr.responseText);
+          console.log(textStatus);
+          console.log(errorThrown);
+        },
+        type: 'POST',
+        url: 'https://app-rc.multiloginapp.net/pushca-with-tls-support/send-notification'
+      });
+    });
+
+    let requestObj = {};
+    let clientObj = {};
+    clientObj["workSpaceId"] = "workSpaceMain";
+    clientObj["accountId"] = "clientWeb1@test.ee";
+    clientObj["deviceId"] = "D" + Date.now();
+    clientObj["applicationId"] = "MLA_JAVA_HEADLESS";
+    requestObj["client"] = clientObj;
+    $.ajax({
+      contentType: 'application/json',
+      data: JSON.stringify(requestObj),
+      dataType: 'json',
+      success: function (data) {
+        var wsUrl
+        $.each(data, function (index, element) {
+          if (index === "browserAdvertisedUrl") {
+            wsUrl = element
+          }
+        });
+        console.log("Ws connection url was acquired: " + wsUrl);
+
+        let ws = new WebSocket(wsUrl);
+        if (ws) {
+          var intervalId = window.setInterval(function () {
+            ws.send(JSON.stringify({"command": "PING"}));
+          }, 20000);
+          ws.onopen = function () {
+            console.log('open');
+          };
+
+          ws.onmessage = function (e) {
+            console.log('message', e.data);
+            if (e.data !== "PONG") {
+              alert(e.data);
+            }
+          };
+
+          ws.onerror = function (error) {
+            console.log("There was an error with your websocket!");
+          };
+
+          ws.onclose = function (event) {
+            if (event.wasClean) {
+              console.log(
+                  `[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+            } else {
+              // e.g. server process killed or network down
+              // event.code is usually 1006 in this case
+              //alert('[close] Connection died');
+              $("#l-message").text("Your connection died, refresh the page please");
+            }
+          };
+        }
+      },
+      error: function () {
+        console.log("Attempt to acquire ws connection url failed");
+      },
+      processData: false,
+      type: 'POST',
+      url: 'https://app-rc.multiloginapp.net/pushca-with-tls-support/open-connection'
+    });
+  });
+</script>
+
+<body>
+<h1>Push notifications demo</h1>
+<div id="bmv">
+  <label  id="l-message" for="p-message">push notification message</label>
+  <input type="text" id="p-message" name="push-message" required minlength="10" maxlength="180"
+         size="12" class="inputText"/>
+  <br><br>
+  <div class="vertical-center">
+    <button id="p-send">Send</button>
+  </div>
+</div>
+</body>
+</html>
