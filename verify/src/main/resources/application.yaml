@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: pushca-verifier
+
+management:
+  endpoint.health.show-details: always
+  endpoints.web.exposure:
+      include: '*'
+      exclude: 'shutdown'
+
+server:
+  undertow:
+    threads:
+      io: 800
+    accesslog:
+      enabled: true
+      pattern: "%t %a %r %s (%D ms)"
+    options:
+      server:
+        record-request-start-time: true
+
+logging:
+  level:
+    root: INFO
+
+verification:
+  pushca-coordinator:
+#    url: http://127.0.0.1:8050
+    url: http://push-app-rc.multiloginapp.net:8050
+#    url: https://app-rc.multiloginapp.net/pushca
+#should be always odd
+  number-of-clients: 51
+  processor-type: SIMPLE_MESSAGE_WS
+  preserve-order: false
+  load-test-runner:
+    number: 5
+#   number: 120
+  client-connection-pool:
+    size: 2
+  load-test:
+    repeat-interval-ms: 1
+  response:
+    timeout:
+      ms: 15000
+

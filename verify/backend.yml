@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  push-verifier:
+    restart: unless-stopped
+    image: ml0000xdev/ml000x:pushca-verifier-${DEPLOY_VERSION:-1}
+    environment:
+#      - 'PUSHVERIFIER_COORDINATOR_BASE_URL=https://app-rc.multiloginapp.net'
+#      - 'PUSHVERIFIER_COORDINATOR_BASE_URL=http://95.217.166.42:8050/pushca'
+      - 'PUSHVERIFIER_COORDINATOR_BASE_URL=http://pusher1:8080'
+      - 'PUSHVERIFIER_REDIS_HOST=redis-cache7'
+      - 'PUSHVERIFIER_REDIS_PORT=6379'
+      - 'PUSHVERIFIER_TEST_PROCESSOR_TYPE=MESSAGE_WITH_DELIVERY_GUARANTEE_REST'
+      - 'PUSHVERIFIER_NUMBER_OF_CLIENTS=75'
+      - 'PUSHVERIFIER_LT_RUNNER_NUMBER=1'
+#      - 'PUSHVERIFIER_LT_RUNNER_NUMBER=12'
+      - 'PUSHVERIFIER_CLIENT_POOL_SIZE=20'
+#      - 'SPRING_PROFILES_ACTIVE=dev'
+      - 'JVM_ARGS=-agentlib:jdwp=transport=dt_socket,address=8081,server=y,suspend=n'
+    ports:
+      - '8055:8080'
+    networks:
+      default:
+        aliases:
+          - push-verifier-local
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "10"
+    labels:
+      filebeats_log: "false"
+    deploy:
+      labels:
+        - traefik.enable=false
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 9999999
+        window: 90s
+
+networks:
+  default:
+    external: true
+    name: "mla"
+

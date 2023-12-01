@@ -1,0 +1,52 @@
+SIMPLE_MESSAGE_WS
+
+- 'PUSHVERIFIER_NUMBER_OF_CLIENTS=50'
+- 'PUSHVERIFIER_LT_RUNNER_NUMBER=6'
+- 'PUSHVERIFIER_CLIENT_POOL_SIZE=15'
+
+285261 messages were successfully delivered
+0 number of failed deliveries
+25th pct 3 ms
+50th pct 7 ms
+75th pct 11 ms
+99th pct 89 ms
+
+MESSAGE_WITH_ACKNOWLEDGE_WS
+
+- 'PUSHVERIFIER_NUMBER_OF_CLIENTS=50'
+- 'PUSHVERIFIER_LT_RUNNER_NUMBER=6'
+- 'PUSHVERIFIER_CLIENT_POOL_SIZE=15'
+
+249354 messages were successfully delivered
+0 number of failed deliveries
+25th pct 9 ms
+50th pct 17 ms
+75th pct 28 ms
+99th pct 135 ms
+
+SIMPLE_MESSAGE_REST
+
+- 'PUSHVERIFIER_NUMBER_OF_CLIENTS=50'
+- 'PUSHVERIFIER_LT_RUNNER_NUMBER=4'
+- 'PUSHVERIFIER_CLIENT_POOL_SIZE=15'
+
+102819 messages were successfully delivered
+0 number of failed deliveries
+25th pct 1 ms
+50th pct 3 ms
+75th pct 8 ms
+99th pct 15 ms
+
+MESSAGE_WITH_ACKNOWLEDGE_REST
+
+- 'PUSHVERIFIER_NUMBER_OF_CLIENTS=50'
+- 'PUSHVERIFIER_LT_RUNNER_NUMBER=14'
+- 'PUSHVERIFIER_CLIENT_POOL_SIZE=15'
+
+====================================================================================================
+1_572_003 messages were successfully delivered
+0 number of failed deliveries
+25th pct 6052 ms
+50th pct 16997 ms
+75th pct 29656 ms
+99th pct 43749 ms
