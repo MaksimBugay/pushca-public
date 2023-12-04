@@ -1,6 +1,6 @@
 package bmv.test.com;
 
-import bmv.org.pushca.client.WebSocketConnection;
+import bmv.org.pushca.client.PushcaWebSocket;
 import bmv.org.pushca.client.model.PClient;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -26,12 +26,12 @@ public class App {
         "PUSHCA_CLIENT"
     );
 
-    WebSocketConnection webSocketConnection = new WebSocketConnection(
+    PushcaWebSocket pushcaWebSocket = new PushcaWebSocket(
         //"http://push-app-rc.multiloginapp.net:8050",
         "https://app-rc.multiloginapp.net/pushca",
         null, client, 10_000, null, null
     );
-    webSocketConnection.connect();
+    pushcaWebSocket.connect();
   }
 
   private static void delay(Duration t) {

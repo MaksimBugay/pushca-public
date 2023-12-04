@@ -20,7 +20,7 @@ import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft_6455;
 import org.java_websocket.handshake.ServerHandshake;
 
-public class WebSocketConnection extends WebSocketClient implements WebSocketApi {
+public class PushcaWebSocket extends WebSocketClient implements WebSocketApi {
 
   private final String pusherId;
 
@@ -60,9 +60,9 @@ public class WebSocketConnection extends WebSocketClient implements WebSocketApi
     }
   }
 
-  public WebSocketConnection(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
-      BiConsumer<WebSocketConnection, String> messageConsumer,
-      BiConsumer<WebSocketConnection, ByteBuffer> dataConsumer) {
+  public PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
+      BiConsumer<PushcaWebSocket, String> messageConsumer,
+      BiConsumer<PushcaWebSocket, ByteBuffer> dataConsumer) {
     super(acquireWsConnectionUrl(pushcaApiUrl, pusherId, client),
         new Draft_6455(), new HashMap<>(), connectTimeoutMs);
     this.pusherId = pusherId;
