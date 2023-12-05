@@ -26,11 +26,14 @@ public class App {
         "PUSHCA_CLIENT"
     );
 
-    PushcaWebSocket javaWebSocket = new PushcaWebSocket(
+    try (PushcaWebSocket javaWebSocket = new PushcaWebSocket(
         //"http://push-app-rc.multiloginapp.net:8050",
         "https://app-rc.multiloginapp.net/pushca",
-        null, client, 10_000, null, null, null
-    );
+        null, client, 1_000, null, null, null, null
+    )) {
+      System.out.println("Success");
+      delay(Duration.ofHours(1));
+    }
   }
 
   private static void delay(Duration t) {

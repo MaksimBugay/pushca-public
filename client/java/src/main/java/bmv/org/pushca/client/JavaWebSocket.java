@@ -1,5 +1,6 @@
 package bmv.org.pushca.client;
 
+import bmv.org.pushca.client.model.ReadyState;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -15,18 +16,23 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JavaWebSocket.class);
 
-  private final BiConsumer<JavaWebSocket, String> messageConsumer;
-  private final BiConsumer<JavaWebSocket, ByteBuffer> dataConsumer;
+  private final BiConsumer<WebSocketApi, String> messageConsumer;
+  private final BiConsumer<WebSocketApi, ByteBuffer> dataConsumer;
   private final BiConsumer<Integer, String> onCloseListener;
 
   public JavaWebSocket(URI wsUrl, int connectTimeoutMs,
-      BiConsumer<JavaWebSocket, String> messageConsumer,
-      BiConsumer<JavaWebSocket, ByteBuffer> dataConsumer,
+      BiConsumer<WebSocketApi, String> messageConsumer,
+      BiConsumer<WebSocketApi, ByteBuffer> dataConsumer,
       BiConsumer<Integer, String> onCloseListener) {
     super(wsUrl, new Draft_6455(), new HashMap<>(), connectTimeoutMs);
     this.messageConsumer = messageConsumer;
     this.dataConsumer = dataConsumer;
     this.onCloseListener = onCloseListener;
+  }
+
+  @Override
+  public ReadyState getWebSocketState() {
+    return ReadyState.valueOf(getReadyState().name());
   }
 
   @Override

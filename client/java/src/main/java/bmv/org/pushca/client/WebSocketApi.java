@@ -1,5 +1,6 @@
 package bmv.org.pushca.client;
 
+import bmv.org.pushca.client.model.ReadyState;
 import java.nio.ByteBuffer;
 import org.java_websocket.handshake.ServerHandshake;
 
@@ -12,6 +13,8 @@ public interface WebSocketApi {
   void send(String text);
 
   boolean isOpen();
+
+  ReadyState getWebSocketState();
 
   void onOpen(ServerHandshake handshakeData);
 
