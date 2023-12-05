@@ -71,13 +71,13 @@ public class ClientWithPool {
       String mainMessage = message;
       if (message.contains("@@")) {
         String[] messageParts = message.split("@@");
-        if ("ACKNOWLEDGE".equals(messageParts[1])) {
-          LOGGER.debug("Acknowledge was accepted: {}", messageParts[0]);
+        if ("ACKNOWLEDGE".equals(messageParts[0])) {
+          LOGGER.debug("Acknowledge was accepted: {}", messageParts[1]);
           UUID msgId;
           try {
-            msgId = UUID.fromString(messageParts[0]);
+            msgId = UUID.fromString(messageParts[1]);
           } catch (Exception ex) {
-            String idStr = messageParts[0].substring(0, messageParts[0].lastIndexOf("-"));
+            String idStr = messageParts[1].substring(0, messageParts[1].lastIndexOf("-"));
             msgId = UUID.fromString(idStr);
           }
           acknowledgeHistory.put(msgId, getCurrentTimestampMs());
