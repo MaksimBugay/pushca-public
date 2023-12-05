@@ -27,8 +27,8 @@ public class App {
     );
 
     try (PushcaWebSocket javaWebSocket = new PushcaWebSocket(
-        //"http://push-app-rc.multiloginapp.net:8050",
-        "https://app-rc.multiloginapp.net/pushca",
+        "http://push-app-rc.multiloginapp.net:8050",
+        //"https://app-rc.multiloginapp.net/pushca",
         null, client, 1_000, null, null, null, null
     )) {
       System.out.println("Success");

@@ -2,6 +2,7 @@ package bmv.org.pushca.client;
 
 import bmv.org.pushca.client.model.ReadyState;
 import java.nio.ByteBuffer;
+import java.util.function.BiConsumer;
 import org.java_websocket.handshake.ServerHandshake;
 
 public interface WebSocketApi {
@@ -12,7 +13,11 @@ public interface WebSocketApi {
 
   void send(String text);
 
+  void close();
+
   boolean isOpen();
+
+  boolean isClosing();
 
   ReadyState getWebSocketState();
 
@@ -25,4 +30,12 @@ public interface WebSocketApi {
   void onMessage(ByteBuffer data);
 
   void onError(Exception ex);
+
+  int getConnectTimeoutMs();
+
+  BiConsumer<WebSocketApi, String> getMessageConsumer();
+
+  BiConsumer<WebSocketApi, ByteBuffer> getDataConsumer();
+
+  BiConsumer<Integer, String> getOnCloseListener();
 }

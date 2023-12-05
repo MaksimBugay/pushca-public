@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JavaWebSocket.class);
-
+  private final int connectTimeoutMs;
   private final BiConsumer<WebSocketApi, String> messageConsumer;
   private final BiConsumer<WebSocketApi, ByteBuffer> dataConsumer;
   private final BiConsumer<Integer, String> onCloseListener;
@@ -25,6 +25,7 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
       BiConsumer<WebSocketApi, ByteBuffer> dataConsumer,
       BiConsumer<Integer, String> onCloseListener) {
     super(wsUrl, new Draft_6455(), new HashMap<>(), connectTimeoutMs);
+    this.connectTimeoutMs = connectTimeoutMs;
     this.messageConsumer = messageConsumer;
     this.dataConsumer = dataConsumer;
     this.onCloseListener = onCloseListener;
@@ -61,4 +62,19 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
     LOGGER.error("Unexpected error", ex);
   }
 
+  public int getConnectTimeoutMs() {
+    return connectTimeoutMs;
+  }
+
+  public BiConsumer<WebSocketApi, String> getMessageConsumer() {
+    return messageConsumer;
+  }
+
+  public BiConsumer<WebSocketApi, ByteBuffer> getDataConsumer() {
+    return dataConsumer;
+  }
+
+  public BiConsumer<Integer, String> getOnCloseListener() {
+    return onCloseListener;
+  }
 }

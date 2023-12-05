@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -41,9 +42,9 @@ public class PushcaWebSocket implements Closeable {
   public static final String ACKNOWLEDGE_PREFIX = "ACKNOWLEDGE@@";
   public static final String TOKEN_PREFIX = "TOKEN@@";
   private static final Logger LOGGER = LoggerFactory.getLogger(PushcaWebSocket.class);
-
-  //private static final long REFRESH_TOKEN_INTERVAL_SEC = Duration.ofMinutes(10).getSeconds;
-  private static final long REFRESH_TOKEN_INTERVAL_SEC = Duration.ofSeconds(5).getSeconds();
+  private static final long REFRESH_TOKEN_INTERVAL_MS = Duration.ofMinutes(10).toMillis();
+  private static final int[] RECONNECT_INTERVALS =
+      {0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597};
   private final String pusherId;
 
   private final String baseWsUrl;
@@ -52,13 +53,19 @@ public class PushcaWebSocket implements Closeable {
 
   private final PClient client;
 
-  private final WebSocketApi webSocket;
+  private WebSocketApi webSocket;
 
   private final AtomicReference<ReadyState> stateHolder = new AtomicReference<>();
 
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
   private final AtomicLong iterationCounter = new AtomicLong();
+
+  private final AtomicLong lastTokenRefreshTime = new AtomicLong();
+
+  private final AtomicInteger errorCounter = new AtomicInteger();
+
+  private final AtomicInteger reConnectIndex = new AtomicInteger();
 
   public PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
       BiConsumer<WebSocketApi, String> messageConsumer,
@@ -93,18 +100,16 @@ public class PushcaWebSocket implements Closeable {
             (ws, message) -> processMessage(ws, message, messageConsumer, acknowledgeConsumer),
             dataConsumer,
             onCloseListener);
-        scheduler.scheduleAtFixedRate(this::keepAliveJob, 2L * connectTimeoutMs, 1000,
+        scheduler.scheduleAtFixedRate(this::keepAliveJob, 2L * connectTimeoutMs, connectTimeoutMs,
             TimeUnit.MILLISECONDS);
         this.webSocket.connect();
         LOGGER.debug("Connection attributes: baseUrl {}, token {}", baseWsUrl, tokenHolder);
       } else {
-        this.webSocket = null;
         this.baseWsUrl = null;
       }
     } else {
       this.pusherId = pusherId;
       this.baseWsUrl = null;
-      this.webSocket = null;
     }
   }
 
@@ -138,16 +143,51 @@ public class PushcaWebSocket implements Closeable {
   }
 
   private void keepAliveJob() {
+    if (stateHolder.get() == ReadyState.PERMANENTLY_CLOSED) {
+      return;
+    }
     long i = iterationCounter.incrementAndGet();
     stateHolder.set(webSocket.getWebSocketState());
     if (webSocket.isOpen()) {
-      if (i % REFRESH_TOKEN_INTERVAL_SEC == 0) {
+      errorCounter.set(0);
+      reConnectIndex.set(0);
+      if (lastTokenRefreshTime.get() == 0
+          || System.currentTimeMillis() - lastTokenRefreshTime.get() > REFRESH_TOKEN_INTERVAL_MS) {
+        lastTokenRefreshTime.set(System.currentTimeMillis());
         webSocket.send(toJson(new CommandWithMetaData(REFRESH_TOKEN)));
       }
       return;
     }
+    if (webSocket.getWebSocketState() == ReadyState.CLOSING
+        || webSocket.getWebSocketState() == ReadyState.NOT_YET_CONNECTED) {
+      return;
+    }
     //re-connect attempt
-    LOGGER.info("Iteration {}", i);
+    if (reConnectIndex.get() > RECONNECT_INTERVALS.length - 1) {
+      stateHolder.set(ReadyState.PERMANENTLY_CLOSED);
+      LOGGER.error("Web socket was permanently closed: client {}", toJson(client));
+      return;
+    }
+    if (errorCounter.getAndIncrement() == RECONNECT_INTERVALS[reConnectIndex.get()]) {
+      reConnectIndex.incrementAndGet();
+      reConnect();
+    }
+    LOGGER.debug("Iteration {}, {}", i, webSocket.getWebSocketState());
+  }
+
+  private void reConnect() {
+    try {
+      webSocket = new JavaWebSocket(
+          new URI(baseWsUrl + tokenHolder.get()),
+          webSocket.getConnectTimeoutMs(),
+          webSocket.getMessageConsumer(),
+          webSocket.getDataConsumer(),
+          webSocket.getOnCloseListener()
+      );
+      webSocket.connect();
+    } catch (URISyntaxException e) {
+      LOGGER.error("Malformed web socket url: {}", baseWsUrl + tokenHolder.get());
+    }
   }
 
   private OpenConnectionResponse openConnection(String pushcaApiUrl, String pusherId,
@@ -178,5 +218,6 @@ public class PushcaWebSocket implements Closeable {
   @Override
   public void close() {
     scheduler.shutdown();
+    webSocket.close();
   }
 }
