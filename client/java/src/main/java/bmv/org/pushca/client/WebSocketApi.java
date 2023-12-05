@@ -1,6 +1,6 @@
 package bmv.org.pushca.client;
 
-import bmv.org.pushca.client.model.ReadyState;
+import bmv.org.pushca.client.model.WebSocketState;
 import java.nio.ByteBuffer;
 import java.util.function.BiConsumer;
 import org.java_websocket.handshake.ServerHandshake;
@@ -19,7 +19,7 @@ public interface WebSocketApi {
 
   boolean isClosing();
 
-  ReadyState getWebSocketState();
+  WebSocketState getWebSocketState();
 
   void onOpen(ServerHandshake handshakeData);
 

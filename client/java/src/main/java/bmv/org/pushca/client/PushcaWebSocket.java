@@ -2,13 +2,16 @@ package bmv.org.pushca.client;
 
 import static bmv.org.pushca.client.model.Command.ACKNOWLEDGE;
 import static bmv.org.pushca.client.model.Command.REFRESH_TOKEN;
+import static bmv.org.pushca.client.model.WebSocketState.CLOSING;
+import static bmv.org.pushca.client.model.WebSocketState.NOT_YET_CONNECTED;
+import static bmv.org.pushca.client.model.WebSocketState.PERMANENTLY_CLOSED;
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
 
 import bmv.org.pushca.client.model.CommandWithMetaData;
 import bmv.org.pushca.client.model.OpenConnectionRequest;
 import bmv.org.pushca.client.model.OpenConnectionResponse;
 import bmv.org.pushca.client.model.PClient;
-import bmv.org.pushca.client.model.ReadyState;
+import bmv.org.pushca.client.model.WebSocketState;
 import bmv.org.pushca.client.serialization.json.JsonUtility;
 import java.io.BufferedReader;
 import java.io.Closeable;
@@ -55,7 +58,7 @@ public class PushcaWebSocket implements Closeable {
 
   private WebSocketApi webSocket;
 
-  private final AtomicReference<ReadyState> stateHolder = new AtomicReference<>();
+  private final AtomicReference<WebSocketState> stateHolder = new AtomicReference<>();
 
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
@@ -79,7 +82,7 @@ public class PushcaWebSocket implements Closeable {
     } catch (IOException e) {
       LOGGER.error("Cannot open websocket connection: client {}, pusher id {}", toJson(client),
           pusherId);
-      this.stateHolder.set(ReadyState.CLOSED);
+      this.stateHolder.set(WebSocketState.CLOSED);
     }
 
     if (openConnectionResponse != null) {
@@ -90,7 +93,7 @@ public class PushcaWebSocket implements Closeable {
         wsUrl = new URI(openConnectionResponse.externalAdvertisedUrl);
       } catch (URISyntaxException e) {
         LOGGER.error("Malformed web socket url: {}", openConnectionResponse.externalAdvertisedUrl);
-        this.stateHolder.set(ReadyState.CLOSED);
+        this.stateHolder.set(WebSocketState.CLOSED);
       }
 
       if (wsUrl != null) {
@@ -143,7 +146,7 @@ public class PushcaWebSocket implements Closeable {
   }
 
   private void keepAliveJob() {
-    if (stateHolder.get() == ReadyState.PERMANENTLY_CLOSED) {
+    if (stateHolder.get() == PERMANENTLY_CLOSED) {
       return;
     }
     long i = iterationCounter.incrementAndGet();
@@ -158,13 +161,13 @@ public class PushcaWebSocket implements Closeable {
       }
       return;
     }
-    if (webSocket.getWebSocketState() == ReadyState.CLOSING
-        || webSocket.getWebSocketState() == ReadyState.NOT_YET_CONNECTED) {
+    if (webSocket.getWebSocketState() == CLOSING
+        || webSocket.getWebSocketState() == NOT_YET_CONNECTED) {
       return;
     }
     //re-connect attempt
     if (reConnectIndex.get() > RECONNECT_INTERVALS.length - 1) {
-      stateHolder.set(ReadyState.PERMANENTLY_CLOSED);
+      stateHolder.set(PERMANENTLY_CLOSED);
       LOGGER.error("Web socket was permanently closed: client {}", toJson(client));
       return;
     }

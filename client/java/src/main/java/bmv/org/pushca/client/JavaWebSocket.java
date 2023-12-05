@@ -1,6 +1,6 @@
 package bmv.org.pushca.client;
 
-import bmv.org.pushca.client.model.ReadyState;
+import bmv.org.pushca.client.model.WebSocketState;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -32,8 +32,8 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
   }
 
   @Override
-  public ReadyState getWebSocketState() {
-    return ReadyState.valueOf(getReadyState().name());
+  public WebSocketState getWebSocketState() {
+    return WebSocketState.valueOf(getReadyState().name());
   }
 
   @Override
