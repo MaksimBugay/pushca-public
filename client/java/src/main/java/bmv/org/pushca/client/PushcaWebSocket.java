@@ -175,7 +175,6 @@ public class PushcaWebSocket implements Closeable {
       reConnectIndex.incrementAndGet();
       reConnect();
     }
-    LOGGER.debug("Iteration {}, {}", i, webSocket.getWebSocketState());
   }
 
   private void reConnect() {
