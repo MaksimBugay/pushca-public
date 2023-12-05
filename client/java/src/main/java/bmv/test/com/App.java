@@ -26,12 +26,11 @@ public class App {
         "PUSHCA_CLIENT"
     );
 
-    PushcaWebSocket pushcaWebSocket = new PushcaWebSocket(
+    PushcaWebSocket javaWebSocket = new PushcaWebSocket(
         //"http://push-app-rc.multiloginapp.net:8050",
         "https://app-rc.multiloginapp.net/pushca",
-        null, client, 10_000, null, null
+        null, client, 10_000, null, null, null
     );
-    pushcaWebSocket.connect();
   }
 
   private static void delay(Duration t) {

@@ -11,6 +11,8 @@ public interface WebSocketApi {
 
   void send(String text);
 
+  boolean isOpen();
+
   void onOpen(ServerHandshake handshakeData);
 
   void onClose(int code, String reason, boolean remote);
