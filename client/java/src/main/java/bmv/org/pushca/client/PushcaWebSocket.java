@@ -2,11 +2,14 @@ package bmv.org.pushca.client;
 
 import static bmv.org.pushca.client.model.Command.ACKNOWLEDGE;
 import static bmv.org.pushca.client.model.Command.REFRESH_TOKEN;
+import static bmv.org.pushca.client.model.Command.SEND_MESSAGE;
+import static bmv.org.pushca.client.model.Command.SEND_MESSAGE_WITH_ACKNOWLEDGE;
 import static bmv.org.pushca.client.model.WebSocketState.CLOSING;
 import static bmv.org.pushca.client.model.WebSocketState.NOT_YET_CONNECTED;
 import static bmv.org.pushca.client.model.WebSocketState.PERMANENTLY_CLOSED;
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
 
+import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.CommandWithMetaData;
 import bmv.org.pushca.client.model.OpenConnectionRequest;
 import bmv.org.pushca.client.model.OpenConnectionResponse;
@@ -143,6 +146,48 @@ public class PushcaWebSocket implements Closeable {
     if (messageConsumer != null) {
       messageConsumer.accept(ws, message);
     }
+  }
+
+  public void sendMessageWithAcknowledge(String id, PClient dest, boolean preserveOrder,
+      String message) {
+    if (!webSocket.isOpen()) {
+      throw new IllegalStateException("Web socket connection is broken");
+    }
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("id", id);
+    metaData.put("client", dest);
+    metaData.put("sender", client);
+    metaData.put("message", message);
+    metaData.put("preserveOrder", preserveOrder);
+    final CommandWithMetaData command =
+        new CommandWithMetaData(SEND_MESSAGE_WITH_ACKNOWLEDGE, metaData);
+    webSocket.send(toJson(command));
+  }
+
+  public void sendMessageWithAcknowledge(String id, PClient dest, String message) {
+    sendMessageWithAcknowledge(id, dest, false, message);
+  }
+
+  public void sendMessage(String id, ClientFilter dest, boolean preserveOrder, String message) {
+    if (!webSocket.isOpen()) {
+      throw new IllegalStateException("Web socket connection is broken");
+    }
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("id", id);
+    metaData.put("filter", dest);
+    metaData.put("sender", client);
+    metaData.put("message", message);
+    metaData.put("preserveOrder", preserveOrder);
+    final CommandWithMetaData command = new CommandWithMetaData(SEND_MESSAGE, metaData);
+    webSocket.send(toJson(command));
+  }
+
+  public void sendMessage(String id, PClient dest, boolean preserveOrder, String message) {
+    sendMessage(id, new ClientFilter(dest), preserveOrder, message);
+  }
+
+  public void sendMessage(PClient dest, String message) {
+    sendMessage(null, dest, false, message);
   }
 
   private void keepAliveJob() {

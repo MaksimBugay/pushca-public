@@ -1,12 +1,16 @@
 package bmv.test.com;
 
 import bmv.org.pushca.client.PushcaWebSocket;
+import bmv.org.pushca.client.WebSocketApi;
 import bmv.org.pushca.client.model.PClient;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 public class App {
 
@@ -19,19 +23,67 @@ public class App {
     }
     System.out.println("Selected poolSize: " + poolSize);
 
-    PClient client = new PClient(
+    PClient client0 = new PClient(
         "workSpaceMain",
         "client0@test.ee",
         UUID.randomUUID().toString(),
         "PUSHCA_CLIENT"
     );
 
-    try (PushcaWebSocket javaWebSocket = new PushcaWebSocket(
-        "http://push-app-rc.multiloginapp.net:8050",
-        //"https://app-rc.multiloginapp.net/pushca",
-        null, client, 1_000, null, null, null, null
+    PClient client1 = new PClient(
+        "workSpaceMain",
+        "client1@test.ee",
+        UUID.randomUUID().toString(),
+        "PUSHCA_CLIENT"
+    );
+
+    PClient client2 = new PClient(
+        "workSpaceMain",
+        "client2@test.ee",
+        UUID.randomUUID().toString(),
+        "PUSHCA_CLIENT"
+    );
+
+    String pushcaApiUrl =
+        //"http://push-app-rc.multiloginapp.net:8050";
+        "https://app-rc.multiloginapp.net/pushca";
+    final String testMessage0 = "test-message-0";
+    final String testMessage1 = "test-message-1";
+    final String messageId = "1000";
+    final AtomicReference<String> lastMessage = new AtomicReference<>();
+    final AtomicReference<String> lastAcknowledge = new AtomicReference<>();
+    BiConsumer<WebSocketApi, String> messageConsumer = (ws, msg) -> lastMessage.set(msg);
+    Consumer<String> acknowledgeConsumer = lastAcknowledge::set;
+    try (PushcaWebSocket pushcaWebSocket0 = new PushcaWebSocket(
+        pushcaApiUrl, null, client0, 1_000, null, null, acknowledgeConsumer, null
+    ); PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocket(
+        pushcaApiUrl, null, client1, 1_000, messageConsumer, null, null, null
     )) {
-      System.out.println("Success");
+      delay(Duration.ofMillis(500));
+      lastMessage.set(null);
+      //---------------------simple message---------------------------------------------------------
+      pushcaWebSocket0.sendMessage(client1, testMessage0);
+      while (lastMessage.get() == null) {
+        delay(Duration.ofMillis(100));
+      }
+      if (!testMessage0.equals(lastMessage.get())) {
+        throw new IllegalStateException("Message was not delivered");
+      }
+      System.out.println("Message was delivered");
+      //============================================================================================
+      //---------------------message with acknowledge-----------------------------------------------
+      pushcaWebSocket0.sendMessageWithAcknowledge(messageId, client1, testMessage1);
+      while (lastAcknowledge.get() == null) {
+        delay(Duration.ofMillis(100));
+      }
+      if (!messageId.equals(lastAcknowledge.get())) {
+        throw new IllegalStateException("Acknowledge was not received");
+      }
+      if (!testMessage1.equals(lastMessage.get())) {
+        throw new IllegalStateException("Message was not delivered");
+      }
+      System.out.println("Message was delivered with acknowledge");
+      //============================================================================================
       delay(Duration.ofHours(1));
     }
   }

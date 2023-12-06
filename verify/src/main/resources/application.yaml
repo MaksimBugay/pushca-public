@@ -30,10 +30,10 @@ verification:
 #    url: https://app-rc.multiloginapp.net/pushca
 #should be always odd
   number-of-clients: 51
-  processor-type: SIMPLE_MESSAGE_WS
+  processor-type: MESSAGE_WITH_ACKNOWLEDGE_WS
   preserve-order: false
   load-test-runner:
-    number: 6
+    number: 5
 #   number: 120
   client-connection-pool:
     size: 2
