@@ -7,6 +7,7 @@ import bmv.org.pushca.client.model.PClient;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -54,9 +55,13 @@ public class App {
     final AtomicReference<String> lastMessage = new AtomicReference<>();
     final AtomicReference<String> lastAcknowledge = new AtomicReference<>();
     BiConsumer<WebSocketApi, String> messageConsumer = (ws, msg) -> lastMessage.set(msg);
+    BiConsumer<WebSocketApi, String> messageLogger = (ws, msg) -> System.out.println(msg);
     Consumer<String> acknowledgeConsumer = lastAcknowledge::set;
     try (PushcaWebSocket pushcaWebSocket0 = new PushcaWebSocketBuilder(pushcaApiUrl,
-        client0).withAcknowledgeConsumer(acknowledgeConsumer).build();
+        client0).withAcknowledgeConsumer(acknowledgeConsumer)
+        .withMessageConsumer(messageLogger)
+        .withBinaryManifestConsumer(System.out::println)
+        .build();
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1).withMessageConsumer(messageConsumer).build()) {
       delay(Duration.ofMillis(500));
@@ -84,6 +89,7 @@ public class App {
       }
       System.out.println("Message was delivered with acknowledge");
       //============================================================================================
+      pushcaWebSocket1.sendBinary(client0, "HELLO".getBytes(StandardCharsets.UTF_8));
       delay(Duration.ofHours(1));
     }
   }

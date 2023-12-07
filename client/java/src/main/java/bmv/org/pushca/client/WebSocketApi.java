@@ -11,6 +11,8 @@ public interface WebSocketApi {
 
   void send(ByteBuffer bytes);
 
+  void send(byte[] data);
+
   void send(String text);
 
   void close();

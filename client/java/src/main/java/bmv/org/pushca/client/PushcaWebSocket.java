@@ -8,7 +8,11 @@ import static bmv.org.pushca.client.model.WebSocketState.CLOSING;
 import static bmv.org.pushca.client.model.WebSocketState.NOT_YET_CONNECTED;
 import static bmv.org.pushca.client.model.WebSocketState.PERMANENTLY_CLOSED;
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
+import static bmv.org.pushca.client.utils.BmvObjectUtils.createScheduler;
+import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectMetadata;
+import static org.apache.commons.lang3.ArrayUtils.addAll;
 
+import bmv.org.pushca.client.model.BinaryObjectMetadata;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.CommandWithMetaData;
 import bmv.org.pushca.client.model.OpenConnectionRequest;
@@ -16,6 +20,7 @@ import bmv.org.pushca.client.model.OpenConnectionResponse;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.WebSocketState;
 import bmv.org.pushca.client.serialization.json.JsonUtility;
+import bmv.org.pushca.client.utils.BmvObjectUtils;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
@@ -27,13 +32,14 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.Executors;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -52,6 +58,7 @@ public class PushcaWebSocket implements Closeable {
   private static final long REFRESH_TOKEN_INTERVAL_MS = Duration.ofMinutes(10).toMillis();
   private static final int[] RECONNECT_INTERVALS =
       {0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597};
+  public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
   private final String pusherId;
 
   private final String baseWsUrl;
@@ -64,7 +71,7 @@ public class PushcaWebSocket implements Closeable {
 
   private final AtomicReference<WebSocketState> stateHolder = new AtomicReference<>();
 
-  private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+  private ScheduledExecutorService scheduler;
 
   private final AtomicLong iterationCounter = new AtomicLong();
 
@@ -109,8 +116,11 @@ public class PushcaWebSocket implements Closeable {
                 binaryManifestConsumer),
             dataConsumer,
             onCloseListener);
-        scheduler.scheduleAtFixedRate(this::keepAliveJob, 2L * connectTimeoutMs, connectTimeoutMs,
-            TimeUnit.MILLISECONDS);
+        scheduler = createScheduler(
+            this::keepAliveJob,
+            Duration.ofMillis(connectTimeoutMs),
+            Duration.ofMillis(2L * connectTimeoutMs)
+        );
         this.webSocket.connect();
         LOGGER.debug("Connection attributes: baseUrl {}, token {}", baseWsUrl, tokenHolder);
       } else {
@@ -199,6 +209,28 @@ public class PushcaWebSocket implements Closeable {
     sendMessage(null, dest, false, message);
   }
 
+  public void sendBinary(PClient dest, byte[] data) {
+    sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, false, false);
+  }
+
+  public void sendBinary(PClient dest, byte[] data, String name, UUID id, int chunkSize,
+      boolean withAcknowledge, boolean manifestOnly) {
+    BinaryObjectMetadata binaryMetadata = toBinaryObjectMetadata(
+        dest,
+        id,
+        name,
+        client,
+        BmvObjectUtils.splitToChunks(data, chunkSize),
+        pusherId,
+        withAcknowledge
+    );
+    sendMessage(dest, buildBinaryManifest(binaryMetadata));
+    if (manifestOnly) {
+      return;
+    }
+    binaryMetadata.datagrams.forEach(datagram -> webSocket.send(datagram.preparedDataWithPrefix));
+  }
+
   private void keepAliveJob() {
     if (stateHolder.get() == PERMANENTLY_CLOSED) {
       return;
@@ -271,9 +303,13 @@ public class PushcaWebSocket implements Closeable {
     return JsonUtility.fromJson(responseJson.toString(), OpenConnectionResponse.class);
   }
 
+  public String buildBinaryManifest(BinaryObjectMetadata binaryObjectMetadata) {
+    return MessageFormat.format("{0}{1}", BINARY_MANIFEST_PREFIX, toJson(binaryObjectMetadata));
+  }
+
   @Override
   public void close() {
-    scheduler.shutdown();
+    Optional.ofNullable(scheduler).ifPresent(ExecutorService::shutdown);
     webSocket.close();
   }
 }
