@@ -1,6 +1,7 @@
 package bmv.test.com;
 
 import bmv.org.pushca.client.PushcaWebSocket;
+import bmv.org.pushca.client.PushcaWebSocketBuilder;
 import bmv.org.pushca.client.WebSocketApi;
 import bmv.org.pushca.client.model.PClient;
 import java.io.BufferedReader;
@@ -54,11 +55,10 @@ public class App {
     final AtomicReference<String> lastAcknowledge = new AtomicReference<>();
     BiConsumer<WebSocketApi, String> messageConsumer = (ws, msg) -> lastMessage.set(msg);
     Consumer<String> acknowledgeConsumer = lastAcknowledge::set;
-    try (PushcaWebSocket pushcaWebSocket0 = new PushcaWebSocket(
-        pushcaApiUrl, null, client0, 1_000, null, null, acknowledgeConsumer, null
-    ); PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocket(
-        pushcaApiUrl, null, client1, 1_000, messageConsumer, null, null, null
-    )) {
+    try (PushcaWebSocket pushcaWebSocket0 = new PushcaWebSocketBuilder(pushcaApiUrl,
+        client0).withAcknowledgeConsumer(acknowledgeConsumer).build();
+        PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
+            client1).withMessageConsumer(messageConsumer).build()) {
       delay(Duration.ofMillis(500));
       lastMessage.set(null);
       //---------------------simple message---------------------------------------------------------

@@ -47,6 +47,7 @@ public class PushcaWebSocket implements Closeable {
 
   public static final String ACKNOWLEDGE_PREFIX = "ACKNOWLEDGE@@";
   public static final String TOKEN_PREFIX = "TOKEN@@";
+  public static final String BINARY_MANIFEST_PREFIX = "BINARY_MANIFEST@@";
   private static final Logger LOGGER = LoggerFactory.getLogger(PushcaWebSocket.class);
   private static final long REFRESH_TOKEN_INTERVAL_MS = Duration.ofMinutes(10).toMillis();
   private static final int[] RECONNECT_INTERVALS =
@@ -73,10 +74,11 @@ public class PushcaWebSocket implements Closeable {
 
   private final AtomicInteger reConnectIndex = new AtomicInteger();
 
-  public PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
+  PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
       BiConsumer<WebSocketApi, String> messageConsumer,
       BiConsumer<WebSocketApi, ByteBuffer> dataConsumer,
       Consumer<String> acknowledgeConsumer,
+      Consumer<String> binaryManifestConsumer,
       BiConsumer<Integer, String> onCloseListener) {
     this.client = client;
     OpenConnectionResponse openConnectionResponse = null;
@@ -103,7 +105,8 @@ public class PushcaWebSocket implements Closeable {
         this.baseWsUrl = wsUrl.toString().substring(0, wsUrl.toString().lastIndexOf('/') + 1);
         this.tokenHolder.set(wsUrl.toString().substring(wsUrl.toString().lastIndexOf('/') + 1));
         this.webSocket = new JavaWebSocket(wsUrl, connectTimeoutMs,
-            (ws, message) -> processMessage(ws, message, messageConsumer, acknowledgeConsumer),
+            (ws, message) -> processMessage(ws, message, messageConsumer, acknowledgeConsumer,
+                binaryManifestConsumer),
             dataConsumer,
             onCloseListener);
         scheduler.scheduleAtFixedRate(this::keepAliveJob, 2L * connectTimeoutMs, connectTimeoutMs,
@@ -120,7 +123,8 @@ public class PushcaWebSocket implements Closeable {
   }
 
   private void processMessage(WebSocketApi ws, String inMessage,
-      BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer) {
+      BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer,
+      Consumer<String> binaryManifestConsumer) {
     String message = inMessage;
     if (StringUtils.isEmpty(message)) {
       return;
@@ -133,6 +137,11 @@ public class PushcaWebSocket implements Closeable {
     if (message.startsWith(TOKEN_PREFIX)) {
       tokenHolder.set(message.replace(TOKEN_PREFIX, ""));
       LOGGER.debug("New token was acquired: {}", tokenHolder.get());
+      return;
+    }
+    if (message.startsWith(BINARY_MANIFEST_PREFIX)) {
+      Optional.ofNullable(binaryManifestConsumer)
+          .ifPresent(c -> c.accept(inMessage.replace(BINARY_MANIFEST_PREFIX, "")));
       return;
     }
     if (message.contains("@@")) {
