@@ -178,9 +178,11 @@ public class PushcaWebSocket implements Closeable {
       if (withAcknowledge) {
         webSocket.send(Arrays.copyOfRange(binary, 0, 25));
       }
-      //concurrency issues are possible here
-      datagram.setReceived(true);
-      boolean allDatagramsWereReceived = manifest.datagrams.stream().allMatch(Datagram::isReceived);
+      manifests.computeIfPresent(manifest.getBinaryId(), (k, v) -> {
+        v.markDatagramAsReceived(datagram.id, datagram.order);
+        return v;
+      });
+      boolean allDatagramsWereReceived = manifest.getDatagrams().stream().allMatch(d -> d.received);
       if (allDatagramsWereReceived) {
         manifests.remove(manifest.getBinaryId());
         LOGGER.info("Binary was successfully received: id {}, name {}", manifest.getBinaryId(),
@@ -301,7 +303,7 @@ public class PushcaWebSocket implements Closeable {
     if (manifestOnly) {
       return;
     }
-    binaryMetadata.datagrams.forEach(datagram -> webSocket.send(datagram.preparedDataWithPrefix));
+    binaryMetadata.getDatagrams().forEach(datagram -> webSocket.send(datagram.preparedDataWithPrefix));
   }
 
   private void keepAliveJob() {

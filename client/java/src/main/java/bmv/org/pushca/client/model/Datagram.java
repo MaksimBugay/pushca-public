@@ -12,13 +12,5 @@ public class Datagram {
   @JsonIgnore
   public byte[] preparedDataWithPrefix;
   @JsonIgnore
-  private boolean received;
-
-  public synchronized boolean isReceived() {
-    return received;
-  }
-
-  public synchronized void setReceived(boolean received) {
-    this.received = received;
-  }
+  public boolean received;
 }

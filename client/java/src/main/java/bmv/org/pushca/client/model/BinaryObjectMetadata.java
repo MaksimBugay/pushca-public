@@ -9,7 +9,7 @@ public class BinaryObjectMetadata {
   public String id;
 
   public String name;
-  public List<Datagram> datagrams;
+  private List<Datagram> datagrams;
   public PClient sender;
   public String pusherInstanceId;
 
@@ -35,9 +35,21 @@ public class BinaryObjectMetadata {
   }
 
   @JsonIgnore
-  public Datagram getDatagram(String id, int order) {
+  public synchronized Datagram getDatagram(String id, int order) {
     return datagrams.stream()
         .filter(d -> d.id.equals(id) && (d.order == order))
         .findFirst().orElse(null);
+  }
+
+  public synchronized void markDatagramAsReceived(String id, int order) {
+    getDatagram(id, order).received = true;
+  }
+
+  public synchronized List<Datagram> getDatagrams() {
+    return datagrams;
+  }
+
+  public synchronized void setDatagrams(List<Datagram> datagrams) {
+    this.datagrams = datagrams;
   }
 }
