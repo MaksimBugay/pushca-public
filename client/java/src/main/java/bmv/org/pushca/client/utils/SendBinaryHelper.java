@@ -31,7 +31,7 @@ public final class SendBinaryHelper {
       datagrams.add(toDatagram(binaryId, i, chunks.get(i), dest, withAcknowledge));
     }
 
-    return new BinaryObjectMetadata(name, datagrams, sender, pusherInstanceId);
+    return new BinaryObjectMetadata(binaryId.toString(), name, datagrams, sender, pusherInstanceId);
   }
 
   public static Datagram toDatagram(UUID binaryId, int order, byte[] chunk, PClient dest,

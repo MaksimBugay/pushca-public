@@ -11,4 +11,14 @@ public class Datagram {
   public int order;
   @JsonIgnore
   public byte[] preparedDataWithPrefix;
+  @JsonIgnore
+  private boolean received;
+
+  public synchronized boolean isReceived() {
+    return received;
+  }
+
+  public synchronized void setReceived(boolean received) {
+    this.received = received;
+  }
 }

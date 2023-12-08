@@ -4,10 +4,12 @@ import bmv.org.pushca.client.PushcaWebSocket;
 import bmv.org.pushca.client.PushcaWebSocketBuilder;
 import bmv.org.pushca.client.WebSocketApi;
 import bmv.org.pushca.client.model.PClient;
+import bmv.org.pushca.client.tls.SslContextProvider;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -46,9 +48,16 @@ public class App {
         "PUSHCA_CLIENT"
     );
 
+    /*SslContextProvider sslContextProvider = new SslContextProvider(
+        "C:\\mbugai\\work\\mlx\\pushca\\docker\\conf\\pushca-rc-tls.p12",
+        "pwd".toCharArray()
+    );*/
+
     String pushcaApiUrl =
-        //"http://push-app-rc.multiloginapp.net:8050";
-        "https://app-rc.multiloginapp.net/pushca";
+    //    "http://localhost:8050";
+    //    "https://app-rc.multiloginapp.net/pushca-with-tls-support";
+        "http://push-app-rc.multiloginapp.net:8050";
+    //"https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
@@ -56,16 +65,24 @@ public class App {
     final AtomicReference<String> lastAcknowledge = new AtomicReference<>();
     BiConsumer<WebSocketApi, String> messageConsumer = (ws, msg) -> lastMessage.set(msg);
     BiConsumer<WebSocketApi, String> messageLogger = (ws, msg) -> System.out.println(msg);
-    Consumer<String> acknowledgeConsumer = lastAcknowledge::set;
+    Consumer<String> acknowledgeConsumer = ack -> {
+      System.out.println(MessageFormat.format("Acknowledge was received {0}", ack));
+      lastAcknowledge.set(ack);
+    };
     try (PushcaWebSocket pushcaWebSocket0 = new PushcaWebSocketBuilder(pushcaApiUrl,
         client0).withAcknowledgeConsumer(acknowledgeConsumer)
         .withMessageConsumer(messageLogger)
         .withBinaryManifestConsumer(System.out::println)
+        //.withSslContext(sslContextProvider.getSslContext())
         .build();
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
-            client1).withMessageConsumer(messageConsumer).build()) {
+            client1).withMessageConsumer(messageConsumer)
+            .withAcknowledgeConsumer(acknowledgeConsumer)
+            //.withSslContext(sslContextProvider.getSslContext())
+            .build()) {
       delay(Duration.ofMillis(500));
       lastMessage.set(null);
+      delay(Duration.ofSeconds(3));
       //---------------------simple message---------------------------------------------------------
       pushcaWebSocket0.sendMessage(client1, testMessage0);
       while (lastMessage.get() == null) {
@@ -89,7 +106,8 @@ public class App {
       }
       System.out.println("Message was delivered with acknowledge");
       //============================================================================================
-      pushcaWebSocket1.sendBinary(client0, "HELLO".getBytes(StandardCharsets.UTF_8));
+      //---------------------message binary with acknowledge----------------------------------------
+      pushcaWebSocket1.sendBinary(client0, "HELLO".getBytes(StandardCharsets.UTF_8), true);
       delay(Duration.ofHours(1));
     }
   }

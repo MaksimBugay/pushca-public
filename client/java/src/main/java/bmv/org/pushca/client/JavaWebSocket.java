@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import javax.net.ssl.SSLContext;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft_6455;
 import org.java_websocket.handshake.ServerHandshake;
@@ -20,15 +21,22 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
   private final BiConsumer<WebSocketApi, ByteBuffer> dataConsumer;
   private final BiConsumer<Integer, String> onCloseListener;
 
+  private final SSLContext sslContext;
+
   public JavaWebSocket(URI wsUrl, int connectTimeoutMs,
       BiConsumer<WebSocketApi, String> messageConsumer,
       BiConsumer<WebSocketApi, ByteBuffer> dataConsumer,
-      BiConsumer<Integer, String> onCloseListener) {
+      BiConsumer<Integer, String> onCloseListener,
+      SSLContext sslContext) {
     super(wsUrl, new Draft_6455(), new HashMap<>(), connectTimeoutMs);
+    if (sslContext != null) {
+      this.setSocketFactory(sslContext.getSocketFactory());
+    }
     this.connectTimeoutMs = connectTimeoutMs;
     this.messageConsumer = messageConsumer;
     this.dataConsumer = dataConsumer;
     this.onCloseListener = onCloseListener;
+    this.sslContext = sslContext;
   }
 
   @Override
@@ -76,5 +84,9 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
 
   public BiConsumer<Integer, String> getOnCloseListener() {
     return onCloseListener;
+  }
+
+  public SSLContext getSslContext() {
+    return sslContext;
   }
 }

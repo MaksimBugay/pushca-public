@@ -7,19 +7,20 @@ import static bmv.org.pushca.client.model.Command.SEND_MESSAGE_WITH_ACKNOWLEDGE;
 import static bmv.org.pushca.client.model.WebSocketState.CLOSING;
 import static bmv.org.pushca.client.model.WebSocketState.NOT_YET_CONNECTED;
 import static bmv.org.pushca.client.model.WebSocketState.PERMANENTLY_CLOSED;
+import static bmv.org.pushca.client.serialization.json.JsonUtility.fromJson;
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
+import static bmv.org.pushca.client.utils.BmvObjectUtils.calculateSha256;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.createScheduler;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectMetadata;
-import static org.apache.commons.lang3.ArrayUtils.addAll;
 
 import bmv.org.pushca.client.model.BinaryObjectMetadata;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.CommandWithMetaData;
+import bmv.org.pushca.client.model.Datagram;
 import bmv.org.pushca.client.model.OpenConnectionRequest;
 import bmv.org.pushca.client.model.OpenConnectionResponse;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.WebSocketState;
-import bmv.org.pushca.client.serialization.json.JsonUtility;
 import bmv.org.pushca.client.utils.BmvObjectUtils;
 import java.io.BufferedReader;
 import java.io.Closeable;
@@ -34,10 +35,12 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -45,6 +48,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import javax.net.ssl.SSLContext;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,12 +85,15 @@ public class PushcaWebSocket implements Closeable {
 
   private final AtomicInteger reConnectIndex = new AtomicInteger();
 
+  private final Map<String, BinaryObjectMetadata> manifests = new ConcurrentHashMap<>();
+
   PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
       BiConsumer<WebSocketApi, String> messageConsumer,
-      BiConsumer<WebSocketApi, ByteBuffer> dataConsumer,
+      BiConsumer<WebSocketApi, byte[]> dataConsumer,
       Consumer<String> acknowledgeConsumer,
       Consumer<String> binaryManifestConsumer,
-      BiConsumer<Integer, String> onCloseListener) {
+      BiConsumer<Integer, String> onCloseListener,
+      SSLContext sslContext) {
     this.client = client;
     OpenConnectionResponse openConnectionResponse = null;
     try {
@@ -114,8 +121,8 @@ public class PushcaWebSocket implements Closeable {
         this.webSocket = new JavaWebSocket(wsUrl, connectTimeoutMs,
             (ws, message) -> processMessage(ws, message, messageConsumer, acknowledgeConsumer,
                 binaryManifestConsumer),
-            dataConsumer,
-            onCloseListener);
+            (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer),
+            onCloseListener, sslContext);
         scheduler = createScheduler(
             this::keepAliveJob,
             Duration.ofMillis(connectTimeoutMs),
@@ -129,6 +136,58 @@ public class PushcaWebSocket implements Closeable {
     } else {
       this.pusherId = pusherId;
       this.baseWsUrl = null;
+    }
+  }
+
+  private void processBinary(WebSocketApi ws, ByteBuffer byteBuffer,
+      BiConsumer<WebSocketApi, byte[]> dataConsumer) {
+    try {
+      byte[] binary = byteBuffer.array();
+      final int clientHash = BmvObjectUtils.bytesToInt(
+          Arrays.copyOfRange(binary, 0, 4)
+      );
+      if (clientHash != client.hashCode()) {
+        throw new IllegalStateException("Data was intended for another client");
+      }
+      boolean withAcknowledge = BmvObjectUtils.bytesToBoolean(
+          Arrays.copyOfRange(binary, 4, 5)
+      );
+      final UUID binaryId = BmvObjectUtils.bytesToUuid(Arrays.copyOfRange(binary, 5, 21));
+      final int order = BmvObjectUtils.bytesToInt(Arrays.copyOfRange(binary, 21, 25));
+
+      BinaryObjectMetadata manifest = manifests.get(binaryId.toString());
+      if (manifest == null) {
+        throw new IllegalStateException("Unknown binary with id = " + binaryId);
+      }
+      Datagram datagram = manifest.getDatagram(binaryId.toString(), order);
+      if (datagram == null) {
+        throw new IllegalArgumentException(
+            MessageFormat.format("Unknown datagram: binaryId={0}, order={1}", binaryId.toString(),
+                String.valueOf(order))
+        );
+      }
+      byte[] payload = Arrays.copyOfRange(binary, 25, binary.length);
+      if (!datagram.md5.equals(calculateSha256(payload))) {
+        throw new IllegalArgumentException(
+            MessageFormat.format("Md5 validation was not passed: binaryId={0}, order={1}",
+                binaryId.toString(),
+                String.valueOf(order))
+        );
+      }
+      Optional.ofNullable(dataConsumer).ifPresent(c -> c.accept(webSocket, payload));
+      if (withAcknowledge) {
+        webSocket.send(Arrays.copyOfRange(binary, 0, 25));
+      }
+      //concurrency issues are possible here
+      datagram.setReceived(true);
+      boolean allDatagramsWereReceived = manifest.datagrams.stream().allMatch(Datagram::isReceived);
+      if (allDatagramsWereReceived) {
+        manifests.remove(manifest.getBinaryId());
+        LOGGER.info("Binary was successfully received: id {}, name {}", manifest.getBinaryId(),
+            manifest.name);
+      }
+    } finally {
+      byteBuffer.clear();
     }
   }
 
@@ -150,21 +209,28 @@ public class PushcaWebSocket implements Closeable {
       return;
     }
     if (message.startsWith(BINARY_MANIFEST_PREFIX)) {
-      Optional.ofNullable(binaryManifestConsumer)
-          .ifPresent(c -> c.accept(inMessage.replace(BINARY_MANIFEST_PREFIX, "")));
+      String manifestJsom = inMessage.replace(BINARY_MANIFEST_PREFIX, "");
+      BinaryObjectMetadata manifest = fromJson(manifestJsom, BinaryObjectMetadata.class);
+      manifests.put(manifest.getBinaryId(), manifest);
+      if (binaryManifestConsumer != null) {
+        binaryManifestConsumer.accept(manifestJsom);
+      }
       return;
     }
     if (message.contains("@@")) {
       String[] parts = message.split("@@");
-      //send acknowledge
-      Map<String, Object> metaData = new HashMap<>();
-      metaData.put("messageId", parts[0]);
-      webSocket.send(toJson(new CommandWithMetaData(ACKNOWLEDGE, metaData)));
+      sendAcknowledge(parts[0]);
       message = parts[1];
     }
     if (messageConsumer != null) {
       messageConsumer.accept(ws, message);
     }
+  }
+
+  public void sendAcknowledge(String id) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("messageId", id);
+    webSocket.send(toJson(new CommandWithMetaData(ACKNOWLEDGE, metaData)));
   }
 
   public void sendMessageWithAcknowledge(String id, PClient dest, boolean preserveOrder,
@@ -210,11 +276,18 @@ public class PushcaWebSocket implements Closeable {
   }
 
   public void sendBinary(PClient dest, byte[] data) {
-    sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, false, false);
+    sendBinary(dest, data, false);
+  }
+
+  public void sendBinary(PClient dest, byte[] data, boolean withAcknowledge) {
+    sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, withAcknowledge, false);
   }
 
   public void sendBinary(PClient dest, byte[] data, String name, UUID id, int chunkSize,
       boolean withAcknowledge, boolean manifestOnly) {
+    if (!webSocket.isOpen()) {
+      throw new IllegalStateException("Web socket connection is broken");
+    }
     BinaryObjectMetadata binaryMetadata = toBinaryObjectMetadata(
         dest,
         id,
@@ -270,7 +343,8 @@ public class PushcaWebSocket implements Closeable {
           webSocket.getConnectTimeoutMs(),
           webSocket.getMessageConsumer(),
           webSocket.getDataConsumer(),
-          webSocket.getOnCloseListener()
+          webSocket.getOnCloseListener(),
+          webSocket.getSslContext()
       );
       webSocket.connect();
     } catch (URISyntaxException e) {
@@ -300,7 +374,7 @@ public class PushcaWebSocket implements Closeable {
         responseJson.append(responseLine.trim());
       }
     }
-    return JsonUtility.fromJson(responseJson.toString(), OpenConnectionResponse.class);
+    return fromJson(responseJson.toString(), OpenConnectionResponse.class);
   }
 
   public String buildBinaryManifest(BinaryObjectMetadata binaryObjectMetadata) {

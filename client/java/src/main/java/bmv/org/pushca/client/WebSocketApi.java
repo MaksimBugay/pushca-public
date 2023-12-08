@@ -3,6 +3,7 @@ package bmv.org.pushca.client;
 import bmv.org.pushca.client.model.WebSocketState;
 import java.nio.ByteBuffer;
 import java.util.function.BiConsumer;
+import javax.net.ssl.SSLContext;
 import org.java_websocket.handshake.ServerHandshake;
 
 public interface WebSocketApi {
@@ -40,4 +41,6 @@ public interface WebSocketApi {
   BiConsumer<WebSocketApi, ByteBuffer> getDataConsumer();
 
   BiConsumer<Integer, String> getOnCloseListener();
+
+  SSLContext getSslContext();
 }
