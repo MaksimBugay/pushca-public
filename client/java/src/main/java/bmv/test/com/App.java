@@ -48,15 +48,15 @@ public class App {
         "PUSHCA_CLIENT"
     );
 
-    /*SslContextProvider sslContextProvider = new SslContextProvider(
+    SslContextProvider sslContextProvider = new SslContextProvider(
         "C:\\mbugai\\work\\mlx\\pushca\\docker\\conf\\pushca-rc-tls.p12",
         "pwd".toCharArray()
-    );*/
+    );
 
     String pushcaApiUrl =
     //    "http://localhost:8050";
-    //    "https://app-rc.multiloginapp.net/pushca-with-tls-support";
-        "http://push-app-rc.multiloginapp.net:8050";
+        "https://app-rc.multiloginapp.net/pushca-with-tls-support";
+    //    "http://push-app-rc.multiloginapp.net:8050";
     //"https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
@@ -73,12 +73,12 @@ public class App {
         client0).withAcknowledgeConsumer(acknowledgeConsumer)
         .withMessageConsumer(messageLogger)
         .withBinaryManifestConsumer(System.out::println)
-        //.withSslContext(sslContextProvider.getSslContext())
+        .withSslContext(sslContextProvider.getSslContext())
         .build();
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1).withMessageConsumer(messageConsumer)
             .withAcknowledgeConsumer(acknowledgeConsumer)
-            //.withSslContext(sslContextProvider.getSslContext())
+            .withSslContext(sslContextProvider.getSslContext())
             .build()) {
       delay(Duration.ofMillis(500));
       lastMessage.set(null);
