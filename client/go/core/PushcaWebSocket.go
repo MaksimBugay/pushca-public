@@ -21,6 +21,7 @@ type PushcaWebSocket struct {
 	PushcaApiUrl string
 	PusherId     string
 	Client       model.PClient
+	WsUrl        string
 }
 
 func (wsPushca *PushcaWebSocket) openConnection() (modelresponse.OpenConnectionResponse, error) {
@@ -57,6 +58,7 @@ func (wsPushca *PushcaWebSocket) openConnection() (modelresponse.OpenConnectionR
 	}
 	ocResponse.LogAsString()
 	wsPushca.PusherId = ocResponse.PusherInstanceId
+	wsPushca.WsUrl = ocResponse.ExternalAdvertisedUrl
 	return ocResponse, nil
 }
 
