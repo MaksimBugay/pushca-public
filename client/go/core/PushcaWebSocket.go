@@ -13,14 +13,6 @@ import (
 	"strings"
 )
 
-type (
-	WebSocketApi interface {
-		GetInfo() string
-		openConnection() (*websocket.Conn, error)
-		CloseConnection() error
-	}
-)
-
 type PushcaWebSocket struct {
 	PushcaApiUrl string
 	PusherId     string
