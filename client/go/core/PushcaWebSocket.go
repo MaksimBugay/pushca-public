@@ -3,17 +3,21 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/gorilla/websocket"
 	"io"
 	"log"
 	"net/http"
 	"pushca-client/model"
 	modelrequest "pushca-client/model/request"
 	modelresponse "pushca-client/model/response"
+	"strings"
 )
 
 type (
-	OpenConnectionHelper interface {
-		openConnection() (modelresponse.OpenConnectionResponse, error)
+	WebSocketApi interface {
+		GetInfo() string
+		openConnection() (*websocket.Conn, error)
+		CloseConnection() error
 	}
 )
 
@@ -22,16 +26,26 @@ type PushcaWebSocket struct {
 	PusherId     string
 	Client       model.PClient
 	WsUrl        string
+	Token        string
+	Connection   *websocket.Conn
 }
 
-func (wsPushca *PushcaWebSocket) openConnection() (modelresponse.OpenConnectionResponse, error) {
+func (wsPushca *PushcaWebSocket) GetInfo() string {
+	jsonStr, errMarshal := json.Marshal(wsPushca.Client)
+	if errMarshal != nil {
+		log.Printf("Unable to marshal open connection request due to %s\n", errMarshal)
+		return "UNKNOWN"
+	}
+	return string(jsonStr)
+}
+func (wsPushca *PushcaWebSocket) openConnection() (*websocket.Conn, error) {
 	openConnectionRequest := &modelrequest.OpenConnectionRequest{
 		Client: wsPushca.Client,
 	}
 	jsonData, errMarshal := json.Marshal(openConnectionRequest)
 	if errMarshal != nil {
 		log.Printf("Unable to marshal open connection request due to %s\n", errMarshal)
-		return modelresponse.OpenConnectionResponse{}, errMarshal
+		return nil, errMarshal
 	}
 
 	request, errHttp := http.NewRequest("POST", wsPushca.PushcaApiUrl, bytes.NewBuffer(jsonData))
@@ -43,7 +57,7 @@ func (wsPushca *PushcaWebSocket) openConnection() (modelresponse.OpenConnectionR
 	httpResponse, errHttp := httpClient.Do(request)
 	if errHttp != nil {
 		log.Printf("Unable to send http post due to %s", errHttp)
-		return modelresponse.OpenConnectionResponse{}, errHttp
+		return nil, errHttp
 	}
 
 	//fmt.Println("response Status:", httpResponse.Status)
@@ -54,17 +68,51 @@ func (wsPushca *PushcaWebSocket) openConnection() (modelresponse.OpenConnectionR
 	errUnmarshal := json.Unmarshal(body, &ocResponse)
 	if errUnmarshal != nil {
 		log.Printf("Unable to marshal JSON due to %s", errUnmarshal)
-		return modelresponse.OpenConnectionResponse{}, errUnmarshal
+		return nil, errUnmarshal
 	}
 	ocResponse.LogAsString()
 	wsPushca.PusherId = ocResponse.PusherInstanceId
 	wsPushca.WsUrl = ocResponse.ExternalAdvertisedUrl
-	return ocResponse, nil
+	lastSlashIndex := strings.LastIndex(wsPushca.WsUrl, "/")
+	if lastSlashIndex != -1 && lastSlashIndex < len(wsPushca.WsUrl)-1 {
+		wsPushca.Token = wsPushca.WsUrl[lastSlashIndex+1:]
+		//log.Printf("Token was successfully extracted %s", wsPushca.Token)
+	} else {
+		log.Print("No token found")
+	}
+
+	conn, _, errWs := websocket.DefaultDialer.Dial(wsPushca.WsUrl, nil)
+	if errWs != nil {
+		log.Printf("Unable to open web socket connection due to %s", errWs)
+		return nil, errWs
+	}
+	wsPushca.Connection = conn
+	return wsPushca.Connection, nil
 }
 
-func InitWebSocket(helper OpenConnectionHelper) {
-	_, err := helper.openConnection()
+func (wsPushca *PushcaWebSocket) CloseConnection() error {
+	err := wsPushca.Connection.Close()
+	if err != nil {
+		log.Printf("Ws connection was closed with error: %s", err)
+		return err
+	}
+	return nil
+}
+
+func InitWebSocket(ws WebSocketApi, done chan struct{}) {
+	conn, err := ws.openConnection()
 	if err != nil {
 		recover()
 	}
+	go func() {
+		defer close(done)
+		for {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				log.Println("read:", err)
+				return
+			}
+			log.Printf("%s recv: %s", ws.GetInfo(), message)
+		}
+	}()
 }

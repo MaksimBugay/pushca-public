@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"log"
@@ -10,7 +9,6 @@ import (
 	"os/signal"
 	"pushca-client/core"
 	"pushca-client/model"
-	"strings"
 	"time"
 )
 
@@ -24,7 +22,7 @@ func main() {
 	httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
 	//httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
 
-	pushcaWebSocket := &core.PushcaWebSocket{
+	pushcaWebSocket0 := &core.PushcaWebSocket{
 		PushcaApiUrl: httpPostUrl,
 		Client: model.PClient{
 			WorkSpaceId:   "workSpaceMain",
@@ -33,50 +31,40 @@ func main() {
 			ApplicationId: "PUSHCA_CLIENT",
 		},
 	}
-	core.InitWebSocket(pushcaWebSocket)
-	log.Printf("Pusher instance id: %v", pushcaWebSocket.PusherId)
-
+	log.Printf("Pusher instance id: %v", pushcaWebSocket0.PusherId)
+	log.Printf("Token: %v", pushcaWebSocket0.Token)
+	pushcaWebSocket1 := &core.PushcaWebSocket{
+		PushcaApiUrl: httpPostUrl,
+		Client: model.PClient{
+			WorkSpaceId:   "workSpaceMain",
+			AccountId:     "client1@test.ee",
+			DeviceId:      "web-browser",
+			ApplicationId: "PUSHCA_CLIENT",
+		},
+	}
 	//================================================================================
-
 	flag.Parse()
 	log.SetFlags(0)
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
+	done := make(chan struct{})
 
-	//var token string
-	lastSlashIndex := strings.LastIndex(pushcaWebSocket.WsUrl, "/")
-	if lastSlashIndex != -1 && lastSlashIndex < len(pushcaWebSocket.WsUrl)-1 {
-		token := pushcaWebSocket.WsUrl[lastSlashIndex+1:]
-		fmt.Println(token)
-	} else {
-		log.Fatal("No token found")
-	}
-
-	c, _, err := websocket.DefaultDialer.Dial(pushcaWebSocket.WsUrl, nil)
-	if err != nil {
-		log.Fatal("dial:", err)
-	}
-	defer func(c *websocket.Conn) {
-		err := c.Close()
+	core.InitWebSocket(pushcaWebSocket0, done)
+	defer func(ws core.WebSocketApi) {
+		err := ws.CloseConnection()
 		if err != nil {
 			log.Fatal("Ws connection was closed with error:", err)
 		}
-	}(c)
+	}(pushcaWebSocket0)
 
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-		for {
-			_, message, err := c.ReadMessage()
-			if err != nil {
-				log.Println("read:", err)
-				return
-			}
-			log.Printf("recv: %s", message)
+	core.InitWebSocket(pushcaWebSocket1, done)
+	defer func(ws core.WebSocketApi) {
+		err := ws.CloseConnection()
+		if err != nil {
+			log.Fatal("Ws connection was closed with error:", err)
 		}
-	}()
+	}(pushcaWebSocket1)
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -85,21 +73,24 @@ func main() {
 		select {
 		case <-done:
 			return
-		case t := <-ticker.C:
-			err := c.WriteMessage(websocket.TextMessage, []byte(t.String()))
+		case <-ticker.C:
+			/*err := pushcaWebSocket0.Connection.WriteMessage(websocket.TextMessage, []byte(t.String()))
 			if err != nil {
 				log.Println("write:", err)
 				return
-			}
+			}*/
 		case <-interrupt:
 			log.Println("interrupt")
 
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
-			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			if err != nil {
-				log.Println("write close:", err)
-				return
+			err0 := pushcaWebSocket0.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			if err0 != nil {
+				log.Println("WS was closed with error:", err0)
+			}
+			err1 := pushcaWebSocket1.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			if err1 != nil {
+				log.Println("WS was closed with error:", err1)
 			}
 			select {
 			case <-done:
