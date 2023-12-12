@@ -91,6 +91,32 @@ func (wsPushca *PushcaWebSocket) CloseConnection() error {
 	return nil
 }
 
+func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge(id string, dest model.PClient, preserveOrder bool, message string) {
+	metaData := make(map[string]interface{})
+
+	metaData["id"] = id
+	metaData["client"] = dest
+	metaData["sender"] = wsPushca.Client
+	metaData["message"] = message
+	metaData["preserveOrder"] = preserveOrder
+
+	command := model.CommandWithMetaData{
+		Command:  "SEND_MESSAGE_WITH_ACKNOWLEDGE",
+		MetaData: metaData,
+	}
+
+	_, errMarshal := json.Marshal(command)
+	if errMarshal != nil {
+		log.Printf("Cannot prepare pushca message: client %s, error %s", wsPushca.GetInfo(), errMarshal)
+		return
+	}
+	errWs := wsPushca.Connection.WriteJSON(command)
+	if errWs != nil {
+		log.Printf("Cannot send pushca message: client %s, error %s", wsPushca.GetInfo(), errWs)
+		return
+	}
+}
+
 func InitWebSocket(ws WebSocketApi, done chan struct{}) {
 	conn, err := ws.openConnection()
 	if err != nil {

@@ -21,6 +21,7 @@ func main() {
 
 	httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
 	//httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
+	//httpPostUrl := "http://localhost:8080/open-connection"
 
 	pushcaWebSocket0 := &core.PushcaWebSocket{
 		PushcaApiUrl: httpPostUrl,
@@ -66,6 +67,8 @@ func main() {
 		}
 	}(pushcaWebSocket1)
 
+	pushcaWebSocket0.SendMessageWithAcknowledge("1", pushcaWebSocket1.Client, false, "test message!!!")
+
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
@@ -74,6 +77,7 @@ func main() {
 		case <-done:
 			return
 		case <-ticker.C:
+			//pushcaWebSocket0.SendMessageWithAcknowledge("1", pushcaWebSocket1.Client, false, "test message!!!")
 			/*err := pushcaWebSocket0.Connection.WriteMessage(websocket.TextMessage, []byte(t.String()))
 			if err != nil {
 				log.Println("write:", err)
