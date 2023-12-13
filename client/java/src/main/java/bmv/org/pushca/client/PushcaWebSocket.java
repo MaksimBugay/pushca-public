@@ -37,6 +37,7 @@ import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -60,8 +61,9 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   public static final String BINARY_MANIFEST_PREFIX = "BINARY_MANIFEST@@";
   private static final Logger LOGGER = LoggerFactory.getLogger(PushcaWebSocket.class);
   private static final long REFRESH_TOKEN_INTERVAL_MS = Duration.ofMinutes(10).toMillis();
-  private static final int[] RECONNECT_INTERVALS =
-      {0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597};
+  private static final List<Integer> RECONNECT_INTERVALS = Arrays.asList(
+      0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597
+  );
   public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
   private final String pusherId;
 
@@ -78,8 +80,6 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   private ScheduledExecutorService scheduler;
 
   private final AtomicLong lastTokenRefreshTime = new AtomicLong();
-
-  private final AtomicInteger errorCounter = new AtomicInteger();
 
   private final AtomicInteger reConnectIndex = new AtomicInteger();
 
@@ -305,7 +305,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     if (manifestOnly) {
       return;
     }
-    binaryMetadata.getDatagrams().forEach(datagram -> webSocket.send(datagram.preparedDataWithPrefix));
+    binaryMetadata.getDatagrams()
+        .forEach(datagram -> webSocket.send(datagram.preparedDataWithPrefix));
   }
 
   private void keepAliveJob() {
@@ -314,7 +315,6 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
     stateHolder.set(webSocket.getWebSocketState());
     if (webSocket.isOpen()) {
-      errorCounter.set(0);
       reConnectIndex.set(0);
       if (lastTokenRefreshTime.get() == 0
           || System.currentTimeMillis() - lastTokenRefreshTime.get() > REFRESH_TOKEN_INTERVAL_MS) {
@@ -328,13 +328,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       return;
     }
     //re-connect attempt
-    if (reConnectIndex.get() > RECONNECT_INTERVALS.length - 1) {
+    if (reConnectIndex.get() > 2000) {
       stateHolder.set(PERMANENTLY_CLOSED);
       LOGGER.error("Web socket was permanently closed: client {}", toJson(client));
       return;
     }
-    if (errorCounter.getAndIncrement() == RECONNECT_INTERVALS[reConnectIndex.get()]) {
-      reConnectIndex.incrementAndGet();
+    if (RECONNECT_INTERVALS.contains(reConnectIndex.getAndIncrement())) {
       reConnect();
     }
   }
