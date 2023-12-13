@@ -77,8 +77,6 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   private ScheduledExecutorService scheduler;
 
-  private final AtomicLong iterationCounter = new AtomicLong();
-
   private final AtomicLong lastTokenRefreshTime = new AtomicLong();
 
   private final AtomicInteger errorCounter = new AtomicInteger();
@@ -314,7 +312,6 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     if (stateHolder.get() == PERMANENTLY_CLOSED) {
       return;
     }
-    long i = iterationCounter.incrementAndGet();
     stateHolder.set(webSocket.getWebSocketState());
     if (webSocket.isOpen()) {
       errorCounter.set(0);
