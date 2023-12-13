@@ -53,7 +53,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class PushcaWebSocket implements Closeable {
+public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public static final String ACKNOWLEDGE_PREFIX = "ACKNOWLEDGE@@";
   public static final String TOKEN_PREFIX = "TOKEN@@";
@@ -139,7 +139,7 @@ public class PushcaWebSocket implements Closeable {
     }
   }
 
-  private void processBinary(WebSocketApi ws, ByteBuffer byteBuffer,
+  public void processBinary(WebSocketApi ws, ByteBuffer byteBuffer,
       BiConsumer<WebSocketApi, byte[]> dataConsumer) {
     try {
       byte[] binary = byteBuffer.array();
@@ -193,7 +193,7 @@ public class PushcaWebSocket implements Closeable {
     }
   }
 
-  private void processMessage(WebSocketApi ws, String inMessage,
+  public void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer,
       Consumer<String> binaryManifestConsumer) {
     String message = inMessage;
@@ -267,6 +267,10 @@ public class PushcaWebSocket implements Closeable {
     metaData.put("preserveOrder", preserveOrder);
     final CommandWithMetaData command = new CommandWithMetaData(SEND_MESSAGE, metaData);
     webSocket.send(toJson(command));
+  }
+
+  public void sendMessage(ClientFilter dest, String message) {
+    sendMessage(null, dest, false, message);
   }
 
   public void sendMessage(String id, PClient dest, boolean preserveOrder, String message) {
