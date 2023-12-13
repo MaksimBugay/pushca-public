@@ -16,7 +16,6 @@ func main() {
 	deviceId, errRandomUuid := uuid.NewRandom()
 	if errRandomUuid != nil {
 		log.Fatalf("cannot generate device Id due to %s", errRandomUuid)
-		return
 	}
 
 	httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
@@ -51,7 +50,11 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 	done := make(chan struct{})
 
-	core.InitWebSocket(pushcaWebSocket0, done)
+	errWsOpen := pushcaWebSocket0.OpenConnection(done)
+	if errWsOpen != nil {
+		log.Fatalf("cannot open web socket connection: client %s, error %s",
+			errWsOpen, pushcaWebSocket0.GetInfo())
+	}
 	defer func(ws core.WebSocketApi) {
 		err := ws.CloseConnection()
 		if err != nil {
@@ -59,7 +62,11 @@ func main() {
 		}
 	}(pushcaWebSocket0)
 
-	core.InitWebSocket(pushcaWebSocket1, done)
+	errWsOpen = pushcaWebSocket1.OpenConnection(done)
+	if errWsOpen != nil {
+		log.Fatalf("cannot open web socket connection: client %s, error %s",
+			errWsOpen, pushcaWebSocket1.GetInfo())
+	}
 	defer func(ws core.WebSocketApi) {
 		err := ws.CloseConnection()
 		if err != nil {

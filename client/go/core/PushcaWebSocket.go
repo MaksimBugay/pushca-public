@@ -30,14 +30,14 @@ func (wsPushca *PushcaWebSocket) GetInfo() string {
 	}
 	return string(jsonStr)
 }
-func (wsPushca *PushcaWebSocket) openConnection() (*websocket.Conn, error) {
+func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 	openConnectionRequest := &modelrequest.OpenConnectionRequest{
 		Client: wsPushca.Client,
 	}
 	jsonData, errMarshal := json.Marshal(openConnectionRequest)
 	if errMarshal != nil {
 		log.Printf("Unable to marshal open connection request due to %s\n", errMarshal)
-		return nil, errMarshal
+		return errMarshal
 	}
 
 	request, errHttp := http.NewRequest("POST", wsPushca.PushcaApiUrl, bytes.NewBuffer(jsonData))
@@ -49,7 +49,7 @@ func (wsPushca *PushcaWebSocket) openConnection() (*websocket.Conn, error) {
 	httpResponse, errHttp := httpClient.Do(request)
 	if errHttp != nil {
 		log.Printf("Unable to send http post due to %s", errHttp)
-		return nil, errHttp
+		return errHttp
 	}
 
 	//fmt.Println("response Status:", httpResponse.Status)
@@ -60,7 +60,7 @@ func (wsPushca *PushcaWebSocket) openConnection() (*websocket.Conn, error) {
 	errUnmarshal := json.Unmarshal(body, &ocResponse)
 	if errUnmarshal != nil {
 		log.Printf("Unable to marshal JSON due to %s", errUnmarshal)
-		return nil, errUnmarshal
+		return errUnmarshal
 	}
 	ocResponse.LogAsString()
 	wsPushca.PusherId = ocResponse.PusherInstanceId
@@ -76,10 +76,21 @@ func (wsPushca *PushcaWebSocket) openConnection() (*websocket.Conn, error) {
 	conn, _, errWs := websocket.DefaultDialer.Dial(wsPushca.WsUrl, nil)
 	if errWs != nil {
 		log.Printf("Unable to open web socket connection due to %s", errWs)
-		return nil, errWs
+		return errWs
 	}
 	wsPushca.Connection = conn
-	return wsPushca.Connection, nil
+	go func() {
+		defer close(done)
+		for {
+			mType, message, err := conn.ReadMessage()
+			if err != nil {
+				log.Println("read:", err)
+				return
+			}
+			log.Printf("%s recv %d: %s", wsPushca.GetInfo(), mType, message)
+		}
+	}()
+	return nil
 }
 
 func (wsPushca *PushcaWebSocket) CloseConnection() error {
@@ -115,22 +126,4 @@ func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge(id string, dest mode
 		log.Printf("Cannot send pushca message: client %s, error %s", wsPushca.GetInfo(), errWs)
 		return
 	}
-}
-
-func InitWebSocket(ws WebSocketApi, done chan struct{}) {
-	conn, err := ws.openConnection()
-	if err != nil {
-		recover()
-	}
-	go func() {
-		defer close(done)
-		for {
-			_, message, err := conn.ReadMessage()
-			if err != nil {
-				log.Println("read:", err)
-				return
-			}
-			log.Printf("%s recv: %s", ws.GetInfo(), message)
-		}
-	}()
 }
