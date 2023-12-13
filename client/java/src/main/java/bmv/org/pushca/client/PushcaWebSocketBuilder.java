@@ -1,5 +1,6 @@
 package bmv.org.pushca.client;
 
+import bmv.org.pushca.client.model.BinaryObjectMetadata;
 import bmv.org.pushca.client.model.PClient;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -14,7 +15,7 @@ public class PushcaWebSocketBuilder {
   private BiConsumer<WebSocketApi, String> messageConsumer;
   private BiConsumer<WebSocketApi, byte[]> dataConsumer;
   private Consumer<String> acknowledgeConsumer;
-  private Consumer<String> binaryManifestConsumer;
+  private Consumer<BinaryObjectMetadata> binaryManifestConsumer;
   private BiConsumer<Integer, String> onCloseListener;
 
   private SSLContext sslContext;
@@ -52,7 +53,7 @@ public class PushcaWebSocketBuilder {
   }
 
   public PushcaWebSocketBuilder withBinaryManifestConsumer(
-      Consumer<String> binaryManifestConsumer) {
+      Consumer<BinaryObjectMetadata> binaryManifestConsumer) {
     this.binaryManifestConsumer = binaryManifestConsumer;
     return this;
   }

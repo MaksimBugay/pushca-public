@@ -89,7 +89,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       BiConsumer<WebSocketApi, String> messageConsumer,
       BiConsumer<WebSocketApi, byte[]> dataConsumer,
       Consumer<String> acknowledgeConsumer,
-      Consumer<String> binaryManifestConsumer,
+      Consumer<BinaryObjectMetadata> binaryManifestConsumer,
       BiConsumer<Integer, String> onCloseListener,
       SSLContext sslContext) {
     this.client = client;
@@ -193,7 +193,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer,
-      Consumer<String> binaryManifestConsumer) {
+      Consumer<BinaryObjectMetadata> binaryManifestConsumer) {
     String message = inMessage;
     if (StringUtils.isEmpty(message)) {
       return;
@@ -213,7 +213,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       BinaryObjectMetadata manifest = fromJson(manifestJsom, BinaryObjectMetadata.class);
       manifests.put(manifest.getBinaryId(), manifest);
       if (binaryManifestConsumer != null) {
-        binaryManifestConsumer.accept(manifestJsom);
+        binaryManifestConsumer.accept(manifest);
       }
       return;
     }
