@@ -13,13 +13,22 @@ import (
 	"strings"
 )
 
+const (
+	AcknowledgePrefix     = "ACKNOWLEDGE@@"
+	TokenPrefix           = "TOKEN@@"
+	BinaryManifestPrefix  = "BINARY_MANIFEST@@"
+	MessagePartsDelimiter = "@@"
+)
+
 type PushcaWebSocket struct {
-	PushcaApiUrl string
-	PusherId     string
-	Client       model.PClient
-	WsUrl        string
-	Token        string
-	Connection   *websocket.Conn
+	PushcaApiUrl                         string
+	PusherId                             string
+	Client                               model.PClient
+	WsUrl                                string
+	Token                                string
+	Connection                           *websocket.Conn
+	MessageConsumer, AcknowledgeConsumer func(ws WebSocketApi, message string)
+	BinaryManifestConsumer               func(ws WebSocketApi, message model.BinaryObjectMetadata)
 }
 
 func (wsPushca *PushcaWebSocket) GetInfo() string {
@@ -91,7 +100,9 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 				log.Println("read:", err)
 				return
 			}
-			log.Printf("%s recv %d: %s", wsPushca.GetInfo(), mType, message)
+			if mType == 1 {
+				wsPushca.processMessage(string(message))
+			}
 		}
 	}()
 	return nil
@@ -140,7 +151,7 @@ func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge3(id string, dest mod
 
 func (wsPushca *PushcaWebSocket) SendAcknowledge(id string) {
 	metaData := make(map[string]interface{})
-	metaData["id"] = id
+	metaData["messageId"] = id
 
 	command := model.CommandWithMetaData{
 		Command:  "ACKNOWLEDGE",
@@ -189,4 +200,46 @@ func (wsPushca *PushcaWebSocket) SendMessage4(id string, dest model.PClient, pre
 
 func (wsPushca *PushcaWebSocket) SendMessage2(dest model.PClient, message string) {
 	wsPushca.SendMessage4("", dest, false, message)
+}
+
+func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
+	if strings.TrimSpace(inMessage) == "" {
+		return
+	}
+	message := inMessage
+	if strings.HasPrefix(inMessage, AcknowledgePrefix) {
+		if wsPushca.AcknowledgeConsumer != nil {
+			wsPushca.AcknowledgeConsumer(
+				wsPushca,
+				strings.Replace(inMessage, AcknowledgePrefix, "", 1),
+			)
+		}
+		return
+	}
+	if strings.HasPrefix(inMessage, TokenPrefix) {
+		wsPushca.Token = strings.Replace(inMessage, TokenPrefix, "", 1)
+		return
+	}
+	if strings.HasPrefix(inMessage, BinaryManifestPrefix) {
+		manifestJSON := strings.Replace(inMessage, BinaryManifestPrefix, "", 1)
+
+		var manifest model.BinaryObjectMetadata
+		errUnmarshal := json.Unmarshal([]byte(manifestJSON), &manifest)
+		if errUnmarshal != nil {
+			log.Printf("Broken binary manifest: client %s, error %s", wsPushca.GetInfo(), errUnmarshal)
+			return
+		}
+		if wsPushca.BinaryManifestConsumer != nil {
+			wsPushca.BinaryManifestConsumer(wsPushca, manifest)
+		}
+		return
+	}
+	if strings.Contains(inMessage, MessagePartsDelimiter) {
+		parts := strings.SplitN(inMessage, MessagePartsDelimiter, 2)
+		wsPushca.SendAcknowledge(parts[0])
+		message = parts[1]
+	}
+	if wsPushca.MessageConsumer != nil {
+		wsPushca.MessageConsumer(wsPushca, message)
+	}
 }

@@ -18,6 +18,14 @@ func main() {
 		log.Fatalf("cannot generate device Id due to %s", errRandomUuid)
 	}
 
+	messageConsumer := func(ws core.WebSocketApi, message string) {
+		log.Printf("%s message: %s", ws.GetInfo(), message)
+	}
+
+	acknowledgeConsumer := func(ws core.WebSocketApi, id string) {
+		log.Printf("%s acknowledge: %s", ws.GetInfo(), id)
+	}
+
 	httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
 	//httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
 	//httpPostUrl := "http://localhost:8080/open-connection"
@@ -30,6 +38,8 @@ func main() {
 			DeviceId:      deviceId.String(),
 			ApplicationId: "PUSHCA_CLIENT",
 		},
+		MessageConsumer:     messageConsumer,
+		AcknowledgeConsumer: acknowledgeConsumer,
 	}
 	log.Printf("Pusher instance id: %v", pushcaWebSocket0.PusherId)
 	log.Printf("Token: %v", pushcaWebSocket0.Token)
@@ -41,6 +51,8 @@ func main() {
 			DeviceId:      "web-browser",
 			ApplicationId: "PUSHCA_CLIENT",
 		},
+		MessageConsumer:     messageConsumer,
+		AcknowledgeConsumer: acknowledgeConsumer,
 	}
 	//================================================================================
 	flag.Parse()

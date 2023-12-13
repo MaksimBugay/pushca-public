@@ -10,6 +10,7 @@ type (
 		GetInfo() string
 		OpenConnection(done chan struct{}) error
 		CloseConnection() error
+		processMessage(inMessage string)
 		PingServer()
 		SendAcknowledge(id string)
 		SendMessageWithAcknowledge4(id string, dest model.PClient, preserveOrder bool, message string)
