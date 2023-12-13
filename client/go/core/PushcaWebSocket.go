@@ -23,6 +23,9 @@ type PushcaWebSocket struct {
 }
 
 func (wsPushca *PushcaWebSocket) GetInfo() string {
+	return wsPushca.Client.AccountId
+}
+func (wsPushca *PushcaWebSocket) GetFullInfo() string {
 	jsonStr, errMarshal := json.Marshal(wsPushca.Client)
 	if errMarshal != nil {
 		log.Printf("Unable to marshal open connection request due to %s\n", errMarshal)

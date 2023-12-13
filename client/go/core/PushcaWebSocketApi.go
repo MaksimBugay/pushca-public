@@ -6,6 +6,7 @@ import (
 
 type (
 	WebSocketApi interface {
+		GetFullInfo() string
 		GetInfo() string
 		OpenConnection(done chan struct{}) error
 		CloseConnection() error

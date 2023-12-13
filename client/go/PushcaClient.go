@@ -85,7 +85,7 @@ func main() {
 		Exclude:     exclude,
 	}
 	pushcaWebSocket0.BroadcastMessage2(clientFilter, "Very broad message")
-	pushcaWebSocket1.BroadcastMessage4("2", clientFilterWithExclude, true, "Narrow message")
+	pushcaWebSocket1.BroadcastMessage4("2", clientFilterWithExclude, true, "message not for client 1")
 	pushcaWebSocket0.SendMessage4("3", pushcaWebSocket1.Client, true, "message for client 1")
 	pushcaWebSocket1.SendMessage2(pushcaWebSocket0.Client, "message for client 0")
 
