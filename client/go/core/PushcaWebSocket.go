@@ -65,6 +65,7 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 	ocResponse.LogAsString()
 	wsPushca.PusherId = ocResponse.PusherInstanceId
 	wsPushca.WsUrl = ocResponse.ExternalAdvertisedUrl
+	//wsPushca.WsUrl = ocResponse.BrowserAdvertisedUrl
 	lastSlashIndex := strings.LastIndex(wsPushca.WsUrl, "/")
 	if lastSlashIndex != -1 && lastSlashIndex < len(wsPushca.WsUrl)-1 {
 		wsPushca.Token = wsPushca.WsUrl[lastSlashIndex+1:]
@@ -101,8 +102,16 @@ func (wsPushca *PushcaWebSocket) CloseConnection() error {
 	}
 	return nil
 }
-
-func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge(id string, dest model.PClient, preserveOrder bool, message string) {
+func (wsPushca *PushcaWebSocket) PingServer() {
+	command := model.CommandWithMetaData{
+		Command: "PING",
+	}
+	errWs := wsPushca.Connection.WriteJSON(command)
+	if errWs != nil {
+		log.Printf("Cannot send PING to server: client %s, error %s", wsPushca.GetInfo(), errWs)
+	}
+}
+func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge4(id string, dest model.PClient, preserveOrder bool, message string) {
 	metaData := make(map[string]interface{})
 
 	metaData["id"] = id
@@ -116,14 +125,65 @@ func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge(id string, dest mode
 		MetaData: metaData,
 	}
 
-	_, errMarshal := json.Marshal(command)
-	if errMarshal != nil {
-		log.Printf("Cannot prepare pushca message: client %s, error %s", wsPushca.GetInfo(), errMarshal)
-		return
-	}
 	errWs := wsPushca.Connection.WriteJSON(command)
 	if errWs != nil {
-		log.Printf("Cannot send pushca message: client %s, error %s", wsPushca.GetInfo(), errWs)
-		return
+		log.Printf("Cannot send message: client %s, error %s", wsPushca.GetInfo(), errWs)
 	}
+}
+
+func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge3(id string, dest model.PClient, message string) {
+	wsPushca.SendMessageWithAcknowledge4(id, dest, false, message)
+}
+
+func (wsPushca *PushcaWebSocket) SendAcknowledge(id string) {
+	metaData := make(map[string]interface{})
+	metaData["id"] = id
+
+	command := model.CommandWithMetaData{
+		Command:  "ACKNOWLEDGE",
+		MetaData: metaData,
+	}
+
+	errWs := wsPushca.Connection.WriteJSON(command)
+	if errWs != nil {
+		log.Printf("Cannot send acknowledge: client %s, error %s", wsPushca.GetInfo(), errWs)
+	}
+}
+
+func (wsPushca *PushcaWebSocket) BroadcastMessage4(id string, dest model.ClientFilter, preserveOrder bool, message string) {
+	metaData := make(map[string]interface{})
+
+	metaData["id"] = id
+	metaData["filter"] = dest
+	metaData["sender"] = wsPushca.Client
+	metaData["message"] = message
+	metaData["preserveOrder"] = preserveOrder
+
+	command := model.CommandWithMetaData{
+		Command:  "SEND_MESSAGE",
+		MetaData: metaData,
+	}
+
+	errWs := wsPushca.Connection.WriteJSON(command)
+	if errWs != nil {
+		log.Printf("Cannot broadcast message: client %s, error %s", wsPushca.GetInfo(), errWs)
+	}
+}
+
+func (wsPushca *PushcaWebSocket) BroadcastMessage2(dest model.ClientFilter, message string) {
+	wsPushca.BroadcastMessage4("", dest, false, message)
+}
+
+func (wsPushca *PushcaWebSocket) SendMessage4(id string, dest model.PClient, preserveOrder bool, message string) {
+	clientFilter := model.ClientFilter{
+		WorkSpaceID:   dest.WorkSpaceId,
+		AccountID:     dest.AccountId,
+		DeviceID:      dest.DeviceId,
+		ApplicationID: dest.ApplicationId,
+	}
+	wsPushca.BroadcastMessage4(id, clientFilter, preserveOrder, message)
+}
+
+func (wsPushca *PushcaWebSocket) SendMessage2(dest model.PClient, message string) {
+	wsPushca.SendMessage4("", dest, false, message)
 }

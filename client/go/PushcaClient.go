@@ -74,7 +74,20 @@ func main() {
 		}
 	}(pushcaWebSocket1)
 
-	pushcaWebSocket0.SendMessageWithAcknowledge("1", pushcaWebSocket1.Client, false, "test message!!!")
+	pushcaWebSocket0.SendMessageWithAcknowledge4("1", pushcaWebSocket1.Client, false, "test message")
+	clientFilter := model.ClientFilter{
+		WorkSpaceID: "workSpaceMain",
+	}
+	exclude := make([]model.PClient, 0)
+	exclude = append(exclude, pushcaWebSocket1.Client)
+	clientFilterWithExclude := model.ClientFilter{
+		WorkSpaceID: "workSpaceMain",
+		Exclude:     exclude,
+	}
+	pushcaWebSocket0.BroadcastMessage2(clientFilter, "Very broad message")
+	pushcaWebSocket1.BroadcastMessage4("2", clientFilterWithExclude, true, "Narrow message")
+	pushcaWebSocket0.SendMessage4("3", pushcaWebSocket1.Client, true, "message for client 1")
+	pushcaWebSocket1.SendMessage2(pushcaWebSocket0.Client, "message for client 0")
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -84,12 +97,8 @@ func main() {
 		case <-done:
 			return
 		case <-ticker.C:
-			//pushcaWebSocket0.SendMessageWithAcknowledge("1", pushcaWebSocket1.Client, false, "test message!!!")
-			/*err := pushcaWebSocket0.Connection.WriteMessage(websocket.TextMessage, []byte(t.String()))
-			if err != nil {
-				log.Println("write:", err)
-				return
-			}*/
+			//pushcaWebSocket0.PingServer()
+			//pushcaWebSocket1.PingServer()
 		case <-interrupt:
 			log.Println("interrupt")
 
