@@ -13,6 +13,8 @@ import static bmv.org.pushca.client.utils.BmvObjectUtils.calculateSha256;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.createScheduler;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.toBinary;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectData;
+import static bmv.org.pushca.client.utils.SendBinaryHelper.toDatagramPrefix;
+import static org.apache.commons.lang3.ArrayUtils.addAll;
 
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
@@ -89,6 +91,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
       BiConsumer<WebSocketApi, String> messageConsumer,
+      BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer,
       BiConsumer<WebSocketApi, Binary> dataConsumer,
       Consumer<String> acknowledgeConsumer,
       Consumer<BinaryObjectData> binaryManifestConsumer,
@@ -121,7 +124,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         this.webSocket = new JavaWebSocket(wsUrl, connectTimeoutMs,
             (ws, message) -> processMessage(ws, message, messageConsumer, acknowledgeConsumer,
                 binaryManifestConsumer),
-            (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer),
+            (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer, binaryMessageConsumer),
             onCloseListener, sslContext);
         scheduler = createScheduler(
             this::keepAliveJob,
@@ -140,7 +143,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void processBinary(WebSocketApi ws, ByteBuffer byteBuffer,
-      BiConsumer<WebSocketApi, Binary> dataConsumer) {
+      BiConsumer<WebSocketApi, Binary> dataConsumer,
+      BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer) {
     try {
       byte[] binary = byteBuffer.array();
       final int clientHash = BmvObjectUtils.bytesToInt(
@@ -154,6 +158,13 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       );
       final UUID binaryId = BmvObjectUtils.bytesToUuid(Arrays.copyOfRange(binary, 5, 21));
       final int order = BmvObjectUtils.bytesToInt(Arrays.copyOfRange(binary, 21, 25));
+
+      //binary message was received
+      if (Integer.MAX_VALUE == order) {
+        Optional.ofNullable(binaryMessageConsumer)
+            .ifPresent(c -> c.accept(webSocket, Arrays.copyOfRange(binary, 25, binary.length)));
+        return;
+      }
 
       BinaryObjectData binaryData = binaries.computeIfPresent(binaryId.toString(), (k, v) -> {
         v.fillWithReceivedData(order, Arrays.copyOfRange(binary, 25, binary.length));
@@ -283,6 +294,20 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public void sendMessage(PClient dest, String message) {
     sendMessage(null, dest, false, message);
+  }
+
+  public void sendBinaryMessage(PClient dest, byte[] message, UUID id, boolean withAcknowledge) {
+    if (!webSocket.isOpen()) {
+      throw new IllegalStateException("Web socket connection is broken");
+    }
+    UUID binaryMsgId = id == null ? UUID.randomUUID() : id;
+    int order = Integer.MAX_VALUE;
+    byte[] prefix = toDatagramPrefix(binaryMsgId, order, dest, withAcknowledge);
+    webSocket.send(addAll(prefix, message));
+  }
+
+  public void sendBinaryMessage(PClient dest, byte[] message) {
+    sendBinaryMessage(dest, message, null, false);
   }
 
   public void sendBinary(PClient dest, byte[] data) {

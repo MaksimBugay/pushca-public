@@ -14,6 +14,7 @@ public class PushcaWebSocketBuilder {
   private final PClient client;
   private int connectTimeoutMs = 1000;
   private BiConsumer<WebSocketApi, String> messageConsumer;
+  private BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer;
   private BiConsumer<WebSocketApi, Binary> dataConsumer;
   private Consumer<String> acknowledgeConsumer;
   private Consumer<BinaryObjectData> binaryManifestConsumer;
@@ -39,6 +40,12 @@ public class PushcaWebSocketBuilder {
   public PushcaWebSocketBuilder withMessageConsumer(
       BiConsumer<WebSocketApi, String> messageConsumer) {
     this.messageConsumer = messageConsumer;
+    return this;
+  }
+
+  public PushcaWebSocketBuilder withBinaryMessageConsumer(
+      BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer) {
+    this.binaryMessageConsumer = binaryMessageConsumer;
     return this;
   }
 
@@ -72,6 +79,7 @@ public class PushcaWebSocketBuilder {
 
   public PushcaWebSocket build() {
     return new PushcaWebSocket(pushcaApiUrl, pusherId, client, connectTimeoutMs, messageConsumer,
-        dataConsumer, acknowledgeConsumer, binaryManifestConsumer, onCloseListener, sslContext);
+        binaryMessageConsumer, dataConsumer, acknowledgeConsumer, binaryManifestConsumer,
+        onCloseListener, sslContext);
   }
 }
