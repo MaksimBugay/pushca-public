@@ -1,20 +1,26 @@
 package bmv.test.com;
 
+import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
+
 import bmv.org.pushca.client.PushcaWebSocket;
 import bmv.org.pushca.client.PushcaWebSocketBuilder;
 import bmv.org.pushca.client.WebSocketApi;
+import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.tls.SslContextProvider;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import org.apache.commons.io.FileUtils;
 
 public class App {
 
@@ -54,7 +60,7 @@ public class App {
     );
 
     String pushcaApiUrl =
-    //    "http://localhost:8050";
+        //    "http://localhost:8050";
         "https://app-rc.multiloginapp.net/pushca-with-tls-support";
     //    "http://push-app-rc.multiloginapp.net:8050";
     //"https://app-rc.multiloginapp.net/pushca";
@@ -69,14 +75,38 @@ public class App {
       System.out.println(MessageFormat.format("Acknowledge was received {0}", ack));
       lastAcknowledge.set(ack);
     };
+    BiConsumer<WebSocketApi, Binary> dataConsumer = (ws, binary) -> {
+      if (binary.id == null) {
+        throw new IllegalStateException("Binary id is empty");
+      }
+      if (!UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)).toString()
+          .equals(binary.id)) {
+        throw new IllegalStateException("Wrong binary id");
+      }
+      if (!"vlc-3.0.11-win64.exe".equals(binary.name)) {
+        throw new IllegalStateException("Wrong binary name");
+      }
+      try {
+        FileUtils.writeByteArrayToFile(new File("transferred_" + binary.name), binary.data);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+      System.out.println("Binary data was received and stored");
+    };
+    BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer = (ws, bytes) -> {
+      String msg = new String(Base64.getDecoder().decode(bytes), StandardCharsets.UTF_8);
+      System.out.println(MessageFormat.format("Binary message was received: {0}", msg));
+    };
     try (PushcaWebSocket pushcaWebSocket0 = new PushcaWebSocketBuilder(pushcaApiUrl,
         client0).withAcknowledgeConsumer(acknowledgeConsumer)
         .withMessageConsumer(messageLogger)
-        .withBinaryManifestConsumer(System.out::println)
+        .withBinaryManifestConsumer(data -> System.out.println(toJson(data)))
+        .withDataConsumer(dataConsumer)
         .withSslContext(sslContextProvider.getSslContext())
         .build();
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1).withMessageConsumer(messageConsumer)
+            .withBinaryMessageConsumer(binaryMessageConsumer)
             .withAcknowledgeConsumer(acknowledgeConsumer)
             .withSslContext(sslContextProvider.getSslContext())
             .build()) {
@@ -106,8 +136,22 @@ public class App {
       }
       System.out.println("Message was delivered with acknowledge");
       //============================================================================================
-      //---------------------message binary with acknowledge----------------------------------------
-      pushcaWebSocket1.sendBinary(client0, "HELLO".getBytes(StandardCharsets.UTF_8), true);
+      //-----------------------------binary with acknowledge----------------------------------------
+      File file = new File(
+          "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
+      /*byte[] data = Files.readAllBytes(file.toPath());
+      pushcaWebSocket1.sendBinary(client0,
+          data,
+          "vlc-3.0.11-win64.exe",
+          UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)),
+          PushcaWebSocket.DEFAULT_CHUNK_SIZE,
+          true, false
+      );*/
+      //============================================================================================
+      //-----------------------------binary message-------------------------------------------------
+      pushcaWebSocket0.sendBinaryMessage(client1,
+          Base64.getEncoder().encode("Binary message test".getBytes(StandardCharsets.UTF_8)));
+      //============================================================================================
       delay(Duration.ofHours(1));
     }
   }
