@@ -195,7 +195,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         );
       }
       if (withAcknowledge) {
-        webSocket.send(Arrays.copyOfRange(binary, 0, 25));
+        sendAcknowledge(binaryId, order);
       }
       if (binaryData.isCompleted()) {
         Optional.ofNullable(dataConsumer).ifPresent(c -> c.accept(webSocket, toBinary(binaryData)));
@@ -248,6 +248,11 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("messageId", id);
     webSocket.send(toJson(new CommandWithMetaData(ACKNOWLEDGE, metaData)));
+  }
+
+  public void sendAcknowledge(UUID binaryId, int order) {
+    String id = MessageFormat.format("{0}-{1}", binaryId.toString(), String.valueOf(order));
+    sendAcknowledge(id);
   }
 
   public void sendMessageWithAcknowledge(String id, PClient dest, boolean preserveOrder,

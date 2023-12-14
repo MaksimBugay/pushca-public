@@ -21,6 +21,8 @@ public interface PushcaWebSocketApi {
 
   void sendAcknowledge(String id);
 
+  void sendAcknowledge(UUID binaryId, int order);
+
   void sendMessageWithAcknowledge(String id, PClient dest, boolean preserveOrder,
       String message);
 
