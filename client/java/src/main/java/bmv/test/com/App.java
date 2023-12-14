@@ -6,6 +6,7 @@ import bmv.org.pushca.client.PushcaWebSocket;
 import bmv.org.pushca.client.PushcaWebSocketBuilder;
 import bmv.org.pushca.client.WebSocketApi;
 import bmv.org.pushca.client.model.Binary;
+import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.tls.SslContextProvider;
 import java.io.BufferedReader;
@@ -17,6 +18,7 @@ import java.nio.file.Files;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -70,7 +72,10 @@ public class App {
     final String messageId = "1000";
     final AtomicReference<String> lastMessage = new AtomicReference<>();
     final AtomicReference<String> lastAcknowledge = new AtomicReference<>();
-    BiConsumer<WebSocketApi, String> messageConsumer = (ws, msg) -> lastMessage.set(msg);
+    BiConsumer<WebSocketApi, String> messageConsumer = (ws, msg) -> {
+      System.out.println(MessageFormat.format("Message was received {0}", msg));
+      lastMessage.set(msg);
+    };
     BiConsumer<WebSocketApi, String> messageLogger = (ws, msg) -> System.out.println(msg);
     Consumer<String> acknowledgeConsumer = ack -> {
       System.out.println(MessageFormat.format("Acknowledge was received {0}", ack));
@@ -114,6 +119,11 @@ public class App {
       delay(Duration.ofMillis(500));
       lastMessage.set(null);
       delay(Duration.ofSeconds(3));
+      //---------------------broadcast message------------------------------------------------------
+      ClientFilter filter = new ClientFilter(client0.workSpaceId, null, null, null,
+          false, Collections.singletonList(client0));
+      pushcaWebSocket0.BroadcastMessage(filter, "Broadcast message test");
+      //============================================================================================
       //---------------------simple message---------------------------------------------------------
       pushcaWebSocket0.sendMessage(client1, testMessage0);
       while (lastMessage.get() == null) {

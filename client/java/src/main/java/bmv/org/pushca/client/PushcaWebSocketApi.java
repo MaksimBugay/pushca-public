@@ -28,9 +28,9 @@ public interface PushcaWebSocketApi {
 
   void sendMessageWithAcknowledge(String id, PClient dest, String message);
 
-  void sendMessage(String id, ClientFilter dest, boolean preserveOrder, String message);
+  void BroadcastMessage(String id, ClientFilter dest, boolean preserveOrder, String message);
 
-  void sendMessage(ClientFilter dest, String message);
+  void BroadcastMessage(ClientFilter dest, String message);
 
   void sendMessage(String id, PClient dest, boolean preserveOrder, String message);
 

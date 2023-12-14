@@ -275,7 +275,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendMessageWithAcknowledge(id, dest, false, message);
   }
 
-  public void sendMessage(String id, ClientFilter dest, boolean preserveOrder, String message) {
+  public void BroadcastMessage(String id, ClientFilter dest, boolean preserveOrder, String message) {
     if (!webSocket.isOpen()) {
       throw new IllegalStateException("Web socket connection is broken");
     }
@@ -289,12 +289,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     webSocket.send(toJson(command));
   }
 
-  public void sendMessage(ClientFilter dest, String message) {
-    sendMessage(null, dest, false, message);
+  public void BroadcastMessage(ClientFilter dest, String message) {
+    BroadcastMessage(null, dest, false, message);
   }
 
   public void sendMessage(String id, PClient dest, boolean preserveOrder, String message) {
-    sendMessage(id, new ClientFilter(dest), preserveOrder, message);
+    BroadcastMessage(id, new ClientFilter(dest), preserveOrder, message);
   }
 
   public void sendMessage(PClient dest, String message) {
