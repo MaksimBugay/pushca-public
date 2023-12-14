@@ -2,6 +2,8 @@ package bmv.org.pushca.client.utils;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
+import bmv.org.pushca.client.model.Binary;
+import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.serialization.json.JsonUtility;
 import com.fasterxml.jackson.databind.type.MapType;
 import java.io.File;
@@ -18,12 +20,16 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.SplittableRandom;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.stream.Collectors;
+import org.apache.commons.lang3.ArrayUtils;
 
 public final class BmvObjectUtils {
 
@@ -33,6 +39,23 @@ public final class BmvObjectUtils {
           Object.class);
 
   private BmvObjectUtils() {
+  }
+
+  public static Binary toBinary(BinaryObjectData data) {
+    Binary binary = new Binary();
+    binary.id = data.id;
+    binary.name = data.name;
+    binary.sender = data.sender;
+    binary.pusherInstanceId = data.pusherInstanceId;
+    binary.data =
+        data.getDatagrams().stream().collect(Collectors.toMap(d -> d.order, d -> d.data))
+            .entrySet().stream()
+            .filter(e -> e.getValue() != null)
+            .sorted(Comparator.comparingInt(Entry::getKey))
+            .map(Entry::getValue)
+            .reduce(ArrayUtils::addAll)
+            .orElse(null);
+    return binary;
   }
 
   public static int calculateStringHashCode(String s) {

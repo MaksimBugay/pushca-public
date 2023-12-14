@@ -2,9 +2,9 @@ package bmv.org.pushca.client.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
-import org.apache.commons.lang3.StringUtils;
+import java.util.Optional;
 
-public class BinaryObjectMetadata {
+public class BinaryObjectData {
 
   public String id;
 
@@ -13,10 +13,10 @@ public class BinaryObjectMetadata {
   public PClient sender;
   public String pusherInstanceId;
 
-  public BinaryObjectMetadata() {
+  public BinaryObjectData() {
   }
 
-  public BinaryObjectMetadata(String id, String name, List<Datagram> datagrams, PClient sender,
+  public BinaryObjectData(String id, String name, List<Datagram> datagrams, PClient sender,
       String pusherInstanceId) {
     this.id = id;
     this.name = name;
@@ -25,24 +25,20 @@ public class BinaryObjectMetadata {
     this.pusherInstanceId = pusherInstanceId;
   }
 
-  @JsonIgnore
   public String getBinaryId() {
-    if (StringUtils.isNotEmpty(id)) {
-      return id;
-    }
-    return datagrams.stream().map(d -> d.id).findFirst()
-        .orElseThrow(() -> new IllegalStateException("Binary id is not defined"));
+    return id;
   }
 
   @JsonIgnore
-  public synchronized Datagram getDatagram(String id, int order) {
+  public synchronized Datagram getDatagram(int order) {
     return datagrams.stream()
-        .filter(d -> d.id.equals(id) && (d.order == order))
+        .filter(d -> d.order == order)
         .findFirst().orElse(null);
   }
 
-  public synchronized void markDatagramAsReceived(String id, int order) {
-    getDatagram(id, order).received = true;
+  public synchronized void fillWithReceivedData(int order, byte[] data) {
+    Optional.ofNullable(getDatagram(order))
+        .ifPresent(datagram -> datagram.data = data);
   }
 
   public synchronized List<Datagram> getDatagrams() {
@@ -51,5 +47,10 @@ public class BinaryObjectMetadata {
 
   public synchronized void setDatagrams(List<Datagram> datagrams) {
     this.datagrams = datagrams;
+  }
+
+  @JsonIgnore
+  public boolean isCompleted() {
+    return getDatagrams().stream().allMatch(d -> d.data != null);
   }
 }

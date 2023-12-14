@@ -11,9 +11,11 @@ import static bmv.org.pushca.client.serialization.json.JsonUtility.fromJson;
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.calculateSha256;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.createScheduler;
-import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectMetadata;
+import static bmv.org.pushca.client.utils.BmvObjectUtils.toBinary;
+import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectData;
 
-import bmv.org.pushca.client.model.BinaryObjectMetadata;
+import bmv.org.pushca.client.model.Binary;
+import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.CommandWithMetaData;
 import bmv.org.pushca.client.model.Datagram;
@@ -83,13 +85,13 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   private final AtomicInteger reConnectIndex = new AtomicInteger();
 
-  private final Map<String, BinaryObjectMetadata> manifests = new ConcurrentHashMap<>();
+  private final Map<String, BinaryObjectData> binaries = new ConcurrentHashMap<>();
 
   PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
       BiConsumer<WebSocketApi, String> messageConsumer,
-      BiConsumer<WebSocketApi, byte[]> dataConsumer,
+      BiConsumer<WebSocketApi, Binary> dataConsumer,
       Consumer<String> acknowledgeConsumer,
-      Consumer<BinaryObjectMetadata> binaryManifestConsumer,
+      Consumer<BinaryObjectData> binaryManifestConsumer,
       BiConsumer<Integer, String> onCloseListener,
       SSLContext sslContext) {
     this.client = client;
@@ -138,7 +140,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void processBinary(WebSocketApi ws, ByteBuffer byteBuffer,
-      BiConsumer<WebSocketApi, byte[]> dataConsumer) {
+      BiConsumer<WebSocketApi, Binary> dataConsumer) {
     try {
       byte[] binary = byteBuffer.array();
       final int clientHash = BmvObjectUtils.bytesToInt(
@@ -153,38 +155,42 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       final UUID binaryId = BmvObjectUtils.bytesToUuid(Arrays.copyOfRange(binary, 5, 21));
       final int order = BmvObjectUtils.bytesToInt(Arrays.copyOfRange(binary, 21, 25));
 
-      BinaryObjectMetadata manifest = manifests.get(binaryId.toString());
-      if (manifest == null) {
+      BinaryObjectData binaryData = binaries.computeIfPresent(binaryId.toString(), (k, v) -> {
+        v.fillWithReceivedData(order, Arrays.copyOfRange(binary, 25, binary.length));
+        return v;
+      });
+      if (binaryData == null) {
         throw new IllegalStateException("Unknown binary with id = " + binaryId);
       }
-      Datagram datagram = manifest.getDatagram(binaryId.toString(), order);
+      Datagram datagram = binaryData.getDatagram(order);
       if (datagram == null) {
         throw new IllegalArgumentException(
             MessageFormat.format("Unknown datagram: binaryId={0}, order={1}", binaryId.toString(),
                 String.valueOf(order))
         );
       }
-      byte[] payload = Arrays.copyOfRange(binary, 25, binary.length);
-      if (!datagram.md5.equals(calculateSha256(payload))) {
+      if (!datagram.md5.equals(calculateSha256(datagram.data))) {
         throw new IllegalArgumentException(
             MessageFormat.format("Md5 validation was not passed: binaryId={0}, order={1}",
                 binaryId.toString(),
                 String.valueOf(order))
         );
       }
-      Optional.ofNullable(dataConsumer).ifPresent(c -> c.accept(webSocket, payload));
+      if (datagram.size != datagram.data.length) {
+        throw new IllegalArgumentException(
+            MessageFormat.format("Md5 validation was not passed: binaryId={0}, order={1}",
+                binaryId.toString(),
+                String.valueOf(order))
+        );
+      }
       if (withAcknowledge) {
         webSocket.send(Arrays.copyOfRange(binary, 0, 25));
       }
-      manifests.computeIfPresent(manifest.getBinaryId(), (k, v) -> {
-        v.markDatagramAsReceived(datagram.id, datagram.order);
-        return v;
-      });
-      boolean allDatagramsWereReceived = manifest.getDatagrams().stream().allMatch(d -> d.received);
-      if (allDatagramsWereReceived) {
-        manifests.remove(manifest.getBinaryId());
-        LOGGER.info("Binary was successfully received: id {}, name {}", manifest.getBinaryId(),
-            manifest.name);
+      if (binaryData.isCompleted()) {
+        Optional.ofNullable(dataConsumer).ifPresent(c -> c.accept(webSocket, toBinary(binaryData)));
+        binaries.remove(binaryData.getBinaryId());
+        LOGGER.info("Binary was successfully received: id {}, name {}", binaryData.getBinaryId(),
+            binaryData.name);
       }
     } finally {
       byteBuffer.clear();
@@ -193,7 +199,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer,
-      Consumer<BinaryObjectMetadata> binaryManifestConsumer) {
+      Consumer<BinaryObjectData> binaryManifestConsumer) {
     String message = inMessage;
     if (StringUtils.isEmpty(message)) {
       return;
@@ -209,11 +215,11 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       return;
     }
     if (message.startsWith(BINARY_MANIFEST_PREFIX)) {
-      String manifestJsom = inMessage.replace(BINARY_MANIFEST_PREFIX, "");
-      BinaryObjectMetadata manifest = fromJson(manifestJsom, BinaryObjectMetadata.class);
-      manifests.put(manifest.getBinaryId(), manifest);
+      String json = inMessage.replace(BINARY_MANIFEST_PREFIX, "");
+      BinaryObjectData binaryObjectData = fromJson(json, BinaryObjectData.class);
+      binaries.put(binaryObjectData.getBinaryId(), binaryObjectData);
       if (binaryManifestConsumer != null) {
-        binaryManifestConsumer.accept(manifest);
+        binaryManifestConsumer.accept(binaryObjectData);
       }
       return;
     }
@@ -292,7 +298,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     if (!webSocket.isOpen()) {
       throw new IllegalStateException("Web socket connection is broken");
     }
-    BinaryObjectMetadata binaryMetadata = toBinaryObjectMetadata(
+    BinaryObjectData binaryMetadata = toBinaryObjectData(
         dest,
         id,
         name,
@@ -306,7 +312,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       return;
     }
     binaryMetadata.getDatagrams()
-        .forEach(datagram -> webSocket.send(datagram.preparedDataWithPrefix));
+        .forEach(datagram -> webSocket.send(datagram.data));
   }
 
   private void keepAliveJob() {
@@ -379,8 +385,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     return fromJson(responseJson.toString(), OpenConnectionResponse.class);
   }
 
-  public String buildBinaryManifest(BinaryObjectMetadata binaryObjectMetadata) {
-    return MessageFormat.format("{0}{1}", BINARY_MANIFEST_PREFIX, toJson(binaryObjectMetadata));
+  public String buildBinaryManifest(BinaryObjectData binaryObjectData) {
+    return MessageFormat.format("{0}{1}", BINARY_MANIFEST_PREFIX, toJson(binaryObjectData));
   }
 
   @Override

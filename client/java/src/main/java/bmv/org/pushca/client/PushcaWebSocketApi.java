@@ -1,6 +1,7 @@
 package bmv.org.pushca.client;
 
-import bmv.org.pushca.client.model.BinaryObjectMetadata;
+import bmv.org.pushca.client.model.Binary;
+import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import java.nio.ByteBuffer;
@@ -11,11 +12,11 @@ import java.util.function.Consumer;
 public interface PushcaWebSocketApi {
 
   void processBinary(WebSocketApi ws, ByteBuffer byteBuffer,
-      BiConsumer<WebSocketApi, byte[]> dataConsumer);
+      BiConsumer<WebSocketApi, Binary> dataConsumer);
 
   void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer,
-      Consumer<BinaryObjectMetadata> binaryManifestConsumer);
+      Consumer<BinaryObjectData> binaryManifestConsumer);
 
   void sendAcknowledge(String id);
 
