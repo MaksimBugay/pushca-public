@@ -228,7 +228,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     if (message.startsWith(BINARY_MANIFEST_PREFIX)) {
       String json = inMessage.replace(BINARY_MANIFEST_PREFIX, "");
       BinaryObjectData binaryObjectData = fromJson(json, BinaryObjectData.class);
-      binaries.put(binaryObjectData.getBinaryId(), binaryObjectData);
+      binaries.putIfAbsent(binaryObjectData.getBinaryId(), binaryObjectData);
       if (binaryManifestConsumer != null) {
         binaryManifestConsumer.accept(binaryObjectData);
       }
