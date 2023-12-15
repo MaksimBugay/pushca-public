@@ -59,7 +59,7 @@ public final class BmvObjectUtils {
   }
 
   public static int calculateStringHashCode(String s) {
-    byte[] bytes = s.getBytes(StandardCharsets.UTF_16);
+    byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
     int h = 0;
     for (byte v : bytes) {
       h = 31 * h + (v & 0xff);

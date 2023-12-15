@@ -1,6 +1,7 @@
 package bmv.test.com;
 
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
+import static bmv.org.pushca.client.utils.BmvObjectUtils.calculateStringHashCode;
 
 import bmv.org.pushca.client.PushcaWebSocket;
 import bmv.org.pushca.client.PushcaWebSocketBuilder;
@@ -14,7 +15,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.Base64;
@@ -53,9 +53,10 @@ public class App {
     PClient client2 = new PClient(
         "workSpaceMain",
         "client2@test.ee",
-        UUID.randomUUID().toString(),
+        "web-browser",
         "PUSHCA_CLIENT"
     );
+    System.out.println(calculateStringHashCode("workSpaceMain@@client2@test.ee@@web-browser@@PUSHCA_CLIENT"));
 
     SslContextProvider sslContextProvider = new SslContextProvider(
         "C:\\mbugai\\work\\mlx\\pushca\\docker\\conf\\pushca-rc-tls.p12",
