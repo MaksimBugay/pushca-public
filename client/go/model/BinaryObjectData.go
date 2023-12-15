@@ -1,6 +1,6 @@
 package model
 
-type BinaryObjectMetadata struct {
+type BinaryObjectData struct {
 	ID               string     `json:"id"`
 	Name             string     `json:"name"`
 	Datagrams        []Datagram `json:"datagrams"`

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"github.com/google/uuid"
 	"pushca-client/model"
 )
 
@@ -19,5 +20,7 @@ type (
 		BroadcastMessage2(dest model.ClientFilter, message string)
 		SendMessage4(id string, dest model.PClient, preserveOrder bool, message string)
 		SendMessage2(dest model.PClient, message string)
+		SendBinaryMessage4(dest model.PClient, message []byte, id uuid.UUID, withAcknowledge bool)
+		SendBinaryMessage2(dest model.PClient, message []byte)
 	}
 )

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"flag"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -9,6 +10,7 @@ import (
 	"os/signal"
 	"pushca-client/core"
 	"pushca-client/model"
+	"pushca-client/util"
 	"time"
 )
 
@@ -16,6 +18,13 @@ func main() {
 	deviceId, errRandomUuid := uuid.NewRandom()
 	if errRandomUuid != nil {
 		log.Fatalf("cannot generate device Id due to %s", errRandomUuid)
+	}
+	uid, errConversion := util.BytesToUUID(util.UuidToBytes(deviceId))
+	if errConversion != nil {
+		log.Fatalf("cannot convert to uuid from byte[]")
+	}
+	if uid != deviceId {
+		log.Fatalf("cannot do uuid to byte[] conversion %v", uid)
 	}
 
 	messageConsumer := func(ws core.WebSocketApi, message string) {
@@ -43,6 +52,17 @@ func main() {
 	}
 	log.Printf("Pusher instance id: %v", pushcaWebSocket0.PusherId)
 	log.Printf("Token: %v", pushcaWebSocket0.Token)
+	hashCode := util.CalculateStringHashCode("workSpaceMain@@client2@test.ee@@web-browser@@PUSHCA_CLIENT")
+	if hashCode != 1097299416 {
+		log.Fatalf("cannot generate hash code similar to java %d", hashCode)
+	}
+	x, errConversion := util.BytesToInt(util.IntToBytes(hashCode))
+	if errConversion != nil {
+		log.Fatalf("cannot convert to int from byte[]")
+	}
+	if x != 1097299416 {
+		log.Fatalf("cannot do into to byte[] conversion %d", x)
+	}
 	pushcaWebSocket1 := &core.PushcaWebSocket{
 		PushcaApiUrl: httpPostUrl,
 		Client: model.PClient{
@@ -100,6 +120,9 @@ func main() {
 	pushcaWebSocket1.BroadcastMessage4("2", clientFilterWithExclude, true, "message not for client 1")
 	pushcaWebSocket0.SendMessage4("3", pushcaWebSocket1.Client, true, "message for client 1")
 	pushcaWebSocket1.SendMessage2(pushcaWebSocket0.Client, "message for client 0")
+
+	bMessage := base64.StdEncoding.EncodeToString([]byte("Binary message test"))
+	pushcaWebSocket0.SendBinaryMessage2(pushcaWebSocket1.Client, []byte(bMessage))
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()

@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"io"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"pushca-client/model"
 	modelrequest "pushca-client/model/request"
 	modelresponse "pushca-client/model/response"
+	"pushca-client/util"
 	"strings"
 )
 
@@ -28,7 +30,7 @@ type PushcaWebSocket struct {
 	Token                                string
 	Connection                           *websocket.Conn
 	MessageConsumer, AcknowledgeConsumer func(ws WebSocketApi, message string)
-	BinaryManifestConsumer               func(ws WebSocketApi, message model.BinaryObjectMetadata)
+	BinaryManifestConsumer               func(ws WebSocketApi, message model.BinaryObjectData)
 }
 
 func (wsPushca *PushcaWebSocket) GetInfo() string {
@@ -100,8 +102,11 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 				log.Println("read:", err)
 				return
 			}
-			if mType == 1 {
+			if mType == websocket.TextMessage {
 				wsPushca.processMessage(string(message))
+			}
+			if mType == websocket.BinaryMessage {
+				log.Print("binary message was received")
 			}
 		}
 	}()
@@ -223,7 +228,7 @@ func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 	if strings.HasPrefix(inMessage, BinaryManifestPrefix) {
 		manifestJSON := strings.Replace(inMessage, BinaryManifestPrefix, "", 1)
 
-		var manifest model.BinaryObjectMetadata
+		var manifest model.BinaryObjectData
 		errUnmarshal := json.Unmarshal([]byte(manifestJSON), &manifest)
 		if errUnmarshal != nil {
 			log.Printf("Broken binary manifest: client %s, error %s", wsPushca.GetInfo(), errUnmarshal)
@@ -242,4 +247,24 @@ func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 	if wsPushca.MessageConsumer != nil {
 		wsPushca.MessageConsumer(wsPushca, message)
 	}
+}
+
+func (wsPushca *PushcaWebSocket) SendBinaryMessage4(dest model.PClient, message []byte,
+	pId uuid.UUID, withAcknowledge bool) {
+	id := pId
+	if id == uuid.Nil {
+		id = uuid.New()
+	}
+	var order int32
+	order = 2147483647
+	prefix := util.ToDatagramPrefix(id, order, dest.HashCode(), withAcknowledge)
+
+	errWs := wsPushca.Connection.WriteMessage(websocket.BinaryMessage, append(prefix, message...))
+	if errWs != nil {
+		log.Printf("Cannot send bimary message: client %s, error %s", wsPushca.GetInfo(), errWs)
+	}
+}
+
+func (wsPushca *PushcaWebSocket) SendBinaryMessage2(dest model.PClient, message []byte) {
+	wsPushca.SendBinaryMessage4(dest, message, uuid.Nil, false)
 }
