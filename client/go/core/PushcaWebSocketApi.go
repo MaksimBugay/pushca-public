@@ -12,6 +12,7 @@ type (
 		OpenConnection(done chan struct{}) error
 		CloseConnection() error
 		processMessage(inMessage string)
+		processBinary(inBinary []byte)
 		PingServer()
 		SendAcknowledge(id string)
 		SendMessageWithAcknowledge4(id string, dest model.PClient, preserveOrder bool, message string)

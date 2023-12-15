@@ -20,6 +20,7 @@ const (
 	TokenPrefix           = "TOKEN@@"
 	BinaryManifestPrefix  = "BINARY_MANIFEST@@"
 	MessagePartsDelimiter = "@@"
+	MaxInteger            = 2147483647
 )
 
 type PushcaWebSocket struct {
@@ -31,6 +32,8 @@ type PushcaWebSocket struct {
 	Connection                           *websocket.Conn
 	MessageConsumer, AcknowledgeConsumer func(ws WebSocketApi, message string)
 	BinaryManifestConsumer               func(ws WebSocketApi, message model.BinaryObjectData)
+	BinaryMessageConsumer                func(ws WebSocketApi, message []byte)
+	//BiConsumer<WebSocketApi, Binary> dataConsumer,
 }
 
 func (wsPushca *PushcaWebSocket) GetInfo() string {
@@ -61,6 +64,7 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 
 	httpClient := &http.Client{}
 	httpResponse, errHttp := httpClient.Do(request)
+	defer closeHttpResponse(httpResponse)
 	if errHttp != nil {
 		log.Printf("Unable to send http post due to %s", errHttp)
 		return errHttp
@@ -106,11 +110,19 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 				wsPushca.processMessage(string(message))
 			}
 			if mType == websocket.BinaryMessage {
-				log.Print("binary message was received")
+				wsPushca.processBinary(message)
 			}
 		}
 	}()
 	return nil
+}
+
+func closeHttpResponse(response *http.Response) {
+	if response != nil {
+		if !response.Close {
+			log.Printf("cannot close http response")
+		}
+	}
 }
 
 func (wsPushca *PushcaWebSocket) CloseConnection() error {
@@ -206,6 +218,39 @@ func (wsPushca *PushcaWebSocket) SendMessage4(id string, dest model.PClient, pre
 func (wsPushca *PushcaWebSocket) SendMessage2(dest model.PClient, message string) {
 	wsPushca.SendMessage4("", dest, false, message)
 }
+func (wsPushca *PushcaWebSocket) processBinary(inBinary []byte) {
+	clientHash, errConversion := util.BytesToInt(inBinary[:4])
+	if errConversion != nil {
+		log.Printf("cannot convert to int from byte[]: client %s, error %s", wsPushca.GetInfo(), errConversion)
+		return
+	}
+	if clientHash != wsPushca.Client.HashCode() { // Replace hash function with your PClient hashing logic
+		log.Printf("Data was intended for another client: client %s", wsPushca.GetInfo())
+		return
+	}
+	withAcknowledge, errConversion := util.BytesToBoolean(inBinary[4:5])
+	if errConversion != nil {
+		log.Printf("cannot convert to bool from byte[]: client %s, error %s", wsPushca.GetInfo(), errConversion)
+		return
+	}
+	binaryID, errConversion := util.BytesToUUID(inBinary[5:21])
+	if errConversion != nil {
+		log.Printf("cannot convert to UUID from byte[]: client %s, error %s", wsPushca.GetInfo(), errConversion)
+		return
+	}
+	order, errConversion := util.BytesToInt(inBinary[21:25])
+	if errConversion != nil {
+		log.Printf("cannot convert to int from byte[]: client %s, error %s", wsPushca.GetInfo(), errConversion)
+		return
+	}
+	//binary message was received
+	if MaxInteger == order {
+		if wsPushca.BinaryMessageConsumer != nil {
+			wsPushca.BinaryMessageConsumer(wsPushca, inBinary[25:])
+		}
+	}
+	log.Printf("%v, %v", binaryID, withAcknowledge)
+}
 
 func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 	if strings.TrimSpace(inMessage) == "" {
@@ -256,7 +301,7 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage4(dest model.PClient, message 
 		id = uuid.New()
 	}
 	var order int32
-	order = 2147483647
+	order = MaxInteger
 	prefix := util.ToDatagramPrefix(id, order, dest.HashCode(), withAcknowledge)
 
 	errWs := wsPushca.Connection.WriteMessage(websocket.BinaryMessage, append(prefix, message...))

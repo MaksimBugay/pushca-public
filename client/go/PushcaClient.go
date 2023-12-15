@@ -35,6 +35,15 @@ func main() {
 		log.Printf("%s acknowledge: %s", ws.GetInfo(), id)
 	}
 
+	binaryMessageConsumer := func(ws core.WebSocketApi, binary []byte) {
+		decodedBytes, err := base64.StdEncoding.DecodeString(string(binary))
+		if err != nil {
+			log.Printf("%s Error attempt of decoding base64 string", ws.GetInfo())
+			return
+		}
+		log.Printf("%s binary message: %s", ws.GetInfo(), string(decodedBytes))
+	}
+
 	httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
 	//httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
 	//httpPostUrl := "http://localhost:8080/open-connection"
@@ -47,8 +56,9 @@ func main() {
 			DeviceId:      deviceId.String(),
 			ApplicationId: "PUSHCA_CLIENT",
 		},
-		MessageConsumer:     messageConsumer,
-		AcknowledgeConsumer: acknowledgeConsumer,
+		MessageConsumer:       messageConsumer,
+		AcknowledgeConsumer:   acknowledgeConsumer,
+		BinaryMessageConsumer: binaryMessageConsumer,
 	}
 	log.Printf("Pusher instance id: %v", pushcaWebSocket0.PusherId)
 	log.Printf("Token: %v", pushcaWebSocket0.Token)
@@ -71,8 +81,9 @@ func main() {
 			DeviceId:      "web-browser",
 			ApplicationId: "PUSHCA_CLIENT",
 		},
-		MessageConsumer:     messageConsumer,
-		AcknowledgeConsumer: acknowledgeConsumer,
+		MessageConsumer:       messageConsumer,
+		AcknowledgeConsumer:   acknowledgeConsumer,
+		BinaryMessageConsumer: binaryMessageConsumer,
 	}
 	//================================================================================
 	flag.Parse()
