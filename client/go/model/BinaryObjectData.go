@@ -15,32 +15,27 @@ type BinaryObjectData struct {
 	PusherInstanceId string     `json:"pusherInstanceId"`
 }
 
-func (binaryObjectData *BinaryObjectData) FillWithReceivedData(order int32, data []byte) {
+func (binaryObjectData *BinaryObjectData) FillWithReceivedData(order int32, data []byte) (Datagram, bool) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	datagram := binaryObjectData.getDatagram(order)
-	if datagram != nil {
-		datagram.Data = data
+	datagramIndex := binaryObjectData.getDatagramIndex(order)
+	if datagramIndex == -1 {
+		return Datagram{}, false
 	}
+	binaryObjectData.Datagrams[datagramIndex].Data = data
+	return binaryObjectData.Datagrams[datagramIndex], true
 }
 
-func (binaryObjectData *BinaryObjectData) GetDatagram(order int32) *Datagram {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	return binaryObjectData.getDatagram(order)
-}
-
-func (binaryObjectData *BinaryObjectData) getDatagram(order int32) *Datagram {
-	var result *Datagram
+func (binaryObjectData *BinaryObjectData) getDatagramIndex(order int32) int {
+	index := -1
 	for _, d := range binaryObjectData.Datagrams {
+		index += 1
 		if d.Order == order {
-			result = &d
-			break
+			return index
 		}
 	}
-	return result
+	return index
 }
 
 func (binaryObjectData *BinaryObjectData) IsCompleted() bool {
@@ -55,17 +50,13 @@ func (binaryObjectData *BinaryObjectData) IsCompleted() bool {
 	return true
 }
 
-func (binaryObjectData *BinaryObjectData) GetDatagrams() []Datagram {
+func ToBinary(binaryData *BinaryObjectData) Binary {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	return binaryObjectData.Datagrams
-}
-
-func ToBinary(binaryData *BinaryObjectData) Binary {
 	dataMap := make(map[int][]byte)
 	var orders []int
-	for _, d := range binaryData.GetDatagrams() {
+	for _, d := range binaryData.Datagrams {
 		if d.Data != nil {
 			dataMap[int(d.Order)] = d.Data
 			orders = append(orders, int(d.Order))

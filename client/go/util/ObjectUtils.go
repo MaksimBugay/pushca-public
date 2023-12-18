@@ -53,9 +53,6 @@ func BytesToUUID(bytes []byte) (uuid.UUID, error) {
 	if len(bytes) != 16 {
 		return uuid.UUID{}, fmt.Errorf("invalid byte length for UUID")
 	}
-	//high := binary.BigEndian.Uint64(bytes)
-	//low := binary.BigEndian.Uint64(bytes[8:])
-
 	return uuid.FromBytes(bytes)
 
 }

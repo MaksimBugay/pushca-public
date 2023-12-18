@@ -114,7 +114,7 @@ func main() {
 		PushcaApiUrl: httpPostUrl,
 		Client: model.PClient{
 			WorkSpaceId:   "workSpaceMain",
-			AccountId:     "clientGo1@test.ee",
+			AccountId:     "clientGo10@test.ee",
 			DeviceId:      "web-browser",
 			ApplicationId: "PUSHCA_CLIENT",
 		},
