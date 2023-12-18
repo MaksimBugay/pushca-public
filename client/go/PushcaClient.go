@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"flag"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"log"
@@ -35,6 +37,11 @@ func main() {
 		log.Printf("%s acknowledge: %s", ws.GetInfo(), id)
 	}
 
+	binaryManifestConsumer := func(ws core.WebSocketApi, manifest model.BinaryObjectData) {
+		jsonStr, _ := json.Marshal(manifest)
+		log.Printf("%s binary manifest: %s", ws.GetInfo(), jsonStr)
+	}
+
 	binaryMessageConsumer := func(ws core.WebSocketApi, binary []byte) {
 		decodedBytes, err := base64.StdEncoding.DecodeString(string(binary))
 		if err != nil {
@@ -42,6 +49,35 @@ func main() {
 			return
 		}
 		log.Printf("%s binary message: %s", ws.GetInfo(), string(decodedBytes))
+	}
+
+	dataConsumer := func(ws core.WebSocketApi, binary model.Binary) {
+		if binary.ID == "" {
+			log.Fatalf("Binary ID is empty")
+		}
+		if binary.Name != "vlc-3.0.11-win64.exe" {
+			log.Fatalf("Wrong binary name")
+		}
+
+		// Create a file
+		file, err := os.Create("transferred_" + binary.Name)
+		if err != nil {
+			log.Fatalf("Cannot create file: error %v", err)
+		}
+		defer func(file *os.File) {
+			err := file.Close()
+			if err != nil {
+				fmt.Printf("cannot close file: error %v\n", err)
+			}
+		}(file)
+
+		// Write binary data to the file
+		_, err = file.Write(binary.Data)
+		if err != nil {
+			log.Fatalf("Cannot fullfil file content: error %v", err)
+		}
+
+		fmt.Println("Binary data was received and stored")
 	}
 
 	httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
@@ -52,13 +88,14 @@ func main() {
 		PushcaApiUrl: httpPostUrl,
 		Client: model.PClient{
 			WorkSpaceId:   "workSpaceMain",
-			AccountId:     "client0@test.ee",
+			AccountId:     "clientGo0@test.ee",
 			DeviceId:      deviceId.String(),
 			ApplicationId: "PUSHCA_CLIENT",
 		},
-		MessageConsumer:       messageConsumer,
-		AcknowledgeConsumer:   acknowledgeConsumer,
-		BinaryMessageConsumer: binaryMessageConsumer,
+		MessageConsumer:        messageConsumer,
+		AcknowledgeConsumer:    acknowledgeConsumer,
+		BinaryManifestConsumer: binaryManifestConsumer,
+		BinaryMessageConsumer:  binaryMessageConsumer,
 	}
 	log.Printf("Pusher instance id: %v", pushcaWebSocket0.PusherId)
 	log.Printf("Token: %v", pushcaWebSocket0.Token)
@@ -77,13 +114,15 @@ func main() {
 		PushcaApiUrl: httpPostUrl,
 		Client: model.PClient{
 			WorkSpaceId:   "workSpaceMain",
-			AccountId:     "client1@test.ee",
+			AccountId:     "clientGo1@test.ee",
 			DeviceId:      "web-browser",
 			ApplicationId: "PUSHCA_CLIENT",
 		},
-		MessageConsumer:       messageConsumer,
-		AcknowledgeConsumer:   acknowledgeConsumer,
-		BinaryMessageConsumer: binaryMessageConsumer,
+		MessageConsumer:        messageConsumer,
+		AcknowledgeConsumer:    acknowledgeConsumer,
+		BinaryManifestConsumer: binaryManifestConsumer,
+		BinaryMessageConsumer:  binaryMessageConsumer,
+		DataConsumer:           dataConsumer,
 	}
 	//================================================================================
 	flag.Parse()

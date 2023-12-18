@@ -36,14 +36,28 @@ func UuidToBytes(value uuid.UUID) []byte {
 	var bytes [16]byte
 	copy(bytes[:8], value[:8])
 	copy(bytes[8:], value[8:])
-	return bytes[:]
+	b := make([]byte, 16)
+	var msb, lsb uint64
+	for i := 0; i < 8; i++ {
+		msb = (msb << 8) | uint64(bytes[i])
+	}
+	for i := 8; i < 16; i++ {
+		lsb = (lsb << 8) | uint64(bytes[i])
+	}
+	binary.BigEndian.PutUint64(b, msb)
+	binary.BigEndian.PutUint64(b[8:], lsb)
+	return b
 }
 
 func BytesToUUID(bytes []byte) (uuid.UUID, error) {
 	if len(bytes) != 16 {
 		return uuid.UUID{}, fmt.Errorf("invalid byte length for UUID")
 	}
+	//high := binary.BigEndian.Uint64(bytes)
+	//low := binary.BigEndian.Uint64(bytes[8:])
+
 	return uuid.FromBytes(bytes)
+
 }
 
 func IntToBytes(value int32) []byte {

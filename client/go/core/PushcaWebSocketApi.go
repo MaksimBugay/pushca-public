@@ -15,6 +15,7 @@ type (
 		processBinary(inBinary []byte)
 		PingServer()
 		SendAcknowledge(id string)
+		SendAcknowledge2(binaryID uuid.UUID, order int32)
 		SendMessageWithAcknowledge4(id string, dest model.PClient, preserveOrder bool, message string)
 		SendMessageWithAcknowledge3(id string, dest model.PClient, message string)
 		BroadcastMessage4(id string, dest model.ClientFilter, preserveOrder bool, message string)

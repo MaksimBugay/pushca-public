@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"io"
@@ -13,6 +14,7 @@ import (
 	modelresponse "pushca-client/model/response"
 	"pushca-client/util"
 	"strings"
+	"sync"
 )
 
 const (
@@ -22,6 +24,8 @@ const (
 	MessagePartsDelimiter = "@@"
 	MaxInteger            = 2147483647
 )
+
+var binaries sync.Map
 
 type PushcaWebSocket struct {
 	PushcaApiUrl                         string
@@ -33,7 +37,7 @@ type PushcaWebSocket struct {
 	MessageConsumer, AcknowledgeConsumer func(ws WebSocketApi, message string)
 	BinaryManifestConsumer               func(ws WebSocketApi, message model.BinaryObjectData)
 	BinaryMessageConsumer                func(ws WebSocketApi, message []byte)
-	//BiConsumer<WebSocketApi, Binary> dataConsumer,
+	DataConsumer                         func(ws WebSocketApi, data model.Binary)
 }
 
 func (wsPushca *PushcaWebSocket) GetInfo() string {
@@ -166,6 +170,10 @@ func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge3(id string, dest mod
 	wsPushca.SendMessageWithAcknowledge4(id, dest, false, message)
 }
 
+func (wsPushca *PushcaWebSocket) SendAcknowledge2(binaryID uuid.UUID, order int32) {
+	id := fmt.Sprintf("%s-%d", binaryID, order)
+	wsPushca.SendAcknowledge(id)
+}
 func (wsPushca *PushcaWebSocket) SendAcknowledge(id string) {
 	metaData := make(map[string]interface{})
 	metaData["messageId"] = id
@@ -248,8 +256,37 @@ func (wsPushca *PushcaWebSocket) processBinary(inBinary []byte) {
 		if wsPushca.BinaryMessageConsumer != nil {
 			wsPushca.BinaryMessageConsumer(wsPushca, inBinary[25:])
 		}
+		return
 	}
-	log.Printf("%v, %v", binaryID, withAcknowledge)
+	//-----------------------------------------------------------------------------
+	var binaryData model.BinaryObjectData
+	value, exists := binaries.Load(binaryID)
+	if exists {
+		// If the binary ID exists, perform actions on the data
+		binaryData = value.(model.BinaryObjectData)
+		// Fill with received data (replace this with your logic)
+		binaryData.FillWithReceivedData(order, inBinary[25:])
+		// Store the updated data back in the map
+		binaries.Store(binaryID, binaryData)
+	} else {
+		// If the binary ID doesn't exist, throw an error
+		log.Printf("Unknown binary with id = %s", binaryID)
+		return
+	}
+	datagram := binaryData.GetDatagram(order)
+	if datagram == nil {
+		log.Printf("Unknown datagram: binaryId=%v, order=%d", binaryID, order)
+	}
+	if withAcknowledge {
+		wsPushca.SendAcknowledge2(binaryID, order)
+	}
+	if binaryData.IsCompleted() {
+		if wsPushca.DataConsumer != nil {
+			wsPushca.DataConsumer(wsPushca, model.ToBinary(&binaryData))
+		}
+		binaries.Delete(binaryID)
+		log.Printf("Binary was successfully received: id=%v, name=%s", binaryID, binaryData.Name)
+	}
 }
 
 func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
@@ -273,14 +310,15 @@ func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 	if strings.HasPrefix(inMessage, BinaryManifestPrefix) {
 		manifestJSON := strings.Replace(inMessage, BinaryManifestPrefix, "", 1)
 
-		var manifest model.BinaryObjectData
-		errUnmarshal := json.Unmarshal([]byte(manifestJSON), &manifest)
+		var binaryObjectData model.BinaryObjectData
+		errUnmarshal := json.Unmarshal([]byte(manifestJSON), &binaryObjectData)
 		if errUnmarshal != nil {
-			log.Printf("Broken binary manifest: client %s, error %s", wsPushca.GetInfo(), errUnmarshal)
+			log.Printf("Broken binary binaryObjectData: client %s, error %s", wsPushca.GetInfo(), errUnmarshal)
 			return
 		}
+		binaries.Store(binaryObjectData.ID, binaryObjectData)
 		if wsPushca.BinaryManifestConsumer != nil {
-			wsPushca.BinaryManifestConsumer(wsPushca, manifest)
+			wsPushca.BinaryManifestConsumer(wsPushca, binaryObjectData)
 		}
 		return
 	}
