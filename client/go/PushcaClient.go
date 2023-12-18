@@ -96,6 +96,7 @@ func main() {
 		AcknowledgeConsumer:    acknowledgeConsumer,
 		BinaryManifestConsumer: binaryManifestConsumer,
 		BinaryMessageConsumer:  binaryMessageConsumer,
+		Binaries:               make(map[uuid.UUID]*model.BinaryObjectData),
 	}
 	log.Printf("Pusher instance id: %v", pushcaWebSocket0.PusherId)
 	log.Printf("Token: %v", pushcaWebSocket0.Token)
@@ -123,6 +124,7 @@ func main() {
 		BinaryManifestConsumer: binaryManifestConsumer,
 		BinaryMessageConsumer:  binaryMessageConsumer,
 		DataConsumer:           dataConsumer,
+		Binaries:               make(map[uuid.UUID]*model.BinaryObjectData),
 	}
 	//================================================================================
 	flag.Parse()

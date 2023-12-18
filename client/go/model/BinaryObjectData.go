@@ -5,8 +5,6 @@ import (
 	"sync"
 )
 
-var mutex sync.Mutex
-
 type BinaryObjectData struct {
 	ID               string     `json:"id"`
 	Name             string     `json:"name"`
@@ -15,7 +13,7 @@ type BinaryObjectData struct {
 	PusherInstanceId string     `json:"pusherInstanceId"`
 }
 
-func (binaryObjectData *BinaryObjectData) FillWithReceivedData(order int32, data []byte) (Datagram, bool) {
+func (binaryObjectData *BinaryObjectData) FillWithReceivedData(order int32, data []byte, mutex *sync.Mutex) (Datagram, bool) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -38,7 +36,7 @@ func (binaryObjectData *BinaryObjectData) getDatagramIndex(order int32) int {
 	return index
 }
 
-func (binaryObjectData *BinaryObjectData) IsCompleted() bool {
+func (binaryObjectData *BinaryObjectData) IsCompleted(mutex *sync.Mutex) bool {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -50,13 +48,13 @@ func (binaryObjectData *BinaryObjectData) IsCompleted() bool {
 	return true
 }
 
-func ToBinary(binaryData *BinaryObjectData) Binary {
+func (binaryObjectData *BinaryObjectData) ToBinary(mutex *sync.Mutex) Binary {
 	mutex.Lock()
 	defer mutex.Unlock()
 
 	dataMap := make(map[int][]byte)
 	var orders []int
-	for _, d := range binaryData.Datagrams {
+	for _, d := range binaryObjectData.Datagrams {
 		if d.Data != nil {
 			dataMap[int(d.Order)] = d.Data
 			orders = append(orders, int(d.Order))
@@ -68,10 +66,10 @@ func ToBinary(binaryData *BinaryObjectData) Binary {
 		data = append(data, dataMap[n]...)
 	}
 	return Binary{
-		ID:               binaryData.ID,
-		Name:             binaryData.Name,
-		Sender:           binaryData.Sender,
-		PusherInstanceId: binaryData.PusherInstanceId,
+		ID:               binaryObjectData.ID,
+		Name:             binaryObjectData.Name,
+		Sender:           binaryObjectData.Sender,
+		PusherInstanceId: binaryObjectData.PusherInstanceId,
 		Data:             data,
 	}
 }

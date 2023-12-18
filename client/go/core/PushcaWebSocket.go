@@ -14,6 +14,7 @@ import (
 	modelresponse "pushca-client/model/response"
 	"pushca-client/util"
 	"strings"
+	"sync"
 )
 
 const (
@@ -35,7 +36,8 @@ type PushcaWebSocket struct {
 	BinaryManifestConsumer               func(ws WebSocketApi, message model.BinaryObjectData)
 	BinaryMessageConsumer                func(ws WebSocketApi, message []byte)
 	DataConsumer                         func(ws WebSocketApi, data model.Binary)
-	binaries                             map[uuid.UUID]*model.BinaryObjectData
+	Binaries                             map[uuid.UUID]*model.BinaryObjectData
+	mutex                                sync.Mutex
 }
 
 func (wsPushca *PushcaWebSocket) GetInfo() string {
@@ -257,17 +259,13 @@ func (wsPushca *PushcaWebSocket) processBinary(inBinary []byte) {
 		return
 	}
 	//-----------------------------------------------------------------------------
-	var binaryData *model.BinaryObjectData
-	if wsPushca.binaries == nil {
-		wsPushca.binaries = make(map[uuid.UUID]*model.BinaryObjectData)
-	}
-	binaryData = wsPushca.binaries[binaryID]
+	binaryData := wsPushca.Binaries[binaryID]
 	if binaryData == nil {
 		// If the binary ID doesn't exist, throw an error
 		log.Printf("Unknown binary with id = %s", binaryID)
 		return
 	}
-	datagram, exists := binaryData.FillWithReceivedData(order, inBinary[25:])
+	datagram, exists := binaryData.FillWithReceivedData(order, inBinary[25:], &wsPushca.mutex)
 	if !exists {
 		log.Printf("Unknown datagram: binaryId=%v, order=%d", binaryID, order)
 	}
@@ -277,11 +275,11 @@ func (wsPushca *PushcaWebSocket) processBinary(inBinary []byte) {
 	if withAcknowledge {
 		wsPushca.SendAcknowledge2(binaryID, order)
 	}
-	if binaryData.IsCompleted() {
+	if binaryData.IsCompleted(&wsPushca.mutex) {
 		if wsPushca.DataConsumer != nil {
-			wsPushca.DataConsumer(wsPushca, model.ToBinary(binaryData))
+			wsPushca.DataConsumer(wsPushca, binaryData.ToBinary(&wsPushca.mutex))
 		}
-		delete(wsPushca.binaries, binaryID)
+		delete(wsPushca.Binaries, binaryID)
 		log.Printf("Binary was successfully received: id=%v, name=%s", binaryID, binaryData.Name)
 	}
 }
@@ -313,11 +311,8 @@ func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 			log.Printf("Broken binary binaryObjectData: client %s, error %s", wsPushca.GetInfo(), errUnmarshal)
 			return
 		}
-		if wsPushca.binaries == nil {
-			wsPushca.binaries = make(map[uuid.UUID]*model.BinaryObjectData)
-		}
 		binaryId, _ := uuid.Parse(binaryObjectData.ID)
-		wsPushca.binaries[binaryId] = &binaryObjectData
+		wsPushca.Binaries[binaryId] = &binaryObjectData
 		if wsPushca.BinaryManifestConsumer != nil {
 			wsPushca.BinaryManifestConsumer(wsPushca, binaryObjectData)
 		}
