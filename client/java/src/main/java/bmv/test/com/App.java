@@ -86,9 +86,6 @@ public class App {
       if (binary.id == null) {
         throw new IllegalStateException("Binary id is empty");
       }
-      if (!binary.name.contains("vlc-3.0.11-win64")) {
-        throw new IllegalStateException("Wrong binary name");
-      }
       try {
         FileUtils.writeByteArrayToFile(new File(binary.name), binary.data);
       } catch (IOException e) {
@@ -149,7 +146,7 @@ public class App {
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
       file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
       byte[] data = Files.readAllBytes(file.toPath());
-      pushcaWebSocket1.sendBinary(client0,
+      pushcaWebSocket1.sendBinary(client2,
           data,
           //"vlc-3.0.11-win64-copy.exe",
           "Reproducing_multiple_java_headless-copy.mov",
