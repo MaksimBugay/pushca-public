@@ -58,6 +58,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -100,8 +102,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   private final ScheduledExecutorService acknowledgeTimeoutScheduler =
       Executors.newScheduledThreadPool(10);
 
-  public static String buildAcknowledgeId(UUID binaryId, int order) {
-    return MessageFormat.format("{0}-{1}", binaryId.toString(), String.valueOf(order));
+  public static String buildAcknowledgeId(String binaryId, int order) {
+    return MessageFormat.format("{0}-{1}", binaryId, String.valueOf(order));
   }
 
   PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
@@ -271,7 +273,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void sendAcknowledge(UUID binaryId, int order) {
-    String id = buildAcknowledgeId(binaryId, order);
+    String id = buildAcknowledgeId(binaryId.toString(), order);
     sendAcknowledge(id);
   }
 
@@ -344,12 +346,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, withAcknowledge, false);
   }
 
-  public void sendBinary(PClient dest, byte[] data, String name, UUID id, int chunkSize,
+  public BinaryObjectData sendBinary(PClient dest, byte[] data, String name, UUID id, int chunkSize,
       boolean withAcknowledge, boolean manifestOnly) {
     if (!webSocket.isOpen()) {
       throw new IllegalStateException("Web socket connection is broken");
     }
-    BinaryObjectData binaryMetadata = toBinaryObjectData(
+    BinaryObjectData binaryObjectData = toBinaryObjectData(
         dest,
         id,
         name,
@@ -358,17 +360,28 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         pusherId,
         withAcknowledge
     );
-    sendMessage(dest, buildBinaryManifest(binaryMetadata));
+    sendMessage(dest, buildBinaryManifest(binaryObjectData));
     if (manifestOnly) {
-      return;
+      return binaryObjectData;
     }
+    sendBinary(binaryObjectData, withAcknowledge, null);
+    return binaryObjectData;
+  }
+
+  public void sendBinary(BinaryObjectData binaryObjectData, boolean withAcknowledge,
+      List<String> requestedIds) {
+    Predicate<Datagram> filter =
+        requestedIds == null ? dgm -> Boolean.TRUE : dgm -> requestedIds.contains(
+            buildAcknowledgeId(binaryObjectData.id, dgm.order)
+        );
     if (withAcknowledge) {
-      for (Datagram datagram : binaryMetadata.getDatagrams()) {
+      for (Datagram datagram : binaryObjectData.getDatagrams().stream().filter(filter)
+          .collect(Collectors.toSet())) {
         for (int i = 0; true; i++) {
           //LOGGER.debug("send attempt {}", i);
           webSocket.send(datagram.data);
           try {
-            if (registerAcknowledgeCallback(id, datagram).get() != null) {
+            if (registerAcknowledgeCallback(binaryObjectData.id, datagram).get() != null) {
               break;
             }
           } catch (Exception e) {
@@ -380,12 +393,13 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         }
       }
     } else {
-      binaryMetadata.getDatagrams()
+      binaryObjectData.getDatagrams()
+          .stream().filter(filter)
           .forEach(datagram -> webSocket.send(datagram.data));
     }
   }
 
-  private CompletableFuture<String> registerAcknowledgeCallback(UUID id, Datagram datagram) {
+  private CompletableFuture<String> registerAcknowledgeCallback(String id, Datagram datagram) {
     CompletableFuture<String> ackCallback = new CompletableFuture<>();
     ackCallback.whenComplete((dId, error) -> {
       waitingHall.remove(dId);
