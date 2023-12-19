@@ -376,7 +376,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         );
     if (withAcknowledge) {
       for (Datagram datagram : binaryObjectData.getDatagrams().stream().filter(filter)
-          .collect(Collectors.toSet())) {
+          .collect(Collectors.toList())) {
         for (int i = 0; true; i++) {
           //LOGGER.debug("send attempt {}", i);
           webSocket.send(datagram.data);
