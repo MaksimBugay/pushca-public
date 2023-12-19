@@ -65,9 +65,9 @@ public class App {
 
     String pushcaApiUrl =
         //    "http://localhost:8050";
-    //    "https://app-rc.multiloginapp.net/pushca-with-tls-support";
-    //    "http://push-app-rc.multiloginapp.net:8050";
-    "https://app-rc.multiloginapp.net/pushca";
+        //    "https://app-rc.multiloginapp.net/pushca-with-tls-support";
+        //"http://push-app-rc.multiloginapp.net:8050";
+        "https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
@@ -116,11 +116,6 @@ public class App {
       delay(Duration.ofMillis(500));
       lastMessage.set(null);
       delay(Duration.ofSeconds(3));
-      //---------------------broadcast message------------------------------------------------------
-      ClientFilter filter = new ClientFilter(client0.workSpaceId, null, null, null,
-          false, Collections.singletonList(client0));
-      pushcaWebSocket0.BroadcastMessage(filter, "Broadcast message test");
-      //============================================================================================
       //---------------------simple message---------------------------------------------------------
       pushcaWebSocket0.sendMessage(client1, testMessage0);
       while (lastMessage.get() == null) {
@@ -130,6 +125,11 @@ public class App {
         throw new IllegalStateException("Message was not delivered");
       }
       System.out.println("Message was delivered");
+      //============================================================================================
+      //---------------------broadcast message------------------------------------------------------
+      ClientFilter filter = new ClientFilter(client0.workSpaceId, null, null, null,
+          false, Collections.singletonList(client0));
+      pushcaWebSocket0.BroadcastMessage(filter, "Broadcast message test");
       //============================================================================================
       //---------------------message with acknowledge-----------------------------------------------
       pushcaWebSocket0.sendMessageWithAcknowledge(messageId, client1, testMessage1);
@@ -147,11 +147,12 @@ public class App {
       //-----------------------------binary with acknowledge----------------------------------------
       File file = new File(
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
-      //file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
+      file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
       byte[] data = Files.readAllBytes(file.toPath());
-      pushcaWebSocket1.sendBinary(client2,
+      pushcaWebSocket1.sendBinary(client0,
           data,
-          "vlc-3.0.11-win64-copy.exe",
+          //"vlc-3.0.11-win64-copy.exe",
+          "Reproducing_multiple_java_headless-copy.mov",
           UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)),
           PushcaWebSocket.DEFAULT_CHUNK_SIZE,
           true, false

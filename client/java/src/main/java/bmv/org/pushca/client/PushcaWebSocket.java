@@ -45,9 +45,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -69,6 +74,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597
   );
   public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
+  public static final int MAX_REPEAT_ATTEMPT_NUMBER = 3;
   private final String pusherId;
 
   private final String baseWsUrl;
@@ -88,6 +94,15 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   private final AtomicInteger reConnectIndex = new AtomicInteger();
 
   private final Map<String, BinaryObjectData> binaries = new ConcurrentHashMap<>();
+
+  private final Map<String, CompletableFuture<String>> waitingHall = new ConcurrentHashMap<>();
+
+  private final ScheduledExecutorService acknowledgeTimeoutScheduler =
+      Executors.newScheduledThreadPool(10);
+
+  public static String buildAcknowledgeId(UUID binaryId, int order) {
+    return MessageFormat.format("{0}-{1}", binaryId.toString(), String.valueOf(order));
+  }
 
   PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
       BiConsumer<WebSocketApi, String> messageConsumer,
@@ -216,8 +231,13 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       return;
     }
     if (message.startsWith(ACKNOWLEDGE_PREFIX)) {
+      String id = inMessage.replace(ACKNOWLEDGE_PREFIX, "");
+      waitingHall.computeIfPresent(id, (key, callback) -> {
+        callback.complete(key);
+        return callback;
+      });
       Optional.ofNullable(acknowledgeConsumer)
-          .ifPresent(ac -> ac.accept(inMessage.replace(ACKNOWLEDGE_PREFIX, "")));
+          .ifPresent(ac -> ac.accept(id));
       return;
     }
     if (message.startsWith(TOKEN_PREFIX)) {
@@ -251,7 +271,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void sendAcknowledge(UUID binaryId, int order) {
-    String id = MessageFormat.format("{0}-{1}", binaryId.toString(), String.valueOf(order));
+    String id = buildAcknowledgeId(binaryId, order);
     sendAcknowledge(id);
   }
 
@@ -342,8 +362,49 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     if (manifestOnly) {
       return;
     }
-    binaryMetadata.getDatagrams()
-        .forEach(datagram -> webSocket.send(datagram.data));
+    if (withAcknowledge) {
+      for (Datagram datagram : binaryMetadata.getDatagrams()) {
+        for (int i = 0; true; i++) {
+          //LOGGER.debug("send attempt {}", i);
+          webSocket.send(datagram.data);
+          try {
+            if (registerAcknowledgeCallback(id, datagram).get() != null) {
+              break;
+            }
+          } catch (Exception e) {
+            LOGGER.error("Failed send attempt", e);
+          }
+          if (i + 1 > MAX_REPEAT_ATTEMPT_NUMBER) {
+            throw new RuntimeException("Impossible to send binary");
+          }
+        }
+      }
+    } else {
+      binaryMetadata.getDatagrams()
+          .forEach(datagram -> webSocket.send(datagram.data));
+    }
+  }
+
+  private CompletableFuture<String> registerAcknowledgeCallback(UUID id, Datagram datagram) {
+    CompletableFuture<String> ackCallback = new CompletableFuture<>();
+    ackCallback.whenComplete((dId, error) -> {
+      waitingHall.remove(dId);
+    });
+    final String dId = buildAcknowledgeId(id, datagram.order);
+    waitingHall.put(dId, ackCallback);
+    return CompletableFuture.supplyAsync(() -> {
+          try {
+            return ackCallback.get(10, TimeUnit.SECONDS);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          } catch (ExecutionException | TimeoutException error) {
+            LOGGER.error("Failed acknowledge: client {}, id {}, error {}", client.accountId, dId,
+                error.getMessage() == null ? error.getClass().getName() : error.getMessage());
+          }
+          ackCallback.complete(dId);
+          return null;
+        },
+        acknowledgeTimeoutScheduler);
   }
 
   private void keepAliveJob() {
