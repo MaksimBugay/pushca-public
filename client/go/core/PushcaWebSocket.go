@@ -270,7 +270,10 @@ func (wsPushca *PushcaWebSocket) processBinary(inBinary []byte) {
 		log.Printf("Unknown datagram: binaryId=%v, order=%d", binaryID, order)
 	}
 	if int(datagram.Size) != len(datagram.Data) {
-		log.Printf("Size validation was not passed: binaryId=%v, order=%d")
+		log.Printf("Size validation was not passed: binaryId=%v, order=%d", binaryID, order)
+	}
+	if datagram.MD5 != util.CalculateSHA256(datagram.Data) {
+		log.Printf("MD5 validation was not passed: binaryId=%v, order=%d", binaryID, order)
 	}
 	if withAcknowledge {
 		wsPushca.SendAcknowledge2(binaryID, order)
@@ -346,4 +349,36 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage4(dest model.PClient, message 
 
 func (wsPushca *PushcaWebSocket) SendBinaryMessage2(dest model.PClient, message []byte) {
 	wsPushca.SendBinaryMessage4(dest, message, uuid.Nil, false)
+}
+
+func (wsPushca *PushcaWebSocket) SendBinary7(dest model.PClient, data []byte, name string, pId uuid.UUID, chunkSize int,
+	withAcknowledge bool, manifestOnly bool) {
+	id := pId
+	if id == uuid.Nil {
+		id = uuid.New()
+	}
+
+	binaryObjectData := model.ToBinaryObjectData(dest, id, name, wsPushca.Client,
+		util.SplitToChunks(data, chunkSize), wsPushca.PusherId, withAcknowledge)
+
+	wsPushca.SendMessage2(dest, binaryObjectData.BuildBinaryManifest())
+
+	if manifestOnly {
+		return
+	}
+
+	for _, d := range binaryObjectData.Datagrams {
+		errWs := wsPushca.Connection.WriteMessage(websocket.BinaryMessage, d.Data)
+		if errWs != nil {
+			log.Printf("Cannot send bimary data: client %s, error %s", wsPushca.GetInfo(), errWs)
+		}
+	}
+}
+
+func (wsPushca *PushcaWebSocket) SendBinary3(dest model.PClient, data []byte, withAcknowledge bool) {
+	wsPushca.SendBinary7(dest, data, "", uuid.Nil, util.DefaultChunkSize, withAcknowledge, false)
+}
+
+func (wsPushca *PushcaWebSocket) SendBinary2(dest model.PClient, data []byte) {
+	wsPushca.SendBinary3(dest, data, false)
 }

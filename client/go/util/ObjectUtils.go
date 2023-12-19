@@ -1,10 +1,16 @@
 package util
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"github.com/google/uuid"
+	"io"
+	"os"
 )
+
+const DefaultChunkSize = 1024 * 1024
 
 func CalculateStringHashCode(s string) int32 {
 	var h int32
@@ -78,4 +84,64 @@ func ToDatagramPrefix(id uuid.UUID, order int32, clientHashCode int32, withAckno
 		), IntToBytes(order)...,
 	)
 	return prefix
+}
+
+func SplitToChunks(source []byte, chunkSize int) [][]byte {
+	if source == nil {
+		return nil
+	}
+	if len(source) <= chunkSize {
+		return [][]byte{source}
+	}
+
+	n := len(source) / chunkSize
+	tail := len(source) % chunkSize
+	result := make([][]byte, 0)
+
+	for i := 0; i < n; i++ {
+		start := i * chunkSize
+		end := (i + 1) * chunkSize
+		result = append(result, source[start:end])
+	}
+
+	if tail > 0 {
+		result = append(result, source[len(source)-tail:])
+	}
+
+	return result
+}
+
+func CalculateSHA256(content []byte) string {
+	hashSum := sha256.Sum256(content)
+	return base64.StdEncoding.EncodeToString(hashSum[:])
+}
+
+func ReadFileToByteArray(filePath string) ([]byte, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			fmt.Printf("cannot close file: error %v\n", err)
+		}
+	}(file)
+
+	bufferSize := DefaultChunkSize
+	buffer := make([]byte, bufferSize)
+
+	// Read and process the file in chunks
+	var data []byte
+	for {
+		n, err := file.Read(buffer)
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		if n == 0 {
+			break
+		}
+		data = append(data, buffer[:n]...)
+	}
+	return data, nil
 }

@@ -1,8 +1,15 @@
 package model
 
 import (
+	"encoding/json"
+	"github.com/google/uuid"
+	"log"
 	"sort"
 	"sync"
+)
+
+const (
+	BinaryManifestPrefix = "BINARY_MANIFEST@@"
 )
 
 type BinaryObjectData struct {
@@ -46,6 +53,33 @@ func (binaryObjectData *BinaryObjectData) IsCompleted(mutex *sync.Mutex) bool {
 		}
 	}
 	return true
+}
+
+func (binaryObjectData *BinaryObjectData) BuildBinaryManifest() string {
+	manifestJSON, err := json.Marshal(binaryObjectData)
+	if err != nil {
+		log.Printf("Unable to marshal binary object data due to %s\n", err)
+	}
+	manifest := BinaryManifestPrefix + string(manifestJSON)
+	return manifest
+}
+
+func ToBinaryObjectData(dest PClient, id uuid.UUID, name string,
+	sender PClient, chunks [][]byte, pusherInstanceId string, withAcknowledge bool) BinaryObjectData {
+	var datagrams []Datagram
+
+	for i, chunk := range chunks {
+		d := ToDatagram(id, int32(i), chunk, dest, withAcknowledge)
+		datagrams = append(datagrams, d)
+	}
+
+	return BinaryObjectData{
+		ID:               id.String(),
+		Name:             name,
+		Datagrams:        datagrams,
+		Sender:           sender,
+		PusherInstanceId: pusherInstanceId,
+	}
 }
 
 func (binaryObjectData *BinaryObjectData) ToBinary(mutex *sync.Mutex) Binary {

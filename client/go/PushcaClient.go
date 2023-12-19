@@ -13,6 +13,7 @@ import (
 	"pushca-client/core"
 	"pushca-client/model"
 	"pushca-client/util"
+	"strings"
 	"time"
 )
 
@@ -55,12 +56,13 @@ func main() {
 		if binary.ID == "" {
 			log.Fatalf("Binary ID is empty")
 		}
-		if binary.Name != "vlc-3.0.11-win64.exe" {
+		expectedSubstring := "vlc-3.0.11-win64"
+		if !strings.Contains(binary.Name, expectedSubstring) {
 			log.Fatalf("Wrong binary name")
 		}
 
 		// Create a file
-		file, err := os.Create("transferred_" + binary.Name)
+		file, err := os.Create(binary.Name)
 		if err != nil {
 			log.Fatalf("Cannot create file: error %v", err)
 		}
@@ -78,6 +80,13 @@ func main() {
 		}
 
 		fmt.Println("Binary data was received and stored")
+	}
+
+	javaClient := model.PClient{
+		WorkSpaceId:   "workSpaceMain",
+		AccountId:     "clientJava0@test.ee",
+		DeviceId:      "jmeter",
+		ApplicationId: "PUSHCA_CLIENT",
 	}
 
 	httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
@@ -149,12 +158,12 @@ func main() {
 	errWsOpen = pushcaWebSocket1.OpenConnection(done)
 	if errWsOpen != nil {
 		log.Fatalf("cannot open web socket connection: client %s, error %s",
-			errWsOpen, pushcaWebSocket1.GetInfo())
+			pushcaWebSocket1.GetInfo(), errWsOpen)
 	}
 	defer func(ws core.WebSocketApi) {
 		err := ws.CloseConnection()
 		if err != nil {
-			log.Fatal("Ws connection was closed with error:", err)
+			log.Fatalf("Ws connection was closed with error: %s", err)
 		}
 	}(pushcaWebSocket1)
 
@@ -175,6 +184,14 @@ func main() {
 
 	bMessage := base64.StdEncoding.EncodeToString([]byte("Binary message test"))
 	pushcaWebSocket0.SendBinaryMessage2(pushcaWebSocket1.Client, []byte(bMessage))
+
+	filePath := "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe"
+	data, errFile := util.ReadFileToByteArray(filePath)
+	if errFile != nil {
+		log.Fatalf("Cannot read data from file: error %s", errFile)
+	}
+	pushcaWebSocket1.SendBinary7(javaClient, data, "vlc-3.0.11-win64-copy.exe", uuid.Nil,
+		util.DefaultChunkSize, true, true)
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
