@@ -189,7 +189,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       }
       if (datagram.size != datagram.data.length) {
         throw new IllegalArgumentException(
-            MessageFormat.format("Md5 validation was not passed: binaryId={0}, order={1}",
+            MessageFormat.format("Size validation was not passed: binaryId={0}, order={1}",
                 binaryId.toString(),
                 String.valueOf(order))
         );
@@ -275,7 +275,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendMessageWithAcknowledge(id, dest, false, message);
   }
 
-  public void BroadcastMessage(String id, ClientFilter dest, boolean preserveOrder, String message) {
+  public void BroadcastMessage(String id, ClientFilter dest, boolean preserveOrder,
+      String message) {
     if (!webSocket.isOpen()) {
       throw new IllegalStateException("Web socket connection is broken");
     }

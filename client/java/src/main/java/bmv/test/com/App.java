@@ -1,7 +1,7 @@
 package bmv.test.com;
 
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
-import static bmv.org.pushca.client.utils.BmvObjectUtils.calculateStringHashCode;
+import static bmv.org.pushca.client.utils.BmvObjectUtils.delay;
 
 import bmv.org.pushca.client.PushcaWebSocket;
 import bmv.org.pushca.client.PushcaWebSocketBuilder;
@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.Base64;
@@ -38,25 +39,24 @@ public class App {
 
     PClient client0 = new PClient(
         "workSpaceMain",
-        "client0@test.ee",
-        UUID.randomUUID().toString(),
+        "clientJava0@test.ee",
+        "jmeter",
         "PUSHCA_CLIENT"
     );
 
     PClient client1 = new PClient(
         "workSpaceMain",
-        "client1@test.ee",
+        "clientJava1@test.ee",
         UUID.randomUUID().toString(),
         "PUSHCA_CLIENT"
     );
 
     PClient client2 = new PClient(
         "workSpaceMain",
-        "client2@test.ee",
+        "clientGo10@test.ee",
         "web-browser",
         "PUSHCA_CLIENT"
     );
-    System.out.println(calculateStringHashCode("workSpaceMain@@client2@test.ee@@web-browser@@PUSHCA_CLIENT"));
 
     SslContextProvider sslContextProvider = new SslContextProvider(
         "C:\\mbugai\\work\\mlx\\pushca\\docker\\conf\\pushca-rc-tls.p12",
@@ -65,9 +65,9 @@ public class App {
 
     String pushcaApiUrl =
         //    "http://localhost:8050";
-        "https://app-rc.multiloginapp.net/pushca-with-tls-support";
+    //    "https://app-rc.multiloginapp.net/pushca-with-tls-support";
     //    "http://push-app-rc.multiloginapp.net:8050";
-    //"https://app-rc.multiloginapp.net/pushca";
+    "https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
@@ -86,15 +86,11 @@ public class App {
       if (binary.id == null) {
         throw new IllegalStateException("Binary id is empty");
       }
-      if (!UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)).toString()
-          .equals(binary.id)) {
-        throw new IllegalStateException("Wrong binary id");
-      }
-      if (!"vlc-3.0.11-win64.exe".equals(binary.name)) {
+      if (!binary.name.contains("vlc-3.0.11-win64")) {
         throw new IllegalStateException("Wrong binary name");
       }
       try {
-        FileUtils.writeByteArrayToFile(new File("transferred_" + binary.name), binary.data);
+        FileUtils.writeByteArrayToFile(new File(binary.name), binary.data);
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
@@ -109,13 +105,13 @@ public class App {
         .withMessageConsumer(messageLogger)
         .withBinaryManifestConsumer(data -> System.out.println(toJson(data)))
         .withDataConsumer(dataConsumer)
-        .withSslContext(sslContextProvider.getSslContext())
+        //.withSslContext(sslContextProvider.getSslContext())
         .build();
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1).withMessageConsumer(messageConsumer)
             .withBinaryMessageConsumer(binaryMessageConsumer)
             .withAcknowledgeConsumer(acknowledgeConsumer)
-            .withSslContext(sslContextProvider.getSslContext())
+            //.withSslContext(sslContextProvider.getSslContext())
             .build()) {
       delay(Duration.ofMillis(500));
       lastMessage.set(null);
@@ -138,7 +134,7 @@ public class App {
       //---------------------message with acknowledge-----------------------------------------------
       pushcaWebSocket0.sendMessageWithAcknowledge(messageId, client1, testMessage1);
       while (lastAcknowledge.get() == null) {
-        delay(Duration.ofMillis(100));
+        delay(Duration.ofMillis(200));
       }
       if (!messageId.equals(lastAcknowledge.get())) {
         throw new IllegalStateException("Acknowledge was not received");
@@ -151,14 +147,15 @@ public class App {
       //-----------------------------binary with acknowledge----------------------------------------
       File file = new File(
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
-      /*byte[] data = Files.readAllBytes(file.toPath());
-      pushcaWebSocket1.sendBinary(client0,
+      //file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
+      byte[] data = Files.readAllBytes(file.toPath());
+      pushcaWebSocket1.sendBinary(client2,
           data,
-          "vlc-3.0.11-win64.exe",
+          "vlc-3.0.11-win64-copy.exe",
           UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)),
           PushcaWebSocket.DEFAULT_CHUNK_SIZE,
           true, false
-      );*/
+      );
       //============================================================================================
       //-----------------------------binary message-------------------------------------------------
       pushcaWebSocket0.sendBinaryMessage(client1,
@@ -167,17 +164,7 @@ public class App {
       delay(Duration.ofHours(1));
     }
   }
-
-  private static void delay(Duration t) {
-    try {
-      Thread.sleep(t.toMillis());
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
-  }
-
-
-  private static String readLine(String message, Object... args) throws IOException {
+ private static String readLine(String message, Object... args) throws IOException {
     if (System.console() != null) {
       return System.console().readLine(message, args);
     }

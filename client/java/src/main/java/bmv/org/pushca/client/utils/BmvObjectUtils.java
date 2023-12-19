@@ -190,4 +190,12 @@ public final class BmvObjectUtils {
     }
     return random.nextInt(bound);
   }
+
+  public static void delay(Duration t) {
+    try {
+      Thread.sleep(t.toMillis());
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+  }
 }
