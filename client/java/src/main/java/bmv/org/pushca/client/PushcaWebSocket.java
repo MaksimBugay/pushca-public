@@ -145,8 +145,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
             onCloseListener, sslContext);
         scheduler = createScheduler(
             this::keepAliveJob,
-            Duration.ofMillis(connectTimeoutMs),
-            Duration.ofMillis(2L * connectTimeoutMs)
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(2)
         );
         this.webSocket.connect();
         LOGGER.debug("Connection attributes: baseUrl {}, token {}", baseWsUrl, tokenHolder);

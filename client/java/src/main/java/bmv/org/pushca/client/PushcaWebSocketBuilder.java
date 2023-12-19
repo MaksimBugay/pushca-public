@@ -12,7 +12,7 @@ public class PushcaWebSocketBuilder {
   private final String pushcaApiUrl;
   private String pusherId;
   private final PClient client;
-  private int connectTimeoutMs = 1000;
+  private int connectTimeoutMs = 0;
   private BiConsumer<WebSocketApi, String> messageConsumer;
   private BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer;
   private BiConsumer<WebSocketApi, Binary> dataConsumer;
