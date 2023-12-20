@@ -141,28 +141,30 @@ public class App {
       }
       System.out.println("Message was delivered with acknowledge");
       //============================================================================================
+      //-----------------------------binary message-------------------------------------------------
+      pushcaWebSocket0.sendBinaryMessage(client1,
+          Base64.getEncoder().encode("Binary message test".getBytes(StandardCharsets.UTF_8)), null,
+          true);
+      //============================================================================================
       //-----------------------------binary with acknowledge----------------------------------------
       File file = new File(
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
-      file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
+      //file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
       byte[] data = Files.readAllBytes(file.toPath());
-      pushcaWebSocket1.sendBinary(client2,
+      pushcaWebSocket1.sendBinary(client0,
           data,
-          //"vlc-3.0.11-win64-copy.exe",
-          "Reproducing_multiple_java_headless-copy.mov",
+          "vlc-3.0.11-win64-copy.exe",
+          //"Reproducing_multiple_java_headless-copy.mov",
           UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)),
           PushcaWebSocket.DEFAULT_CHUNK_SIZE,
           true, false
       );
       //============================================================================================
-      //-----------------------------binary message-------------------------------------------------
-      pushcaWebSocket0.sendBinaryMessage(client1,
-          Base64.getEncoder().encode("Binary message test".getBytes(StandardCharsets.UTF_8)));
-      //============================================================================================
       delay(Duration.ofHours(1));
     }
   }
- private static String readLine(String message, Object... args) throws IOException {
+
+  private static String readLine(String message, Object... args) throws IOException {
     if (System.console() != null) {
       return System.console().readLine(message, args);
     }

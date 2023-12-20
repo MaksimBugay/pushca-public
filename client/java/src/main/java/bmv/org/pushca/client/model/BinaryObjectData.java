@@ -12,6 +12,8 @@ public class BinaryObjectData {
   private List<Datagram> datagrams;
   public PClient sender;
   public String pusherInstanceId;
+  public boolean redOnly;
+  public long created = System.currentTimeMillis();
 
   public BinaryObjectData() {
   }
