@@ -12,10 +12,12 @@ import (
 	"pushca-client/core"
 	"pushca-client/model"
 	"pushca-client/util"
+	"sync"
 	"time"
 )
 
 func main() {
+	done := make(chan struct{})
 	deviceId, errRandomUuid := uuid.NewRandom()
 	if errRandomUuid != nil {
 		log.Fatalf("cannot generate device Id due to %s", errRandomUuid)
@@ -99,6 +101,7 @@ func main() {
 		BinaryManifestConsumer: binaryManifestConsumer,
 		BinaryMessageConsumer:  binaryMessageConsumer,
 		Binaries:               make(map[uuid.UUID]*model.BinaryObjectData),
+		AcknowledgeCallbacks:   new(sync.Map),
 	}
 	log.Printf("Pusher instance id: %v", pushcaWebSocket0.PusherId)
 	log.Printf("Token: %v", pushcaWebSocket0.Token)
@@ -127,6 +130,7 @@ func main() {
 		BinaryMessageConsumer:  binaryMessageConsumer,
 		DataConsumer:           dataConsumer,
 		Binaries:               make(map[uuid.UUID]*model.BinaryObjectData),
+		AcknowledgeCallbacks:   new(sync.Map),
 	}
 	//================================================================================
 	flag.Parse()
@@ -134,7 +138,6 @@ func main() {
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
-	done := make(chan struct{})
 
 	errWsOpen := pushcaWebSocket0.OpenConnection(done)
 	if errWsOpen != nil {
@@ -155,6 +158,8 @@ func main() {
 	}(pushcaWebSocket1)
 
 	pushcaWebSocket0.SendMessageWithAcknowledge4("1", pushcaWebSocket1.Client, false, "test message")
+	result := pushcaWebSocket0.WaitForAcknowledge("1")
+	log.Print(result)
 	clientFilter := model.ClientFilter{
 		WorkSpaceID: "workSpaceMain",
 	}
@@ -192,7 +197,7 @@ func main() {
 			log.Println("interrupt")
 			select {
 			case <-done:
-			case <-time.After(time.Second):
+			case <-time.After(5 * time.Second):
 			}
 			return
 		}

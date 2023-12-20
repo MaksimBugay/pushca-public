@@ -24,6 +24,7 @@ const (
 	BinaryManifestPrefix     = BinaryManifestBarePrefix + "@@"
 	MessagePartsDelimiter    = "@@"
 	MaxInteger               = 2147483647
+	AcknowledgeTimeoutSec    = 10 * time.Second
 )
 
 type PushcaWebSocket struct {
@@ -39,7 +40,9 @@ type PushcaWebSocket struct {
 	DataConsumer                         func(ws WebSocketApi, data model.Binary)
 	UnknownDatagramConsumer              func(ws WebSocketApi, data model.UnknownDatagram)
 	Binaries                             map[uuid.UUID]*model.BinaryObjectData
+	AcknowledgeCallbacks                 *sync.Map
 	mutex                                sync.Mutex
+	done                                 chan struct{}
 }
 
 func (wsPushca *PushcaWebSocket) GetInfo() string {
@@ -54,6 +57,7 @@ func (wsPushca *PushcaWebSocket) GetFullInfo() string {
 	return string(jsonStr)
 }
 func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
+	wsPushca.done = done
 	openConnectionRequest := &modelrequest.OpenConnectionRequest{
 		Client: wsPushca.Client,
 	}
@@ -332,11 +336,14 @@ func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 	}
 	message := inMessage
 	if strings.HasPrefix(inMessage, AcknowledgePrefix) {
+		id := strings.Replace(inMessage, AcknowledgePrefix, "", 1)
+		if callback, ok := wsPushca.AcknowledgeCallbacks.Load(id); ok {
+			if tmp, ok := callback.(*model.AcknowledgeCallback); ok {
+				tmp.Received <- true
+			}
+		}
 		if wsPushca.AcknowledgeConsumer != nil {
-			wsPushca.AcknowledgeConsumer(
-				wsPushca,
-				strings.Replace(inMessage, AcknowledgePrefix, "", 1),
-			)
+			wsPushca.AcknowledgeConsumer(wsPushca, id)
 		}
 		return
 	}
@@ -474,4 +481,26 @@ func (wsPushca *PushcaWebSocket) SendBinary3(dest model.PClient, data []byte, wi
 
 func (wsPushca *PushcaWebSocket) SendBinary2(dest model.PClient, data []byte) {
 	wsPushca.SendBinary3(dest, data, false)
+}
+
+func (wsPushca *PushcaWebSocket) registerAcknowledgeCallback(id string) *model.AcknowledgeCallback {
+	ackCallback := &model.AcknowledgeCallback{
+		Received: make(chan bool),
+		Done:     wsPushca.done,
+	}
+	wsPushca.AcknowledgeCallbacks.Store(id, ackCallback)
+	return ackCallback
+}
+
+func (wsPushca *PushcaWebSocket) WaitForAcknowledge(id string) bool {
+	ackCallback := wsPushca.registerAcknowledgeCallback(id)
+	select {
+	case <-ackCallback.Done:
+		return false
+	case result := <-ackCallback.Received:
+		return result
+	case <-time.After(AcknowledgeTimeoutSec):
+		log.Printf("Acknowledge timed out: id %s\n", id)
+		return false
+	}
 }
