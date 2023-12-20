@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"pushca-client/util"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -37,6 +37,7 @@ type PushcaWebSocket struct {
 	BinaryManifestConsumer               func(ws WebSocketApi, message model.BinaryObjectData)
 	BinaryMessageConsumer                func(ws WebSocketApi, message []byte)
 	DataConsumer                         func(ws WebSocketApi, data model.Binary)
+	UnknownDatagramConsumer              func(ws WebSocketApi, data model.UnknownDatagram)
 	Binaries                             map[uuid.UUID]*model.BinaryObjectData
 	mutex                                sync.Mutex
 }
@@ -104,18 +105,35 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 	}
 	wsPushca.Connection = conn
 	go func() {
-		defer close(done)
 		for {
-			mType, message, err := conn.ReadMessage()
-			if err != nil {
-				log.Println("read:", err)
+			select {
+			case <-done:
 				return
+			default:
+				mType, message, err := conn.ReadMessage()
+				if err != nil {
+					log.Println("read:", err)
+					return
+				}
+				if mType == websocket.TextMessage {
+					wsPushca.processMessage(string(message))
+				}
+				if mType == websocket.BinaryMessage {
+					wsPushca.processBinary(message)
+				}
 			}
-			if mType == websocket.TextMessage {
-				wsPushca.processMessage(string(message))
-			}
-			if mType == websocket.BinaryMessage {
-				wsPushca.processBinary(message)
+		}
+	}()
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				wsPushca.PingServer()
+				wsPushca.removeExpiredManifests()
 			}
 		}
 	}()
@@ -130,13 +148,18 @@ func closeHttpResponse(response *http.Response) {
 	}
 }
 
-func (wsPushca *PushcaWebSocket) CloseConnection() error {
+func (wsPushca *PushcaWebSocket) CloseConnection() {
+	err0 := wsPushca.Connection.WriteMessage(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	if err0 != nil {
+		log.Printf("WS cannot be closed normally due to %s", err0)
+	}
+	time.Sleep(1 * time.Second)
 	err := wsPushca.Connection.Close()
 	if err != nil {
 		log.Printf("Ws connection was closed with error: %s", err)
-		return err
 	}
-	return nil
 }
 func (wsPushca *PushcaWebSocket) PingServer() {
 	command := model.CommandWithMetaData{
@@ -177,8 +200,7 @@ func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge3(id string, dest mod
 }
 
 func (wsPushca *PushcaWebSocket) SendAcknowledge2(binaryID uuid.UUID, order int32) {
-	id := fmt.Sprintf("%s-%d", binaryID, order)
-	wsPushca.SendAcknowledge(id)
+	wsPushca.SendAcknowledge(util.BuildAcknowledgeId(binaryID.String(), order))
 }
 func (wsPushca *PushcaWebSocket) SendAcknowledge(id string) {
 	metaData := make(map[string]interface{})
@@ -262,12 +284,23 @@ func (wsPushca *PushcaWebSocket) processBinary(inBinary []byte) {
 		if wsPushca.BinaryMessageConsumer != nil {
 			wsPushca.BinaryMessageConsumer(wsPushca, inBinary[25:])
 		}
+		if withAcknowledge {
+			wsPushca.SendAcknowledge2(binaryID, order)
+		}
 		return
 	}
 	//-----------------------------------------------------------------------------
 	binaryData := wsPushca.Binaries[binaryID]
 	if binaryData == nil {
-		// If the binary ID doesn't exist, throw an error
+		if wsPushca.UnknownDatagramConsumer != nil {
+			wsPushca.UnknownDatagramConsumer(wsPushca, model.UnknownDatagram{
+				BinaryId: binaryID,
+				Prefix:   inBinary[0:25],
+				Order:    order,
+				Data:     inBinary[25:],
+			})
+			return
+		}
 		log.Printf("Unknown binary with id = %s", binaryID)
 		return
 	}
@@ -317,7 +350,7 @@ func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 		return
 	}
 	if strings.Contains(inMessage, MessagePartsDelimiter) {
-		parts := strings.SplitN(inMessage, MessagePartsDelimiter, 2)
+		parts := strings.Split(inMessage, MessagePartsDelimiter)
 		wsPushca.SendAcknowledge(parts[0])
 		if len(parts) == 3 && BinaryManifestBarePrefix == parts[1] {
 			wsPushca.processBinaryManifest(parts[2])
@@ -346,6 +379,23 @@ func (wsPushca *PushcaWebSocket) processBinaryManifest(manifestJSON string) {
 	}
 }
 
+func (wsPushca *PushcaWebSocket) removeExpiredManifests() {
+	toRemove := make([]uuid.UUID, 0)
+	now := time.Now().UnixMilli()
+
+	// Identify keys eligible for removal
+	for key, value := range wsPushca.Binaries {
+		if now-value.Created > (30 * time.Minute).Milliseconds() { // Remove entries created over 30 minutes ago
+			toRemove = append(toRemove, key)
+		}
+	}
+
+	// Remove identified keys
+	for _, key := range toRemove {
+		delete(wsPushca.Binaries, key)
+	}
+}
+
 func (wsPushca *PushcaWebSocket) SendBinaryMessage4(dest model.PClient, message []byte,
 	pId uuid.UUID, withAcknowledge bool) {
 	id := pId
@@ -367,7 +417,7 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage2(dest model.PClient, message 
 }
 
 func (wsPushca *PushcaWebSocket) SendBinary7(dest model.PClient, data []byte, name string, pId uuid.UUID, chunkSize int,
-	withAcknowledge bool, manifestOnly bool) {
+	withAcknowledge bool, manifestOnly bool) model.BinaryObjectData {
 	id := pId
 	if id == uuid.Nil {
 		id = uuid.New()
@@ -383,10 +433,34 @@ func (wsPushca *PushcaWebSocket) SendBinary7(dest model.PClient, data []byte, na
 	}
 
 	if manifestOnly {
-		return
+		return binaryObjectData
 	}
+	wsPushca.SendBinary(binaryObjectData, withAcknowledge, nil)
+	return binaryObjectData
+}
 
-	for _, d := range binaryObjectData.Datagrams {
+func (wsPushca *PushcaWebSocket) SendBinary(binaryObjectData model.BinaryObjectData,
+	withAcknowledge bool, requestedIds []string) {
+	var datagrams []model.Datagram
+
+	filter := func(dgm model.Datagram) bool {
+		if requestedIds == nil {
+			return true
+		}
+		ackID := util.BuildAcknowledgeId(binaryObjectData.ID, dgm.Order)
+		for _, reqID := range requestedIds {
+			if reqID == ackID {
+				return true
+			}
+		}
+		return false
+	}
+	for _, dgm := range binaryObjectData.Datagrams {
+		if filter(dgm) {
+			datagrams = append(datagrams, dgm)
+		}
+	}
+	for _, d := range datagrams {
 		errWs := wsPushca.Connection.WriteMessage(websocket.BinaryMessage, d.Data)
 		if errWs != nil {
 			log.Printf("Cannot send bimary data: client %s, error %s", wsPushca.GetInfo(), errWs)

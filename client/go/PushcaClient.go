@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"log"
 	"os"
 	"os/signal"
@@ -143,10 +142,7 @@ func main() {
 			errWsOpen, pushcaWebSocket0.GetInfo())
 	}
 	defer func(ws core.WebSocketApi) {
-		err := ws.CloseConnection()
-		if err != nil {
-			log.Fatal("Ws connection was closed with error:", err)
-		}
+		ws.CloseConnection()
 	}(pushcaWebSocket0)
 
 	errWsOpen = pushcaWebSocket1.OpenConnection(done)
@@ -155,10 +151,7 @@ func main() {
 			pushcaWebSocket1.GetInfo(), errWsOpen)
 	}
 	defer func(ws core.WebSocketApi) {
-		err := ws.CloseConnection()
-		if err != nil {
-			log.Fatalf("Ws connection was closed with error: %s", err)
-		}
+		ws.CloseConnection()
 	}(pushcaWebSocket1)
 
 	pushcaWebSocket0.SendMessageWithAcknowledge4("1", pushcaWebSocket1.Client, false, "test message")
@@ -189,31 +182,14 @@ func main() {
 	pushcaWebSocket1.SendBinary7(pushcaWebSocket0.Client, data,
 		"vlc-3.0.11-win64-copy.exe",
 		//"Reproducing_multiple_java_headless-copy.mov",
-		uuid.Nil, util.DefaultChunkSize, true, false)
-
-	ticker := time.NewTicker(time.Second * 15)
-	defer ticker.Stop()
-
+		uuid.Nil, util.DefaultChunkSize, true, true)
+	defer close(done)
 	for {
 		select {
 		case <-done:
 			return
-		case <-ticker.C:
-			pushcaWebSocket0.PingServer()
-			pushcaWebSocket1.PingServer()
 		case <-interrupt:
 			log.Println("interrupt")
-
-			// Cleanly close the connection by sending a close message and then
-			// waiting (with timeout) for the server to close the connection.
-			err0 := pushcaWebSocket0.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			if err0 != nil {
-				log.Println("WS was closed with error:", err0)
-			}
-			err1 := pushcaWebSocket1.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			if err1 != nil {
-				log.Println("WS was closed with error:", err1)
-			}
 			select {
 			case <-done:
 			case <-time.After(time.Second):

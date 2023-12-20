@@ -145,3 +145,7 @@ func ReadFileToByteArray(filePath string) ([]byte, error) {
 	}
 	return data, nil
 }
+
+func BuildAcknowledgeId(binaryID string, order int32) string {
+	return fmt.Sprintf("%s-%d", binaryID, order)
+}

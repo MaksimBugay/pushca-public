@@ -13,6 +13,13 @@ type Datagram struct {
 	Data   []byte `json:"-"`
 }
 
+type UnknownDatagram struct {
+	BinaryId uuid.UUID `json:"binaryId"`
+	Prefix   []byte    `json:"prefix"`
+	Order    int32     `json:"order"`
+	Data     []byte    `json:"-"`
+}
+
 func ToDatagram(binaryID uuid.UUID, order int32, chunk []byte, dest PClient,
 	withAcknowledge bool) Datagram {
 	prefix := util.ToDatagramPrefix(binaryID, order, dest.HashCode(), withAcknowledge)
