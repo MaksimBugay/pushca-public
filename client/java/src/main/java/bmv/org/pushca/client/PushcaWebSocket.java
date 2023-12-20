@@ -432,18 +432,18 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         requestedIds == null ? dgm -> Boolean.TRUE : dgm -> requestedIds.contains(
             buildAcknowledgeId(binaryObjectData.id, dgm.order)
         );
+    List<Datagram> datagrams = binaryObjectData.getDatagrams().stream()
+        .filter(filter)
+        .collect(Collectors.toList());
     if (withAcknowledge) {
-      for (Datagram datagram : binaryObjectData.getDatagrams().stream().filter(filter)
-          .collect(Collectors.toList())) {
+      for (Datagram datagram : datagrams) {
         executeWithRepeatOnFailure(
             buildAcknowledgeId(binaryObjectData.id, datagram.order),
             () -> webSocket.send(datagram.data)
         );
       }
     } else {
-      binaryObjectData.getDatagrams()
-          .stream().filter(filter)
-          .forEach(datagram -> webSocket.send(datagram.data));
+      datagrams.forEach(datagram -> webSocket.send(datagram.data));
     }
   }
 
