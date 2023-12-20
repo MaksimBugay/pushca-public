@@ -21,8 +21,8 @@ public class PushcaWebSocketBuilder {
   private Consumer<String> acknowledgeConsumer;
   private Consumer<BinaryObjectData> binaryManifestConsumer;
   private BiConsumer<Integer, String> onCloseListener;
-
   private SSLContext sslContext;
+  private WsConnectionFactory wsConnectionFactory = new WsConnectionWithJavaWebSocketFactory();
 
   public PushcaWebSocketBuilder(String pushcaApiUrl, PClient client) {
     this.pushcaApiUrl = pushcaApiUrl;
@@ -85,9 +85,14 @@ public class PushcaWebSocketBuilder {
     return this;
   }
 
+  public PushcaWebSocketBuilder withWsConnectionFactory(WsConnectionFactory wsConnectionFactory) {
+    this.wsConnectionFactory = wsConnectionFactory;
+    return this;
+  }
+
   public PushcaWebSocket build() {
     return new PushcaWebSocket(pushcaApiUrl, pusherId, client, connectTimeoutMs, messageConsumer,
         binaryMessageConsumer, dataConsumer, unknownDatagramConsumer, acknowledgeConsumer,
-        binaryManifestConsumer, onCloseListener, sslContext);
+        binaryManifestConsumer, onCloseListener, sslContext, wsConnectionFactory);
   }
 }

@@ -1,16 +1,8 @@
 package bmv.org.pushca.client;
 
 import bmv.org.pushca.client.model.WebSocketState;
-import java.nio.ByteBuffer;
-import java.util.function.BiConsumer;
-import javax.net.ssl.SSLContext;
-import org.java_websocket.handshake.ServerHandshake;
 
 public interface WebSocketApi {
-
-  void connect();
-
-  void send(ByteBuffer bytes);
 
   void send(byte[] data);
 
@@ -20,27 +12,5 @@ public interface WebSocketApi {
 
   boolean isOpen();
 
-  boolean isClosing();
-
   WebSocketState getWebSocketState();
-
-  void onOpen(ServerHandshake handshakeData);
-
-  void onClose(int code, String reason, boolean remote);
-
-  void onMessage(String message);
-
-  void onMessage(ByteBuffer data);
-
-  void onError(Exception ex);
-
-  int getConnectTimeoutMs();
-
-  BiConsumer<WebSocketApi, String> getMessageConsumer();
-
-  BiConsumer<WebSocketApi, ByteBuffer> getDataConsumer();
-
-  BiConsumer<Integer, String> getOnCloseListener();
-
-  SSLContext getSslContext();
 }

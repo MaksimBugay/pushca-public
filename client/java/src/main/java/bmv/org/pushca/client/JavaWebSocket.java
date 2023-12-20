@@ -16,27 +16,22 @@ import org.slf4j.LoggerFactory;
 public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JavaWebSocket.class);
-  private final int connectTimeoutMs;
   private final BiConsumer<WebSocketApi, String> messageConsumer;
-  private final BiConsumer<WebSocketApi, ByteBuffer> dataConsumer;
+  private final BiConsumer<WebSocketApi, byte[]> dataConsumer;
   private final BiConsumer<Integer, String> onCloseListener;
-
-  private final SSLContext sslContext;
 
   public JavaWebSocket(URI wsUrl, int connectTimeoutMs,
       BiConsumer<WebSocketApi, String> messageConsumer,
-      BiConsumer<WebSocketApi, ByteBuffer> dataConsumer,
+      BiConsumer<WebSocketApi, byte[]> dataConsumer,
       BiConsumer<Integer, String> onCloseListener,
       SSLContext sslContext) {
     super(wsUrl, new Draft_6455(), new HashMap<>(), connectTimeoutMs);
     if (sslContext != null) {
       this.setSocketFactory(sslContext.getSocketFactory());
     }
-    this.connectTimeoutMs = connectTimeoutMs;
     this.messageConsumer = messageConsumer;
     this.dataConsumer = dataConsumer;
     this.onCloseListener = onCloseListener;
-    this.sslContext = sslContext;
   }
 
   @Override
@@ -56,8 +51,12 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
 
   @Override
   public void onMessage(ByteBuffer data) {
-    Optional.ofNullable(dataConsumer).ifPresent(dc -> dc.accept(this, data));
-    data.clear();
+    try {
+      byte[] binary = data.array();
+      Optional.ofNullable(dataConsumer).ifPresent(dc -> dc.accept(this, binary));
+    } finally {
+      data.clear();
+    }
   }
 
   @Override
@@ -68,25 +67,5 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
   @Override
   public void onError(Exception ex) {
     LOGGER.error("Unexpected error", ex);
-  }
-
-  public int getConnectTimeoutMs() {
-    return connectTimeoutMs;
-  }
-
-  public BiConsumer<WebSocketApi, String> getMessageConsumer() {
-    return messageConsumer;
-  }
-
-  public BiConsumer<WebSocketApi, ByteBuffer> getDataConsumer() {
-    return dataConsumer;
-  }
-
-  public BiConsumer<Integer, String> getOnCloseListener() {
-    return onCloseListener;
-  }
-
-  public SSLContext getSslContext() {
-    return sslContext;
   }
 }

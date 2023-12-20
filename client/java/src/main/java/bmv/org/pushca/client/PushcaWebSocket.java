@@ -36,7 +36,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
 import java.time.Duration;
@@ -103,6 +102,13 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   private final Map<String, BinaryObjectData> binaries = new ConcurrentHashMap<>();
 
   private final Map<String, CompletableFuture<String>> waitingHall = new ConcurrentHashMap<>();
+  private final BiConsumer<WebSocketApi, String> wsMessageConsumer;
+  private final BiConsumer<WebSocketApi, byte[]> wsDataConsumer;
+  private final BiConsumer<Integer, String> wsOnCloseListener;
+  private final SSLContext wsSslContext;
+  private final int wsConnectTimeoutMs;
+
+  private final WsConnectionFactory wsConnectionFactory;
 
   private final ScheduledExecutorService acknowledgeTimeoutScheduler =
       Executors.newScheduledThreadPool(10);
@@ -119,8 +125,19 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       Consumer<String> acknowledgeConsumer,
       Consumer<BinaryObjectData> binaryManifestConsumer,
       BiConsumer<Integer, String> onCloseListener,
-      SSLContext sslContext) {
+      SSLContext sslContext,
+      WsConnectionFactory wsConnectionFactory) {
+    this.wsConnectionFactory = wsConnectionFactory;
     this.client = client;
+    this.wsMessageConsumer =
+        (ws, message) -> processMessage(ws, message, messageConsumer, acknowledgeConsumer,
+            binaryManifestConsumer);
+    this.wsDataConsumer =
+        (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer, unknownDatagramConsumer,
+            binaryMessageConsumer);
+    this.wsOnCloseListener = onCloseListener;
+    this.wsSslContext = sslContext;
+    this.wsConnectTimeoutMs = connectTimeoutMs;
     OpenConnectionResponse openConnectionResponse = null;
     try {
       openConnectionResponse = openConnection(pushcaApiUrl, pusherId, client);
@@ -144,18 +161,17 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       if (wsUrl != null) {
         this.baseWsUrl = wsUrl.toString().substring(0, wsUrl.toString().lastIndexOf('/') + 1);
         this.tokenHolder.set(wsUrl.toString().substring(wsUrl.toString().lastIndexOf('/') + 1));
-        this.webSocket = new JavaWebSocket(wsUrl, connectTimeoutMs,
-            (ws, message) -> processMessage(ws, message, messageConsumer, acknowledgeConsumer,
-                binaryManifestConsumer),
-            (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer, unknownDatagramConsumer,
-                binaryMessageConsumer),
-            onCloseListener, sslContext);
+        this.webSocket = this.wsConnectionFactory.createConnection(wsUrl,
+            this.wsConnectTimeoutMs,
+            this.wsMessageConsumer,
+            this.wsDataConsumer,
+            this.wsOnCloseListener,
+            this.wsSslContext);
         scheduler = createScheduler(
             this::keepAliveJob,
             Duration.ofSeconds(1),
             Duration.ofSeconds(2)
         );
-        this.webSocket.connect();
         LOGGER.debug("Connection attributes: baseUrl {}, token {}", baseWsUrl, tokenHolder);
       } else {
         this.baseWsUrl = null;
@@ -166,82 +182,77 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public void processBinary(WebSocketApi ws, ByteBuffer byteBuffer,
+  public void processBinary(WebSocketApi ws, byte[] binary,
       BiConsumer<WebSocketApi, Binary> dataConsumer,
       BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer,
       BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer) {
-    try {
-      byte[] binary = byteBuffer.array();
-      final int clientHash = BmvObjectUtils.bytesToInt(
-          Arrays.copyOfRange(binary, 0, 4)
-      );
-      if (clientHash != client.hashCode()) {
-        throw new IllegalStateException("Data was intended for another client");
-      }
-      boolean withAcknowledge = BmvObjectUtils.bytesToBoolean(
-          Arrays.copyOfRange(binary, 4, 5)
-      );
-      final UUID binaryId = BmvObjectUtils.bytesToUuid(Arrays.copyOfRange(binary, 5, 21));
-      final int order = BmvObjectUtils.bytesToInt(Arrays.copyOfRange(binary, 21, 25));
+    final int clientHash = BmvObjectUtils.bytesToInt(
+        Arrays.copyOfRange(binary, 0, 4)
+    );
+    if (clientHash != client.hashCode()) {
+      throw new IllegalStateException("Data was intended for another client");
+    }
+    boolean withAcknowledge = BmvObjectUtils.bytesToBoolean(
+        Arrays.copyOfRange(binary, 4, 5)
+    );
+    final UUID binaryId = BmvObjectUtils.bytesToUuid(Arrays.copyOfRange(binary, 5, 21));
+    final int order = BmvObjectUtils.bytesToInt(Arrays.copyOfRange(binary, 21, 25));
 
-      //binary message was received
-      if (Integer.MAX_VALUE == order) {
-        Optional.ofNullable(binaryMessageConsumer)
-            .ifPresent(c -> c.accept(webSocket, Arrays.copyOfRange(binary, 25, binary.length)));
-        if (withAcknowledge) {
-          sendAcknowledge(binaryId, order);
-        }
-        return;
-      }
-
-      BinaryObjectData binaryData = binaries.computeIfPresent(binaryId.toString(), (k, v) -> {
-        v.fillWithReceivedData(order, Arrays.copyOfRange(binary, 25, binary.length));
-        return v;
-      });
-      if (binaryData == null) {
-        if (unknownDatagramConsumer != null) {
-          unknownDatagramConsumer.accept(webSocket, new UnknownDatagram(
-              binaryId,
-              Arrays.copyOfRange(binary, 0, 25),
-              order,
-              Arrays.copyOfRange(binary, 25, binary.length)
-          ));
-          return;
-        }
-        throw new IllegalStateException("Unknown binary with id = " + binaryId);
-      }
-      Datagram datagram = binaryData.getDatagram(order);
-      if (datagram == null) {
-        throw new IllegalArgumentException(
-            MessageFormat.format("Unknown datagram: binaryId={0}, order={1}", binaryId.toString(),
-                String.valueOf(order))
-        );
-      }
-      if (!datagram.md5.equals(calculateSha256(datagram.data))) {
-        throw new IllegalArgumentException(
-            MessageFormat.format("Md5 validation was not passed: binaryId={0}, order={1}",
-                binaryId.toString(),
-                String.valueOf(order))
-        );
-      }
-      if (datagram.size != datagram.data.length) {
-        throw new IllegalArgumentException(
-            MessageFormat.format("Size validation was not passed: binaryId={0}, order={1}",
-                binaryId.toString(),
-                String.valueOf(order))
-        );
-      }
+    //binary message was received
+    if (Integer.MAX_VALUE == order) {
+      Optional.ofNullable(binaryMessageConsumer)
+          .ifPresent(c -> c.accept(webSocket, Arrays.copyOfRange(binary, 25, binary.length)));
       if (withAcknowledge) {
         sendAcknowledge(binaryId, order);
       }
-      if (binaryData.isCompleted()) {
-        Optional.ofNullable(dataConsumer).ifPresent(c -> c.accept(webSocket, toBinary(binaryData)));
-        binaries.remove(binaryData.getBinaryId());
-        LOGGER.info("Binary was successfully received: id {}, name {}", binaryData.getBinaryId(),
-            binaryData.name);
+      return;
+    }
+
+    BinaryObjectData binaryData = binaries.computeIfPresent(binaryId.toString(), (k, v) -> {
+      v.fillWithReceivedData(order, Arrays.copyOfRange(binary, 25, binary.length));
+      return v;
+    });
+    if (binaryData == null) {
+      if (unknownDatagramConsumer != null) {
+        unknownDatagramConsumer.accept(webSocket, new UnknownDatagram(
+            binaryId,
+            Arrays.copyOfRange(binary, 0, 25),
+            order,
+            Arrays.copyOfRange(binary, 25, binary.length)
+        ));
+        return;
       }
-    } finally {
-      byteBuffer.clear();
+      throw new IllegalStateException("Unknown binary with id = " + binaryId);
+    }
+    Datagram datagram = binaryData.getDatagram(order);
+    if (datagram == null) {
+      throw new IllegalArgumentException(
+          MessageFormat.format("Unknown datagram: binaryId={0}, order={1}", binaryId.toString(),
+              String.valueOf(order))
+      );
+    }
+    if (!datagram.md5.equals(calculateSha256(datagram.data))) {
+      throw new IllegalArgumentException(
+          MessageFormat.format("Md5 validation was not passed: binaryId={0}, order={1}",
+              binaryId.toString(),
+              String.valueOf(order))
+      );
+    }
+    if (datagram.size != datagram.data.length) {
+      throw new IllegalArgumentException(
+          MessageFormat.format("Size validation was not passed: binaryId={0}, order={1}",
+              binaryId.toString(),
+              String.valueOf(order))
+      );
+    }
+    if (withAcknowledge) {
+      sendAcknowledge(binaryId, order);
+    }
+    if (binaryData.isCompleted()) {
+      Optional.ofNullable(dataConsumer).ifPresent(c -> c.accept(webSocket, toBinary(binaryData)));
+      binaries.remove(binaryData.getBinaryId());
+      LOGGER.info("Binary was successfully received: id {}, name {}", binaryData.getBinaryId(),
+          binaryData.name);
     }
   }
 
@@ -324,8 +335,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         new CommandWithMetaData(SEND_MESSAGE_WITH_ACKNOWLEDGE, metaData);
     executeWithRepeatOnFailure(
         id,
-        () -> webSocket.send(toJson(command)),
-        MAX_REPEAT_ATTEMPT_NUMBER
+        () -> webSocket.send(toJson(command))
     );
   }
 
@@ -370,8 +380,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     if (withAcknowledge) {
       executeWithRepeatOnFailure(
           buildAcknowledgeId(binaryMsgId.toString(), order),
-          () -> webSocket.send(addAll(prefix, message)),
-          MAX_REPEAT_ATTEMPT_NUMBER
+          () -> webSocket.send(addAll(prefix, message))
       );
     } else {
       webSocket.send(addAll(prefix, message));
@@ -428,8 +437,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
           .collect(Collectors.toList())) {
         executeWithRepeatOnFailure(
             buildAcknowledgeId(binaryObjectData.id, datagram.order),
-            () -> webSocket.send(datagram.data),
-            MAX_REPEAT_ATTEMPT_NUMBER
+            () -> webSocket.send(datagram.data)
         );
       }
     } else {
@@ -441,9 +449,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   private CompletableFuture<String> registerAcknowledgeCallback(String id) {
     CompletableFuture<String> ackCallback = new CompletableFuture<>();
-    ackCallback.whenComplete((dId, error) -> {
-      waitingHall.remove(dId);
-    });
+    ackCallback.whenComplete((dId, error) -> waitingHall.remove(dId));
     waitingHall.put(id, ackCallback);
     return CompletableFuture.supplyAsync(() -> {
           try {
@@ -460,9 +466,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         acknowledgeTimeoutScheduler);
   }
 
-  private void executeWithRepeatOnFailure(String id, Runnable operation,
-      int numberOfRepeatAttempts) {
-    for (int i = 0; i < numberOfRepeatAttempts; i++) {
+  private void executeWithRepeatOnFailure(String id, Runnable operation) {
+    for (int i = 0; i < PushcaWebSocket.MAX_REPEAT_ATTEMPT_NUMBER; i++) {
       operation.run();
       try {
         if (registerAcknowledgeCallback(id).get() != null) {
@@ -507,15 +512,14 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   private void reConnect() {
     try {
-      webSocket = new JavaWebSocket(
+      webSocket = wsConnectionFactory.createConnection(
           new URI(baseWsUrl + tokenHolder.get()),
-          webSocket.getConnectTimeoutMs(),
-          webSocket.getMessageConsumer(),
-          webSocket.getDataConsumer(),
-          webSocket.getOnCloseListener(),
-          webSocket.getSslContext()
+          wsConnectTimeoutMs,
+          wsMessageConsumer,
+          wsDataConsumer,
+          wsOnCloseListener,
+          wsSslContext
       );
-      webSocket.connect();
     } catch (URISyntaxException e) {
       LOGGER.error("Malformed web socket url: {}", baseWsUrl + tokenHolder.get());
     }

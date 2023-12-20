@@ -5,7 +5,6 @@ import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.UnknownDatagram;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.BiConsumer;
@@ -13,7 +12,7 @@ import java.util.function.Consumer;
 
 public interface PushcaWebSocketApi {
 
-  void processBinary(WebSocketApi ws, ByteBuffer byteBuffer,
+  void processBinary(WebSocketApi ws, byte[] binary,
       BiConsumer<WebSocketApi, Binary> dataConsumer,
       BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer,
       BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer);
