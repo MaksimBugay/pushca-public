@@ -6,6 +6,7 @@ import (
 	"log"
 	"sort"
 	"sync"
+	"time"
 )
 
 const (
@@ -18,6 +19,8 @@ type BinaryObjectData struct {
 	Datagrams        []Datagram `json:"datagrams"`
 	Sender           PClient    `json:"sender"`
 	PusherInstanceId string     `json:"pusherInstanceId"`
+	ReadOnly         bool       `json:"readOnly"`
+	Created          int64      `json:"created"`
 }
 
 func (binaryObjectData *BinaryObjectData) FillWithReceivedData(order int32, data []byte, mutex *sync.Mutex) (Datagram, bool) {
@@ -79,6 +82,8 @@ func ToBinaryObjectData(dest PClient, id uuid.UUID, name string,
 		Datagrams:        datagrams,
 		Sender:           sender,
 		PusherInstanceId: pusherInstanceId,
+		ReadOnly:         false,
+		Created:          time.Now().UnixMilli(),
 	}
 }
 

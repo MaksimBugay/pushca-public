@@ -178,17 +178,18 @@ func main() {
 
 	bMessage := base64.StdEncoding.EncodeToString([]byte("Binary message test"))
 	pushcaWebSocket0.SendBinaryMessage2(pushcaWebSocket1.Client, []byte(bMessage))
+	pushcaWebSocket0.SendBinaryMessage2(javaClient, []byte(bMessage))
 
-	//filePath := "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe"
-	filePath := "C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov"
+	filePath := "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe"
+	//filePath := "C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov"
 	data, errFile := util.ReadFileToByteArray(filePath)
 	if errFile != nil {
 		log.Fatalf("Cannot read data from file: error %s", errFile)
 	}
-	pushcaWebSocket1.SendBinary7(javaClient, data,
-		//"vlc-3.0.11-win64-copy.exe",
-		"Reproducing_multiple_java_headless-copy.mov",
-		uuid.Nil, util.DefaultChunkSize, true, true)
+	pushcaWebSocket1.SendBinary7(pushcaWebSocket0.Client, data,
+		"vlc-3.0.11-win64-copy.exe",
+		//"Reproducing_multiple_java_headless-copy.mov",
+		uuid.Nil, util.DefaultChunkSize, true, false)
 
 	ticker := time.NewTicker(time.Second * 15)
 	defer ticker.Stop()

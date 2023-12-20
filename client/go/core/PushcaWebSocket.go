@@ -18,11 +18,12 @@ import (
 )
 
 const (
-	AcknowledgePrefix     = "ACKNOWLEDGE@@"
-	TokenPrefix           = "TOKEN@@"
-	BinaryManifestPrefix  = "BINARY_MANIFEST@@"
-	MessagePartsDelimiter = "@@"
-	MaxInteger            = 2147483647
+	AcknowledgePrefix        = "ACKNOWLEDGE@@"
+	TokenPrefix              = "TOKEN@@"
+	BinaryManifestBarePrefix = "BINARY_MANIFEST"
+	BinaryManifestPrefix     = BinaryManifestBarePrefix + "@@"
+	MessagePartsDelimiter    = "@@"
+	MaxInteger               = 2147483647
 )
 
 type PushcaWebSocket struct {
@@ -146,8 +147,13 @@ func (wsPushca *PushcaWebSocket) PingServer() {
 		log.Printf("Cannot send PING to server: client %s, error %s", wsPushca.GetInfo(), errWs)
 	}
 }
-func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge4(id string, dest model.PClient, preserveOrder bool, message string) {
+func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge4(msgID string, dest model.PClient, preserveOrder bool, message string) {
 	metaData := make(map[string]interface{})
+
+	id := msgID
+	if len(id) == 0 {
+		id = uuid.New().String()
+	}
 
 	metaData["id"] = id
 	metaData["client"] = dest
@@ -307,27 +313,36 @@ func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 	}
 	if strings.HasPrefix(inMessage, BinaryManifestPrefix) {
 		manifestJSON := strings.Replace(inMessage, BinaryManifestPrefix, "", 1)
-
-		var binaryObjectData model.BinaryObjectData
-		errUnmarshal := json.Unmarshal([]byte(manifestJSON), &binaryObjectData)
-		if errUnmarshal != nil {
-			log.Printf("Broken binary binaryObjectData: client %s, error %s", wsPushca.GetInfo(), errUnmarshal)
-			return
-		}
-		binaryId, _ := uuid.Parse(binaryObjectData.ID)
-		wsPushca.Binaries[binaryId] = &binaryObjectData
-		if wsPushca.BinaryManifestConsumer != nil {
-			wsPushca.BinaryManifestConsumer(wsPushca, binaryObjectData)
-		}
+		wsPushca.processBinaryManifest(manifestJSON)
 		return
 	}
 	if strings.Contains(inMessage, MessagePartsDelimiter) {
 		parts := strings.SplitN(inMessage, MessagePartsDelimiter, 2)
 		wsPushca.SendAcknowledge(parts[0])
+		if len(parts) == 3 && BinaryManifestBarePrefix == parts[1] {
+			wsPushca.processBinaryManifest(parts[2])
+			return
+		}
 		message = parts[1]
 	}
 	if wsPushca.MessageConsumer != nil {
 		wsPushca.MessageConsumer(wsPushca, message)
+	}
+}
+
+func (wsPushca *PushcaWebSocket) processBinaryManifest(manifestJSON string) {
+	var binaryObjectData model.BinaryObjectData
+	errUnmarshal := json.Unmarshal([]byte(manifestJSON), &binaryObjectData)
+	if errUnmarshal != nil {
+		log.Printf("Broken binary binaryObjectData: client %s, error %s", wsPushca.GetInfo(), errUnmarshal)
+		return
+	}
+	if !binaryObjectData.ReadOnly {
+		binaryId, _ := uuid.Parse(binaryObjectData.ID)
+		wsPushca.Binaries[binaryId] = &binaryObjectData
+	}
+	if wsPushca.BinaryManifestConsumer != nil {
+		wsPushca.BinaryManifestConsumer(wsPushca, binaryObjectData)
 	}
 }
 
@@ -360,8 +375,12 @@ func (wsPushca *PushcaWebSocket) SendBinary7(dest model.PClient, data []byte, na
 
 	binaryObjectData := model.ToBinaryObjectData(dest, id, name, wsPushca.Client,
 		util.SplitToChunks(data, chunkSize), wsPushca.PusherId, withAcknowledge)
-
-	wsPushca.SendMessage2(dest, binaryObjectData.BuildBinaryManifest())
+	binaryObjectData.ReadOnly = manifestOnly
+	if withAcknowledge {
+		wsPushca.SendMessageWithAcknowledge3("", dest, binaryObjectData.BuildBinaryManifest())
+	} else {
+		wsPushca.SendMessage2(dest, binaryObjectData.BuildBinaryManifest())
+	}
 
 	if manifestOnly {
 		return
