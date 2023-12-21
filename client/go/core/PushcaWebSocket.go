@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"io"
@@ -24,7 +25,8 @@ const (
 	BinaryManifestPrefix     = BinaryManifestBarePrefix + "@@"
 	MessagePartsDelimiter    = "@@"
 	MaxInteger               = 2147483647
-	AcknowledgeTimeoutSec    = 10 * time.Second
+	AcknowledgeTimeout       = 10 * time.Second
+	MaxRepeatAttemptNumber   = 3
 )
 
 type PushcaWebSocket struct {
@@ -193,10 +195,13 @@ func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge4(msgID string, dest 
 		MetaData: metaData,
 	}
 
-	errWs := wsPushca.Connection.WriteJSON(command)
-	if errWs != nil {
-		log.Printf("Cannot send message: client %s, error %s", wsPushca.GetInfo(), errWs)
-	}
+	wsPushca.executeWithRepeatOnFailure(id,
+		func() error {
+			return wsPushca.Connection.WriteJSON(command)
+		},
+		func(err error) {
+			log.Printf("Cannot send message: client %s, error %s", wsPushca.GetInfo(), err)
+		})
 }
 
 func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge3(id string, dest model.PClient, message string) {
@@ -413,9 +418,21 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage4(dest model.PClient, message 
 	order = MaxInteger
 	prefix := util.ToDatagramPrefix(id, order, dest.HashCode(), withAcknowledge)
 
-	errWs := wsPushca.Connection.WriteMessage(websocket.BinaryMessage, append(prefix, message...))
-	if errWs != nil {
-		log.Printf("Cannot send bimary message: client %s, error %s", wsPushca.GetInfo(), errWs)
+	if withAcknowledge {
+		wsPushca.executeWithRepeatOnFailure(
+			util.BuildAcknowledgeId(id.String(), order),
+			func() error {
+				return wsPushca.Connection.WriteMessage(websocket.BinaryMessage, append(prefix, message...))
+			},
+			func(err error) {
+				log.Printf("Cannot send bimary message: client %s, error %s", wsPushca.GetInfo(), err)
+			},
+		)
+	} else {
+		errWs := wsPushca.Connection.WriteMessage(websocket.BinaryMessage, append(prefix, message...))
+		if errWs != nil {
+			log.Printf("Cannot send bimary message: client %s, error %s", wsPushca.GetInfo(), errWs)
+		}
 	}
 }
 
@@ -468,9 +485,21 @@ func (wsPushca *PushcaWebSocket) SendBinary(binaryObjectData model.BinaryObjectD
 		}
 	}
 	for _, d := range datagrams {
-		errWs := wsPushca.Connection.WriteMessage(websocket.BinaryMessage, d.Data)
-		if errWs != nil {
-			log.Printf("Cannot send bimary data: client %s, error %s", wsPushca.GetInfo(), errWs)
+		if withAcknowledge {
+			wsPushca.executeWithRepeatOnFailure(
+				util.BuildAcknowledgeId(binaryObjectData.ID, d.Order),
+				func() error {
+					return wsPushca.Connection.WriteMessage(websocket.BinaryMessage, d.Data)
+				},
+				func(err error) {
+					log.Printf("Cannot send bimary data: client %s, error %s", wsPushca.GetInfo(), err)
+				},
+			)
+		} else {
+			errWs := wsPushca.Connection.WriteMessage(websocket.BinaryMessage, d.Data)
+			if errWs != nil {
+				log.Printf("Cannot send bimary data: client %s, error %s", wsPushca.GetInfo(), errWs)
+			}
 		}
 	}
 }
@@ -499,8 +528,31 @@ func (wsPushca *PushcaWebSocket) WaitForAcknowledge(id string) bool {
 		return false
 	case result := <-ackCallback.Received:
 		return result
-	case <-time.After(AcknowledgeTimeoutSec):
+	case <-time.After(AcknowledgeTimeout):
 		log.Printf("Acknowledge timed out: id %s\n", id)
 		return false
+	}
+}
+
+func (wsPushca *PushcaWebSocket) executeWithRepeatOnFailure(id string, operation func() error, logError func(err error)) {
+	for i := 0; i < MaxRepeatAttemptNumber; i++ {
+		err := operation()
+		if err == nil {
+			acknowledged := wsPushca.WaitForAcknowledge(id)
+			if acknowledged {
+				return
+			}
+		} else {
+			if logError != nil {
+				logError(err)
+			} else {
+				log.Printf("Failed execute operation attempt: id %s, error %v", id, err)
+			}
+		}
+	}
+	if logError != nil {
+		logError(errors.New("failed to complete"))
+	} else {
+		log.Printf("Impossible to complete operation: id %s", id)
 	}
 }

@@ -158,8 +158,6 @@ func main() {
 	}(pushcaWebSocket1)
 
 	pushcaWebSocket0.SendMessageWithAcknowledge4("1", pushcaWebSocket1.Client, false, "test message")
-	result := pushcaWebSocket0.WaitForAcknowledge("1")
-	log.Print(result)
 	clientFilter := model.ClientFilter{
 		WorkSpaceID: "workSpaceMain",
 	}
@@ -175,7 +173,7 @@ func main() {
 	pushcaWebSocket1.SendMessage2(pushcaWebSocket0.Client, "message for client 0")
 
 	bMessage := base64.StdEncoding.EncodeToString([]byte("Binary message test"))
-	pushcaWebSocket0.SendBinaryMessage2(pushcaWebSocket1.Client, []byte(bMessage))
+	pushcaWebSocket0.SendBinaryMessage4(pushcaWebSocket1.Client, []byte(bMessage), uuid.Nil, true)
 	pushcaWebSocket0.SendBinaryMessage2(javaClient, []byte(bMessage))
 
 	filePath := "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe"
@@ -187,7 +185,7 @@ func main() {
 	pushcaWebSocket1.SendBinary7(pushcaWebSocket0.Client, data,
 		"vlc-3.0.11-win64-copy.exe",
 		//"Reproducing_multiple_java_headless-copy.mov",
-		uuid.Nil, util.DefaultChunkSize, true, true)
+		uuid.Nil, util.DefaultChunkSize, true, false)
 	defer close(done)
 	for {
 		select {
