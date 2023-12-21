@@ -6,11 +6,11 @@ import (
 )
 
 type (
-	WebSocketApi interface {
+	PushcaWebSocketApi interface {
 		GetFullInfo() string
 		GetInfo() string
-		OpenConnection(done chan struct{}) error
-		CloseWebSocket()
+		Open(done chan struct{}) error
+		Close()
 		OpenWebSocket() error
 		processMessage(inMessage string)
 		processBinary(inBinary []byte)

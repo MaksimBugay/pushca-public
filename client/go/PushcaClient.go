@@ -30,20 +30,20 @@ func main() {
 		log.Fatalf("cannot do uuid to byte[] conversion %v", uid)
 	}
 
-	messageConsumer := func(ws core.WebSocketApi, message string) {
+	messageConsumer := func(ws core.PushcaWebSocketApi, message string) {
 		log.Printf("%s message: %s", ws.GetInfo(), message)
 	}
 
-	acknowledgeConsumer := func(ws core.WebSocketApi, id string) {
+	acknowledgeConsumer := func(ws core.PushcaWebSocketApi, id string) {
 		log.Printf("%s acknowledge: %s", ws.GetInfo(), id)
 	}
 
-	binaryManifestConsumer := func(ws core.WebSocketApi, manifest model.BinaryObjectData) {
+	binaryManifestConsumer := func(ws core.PushcaWebSocketApi, manifest model.BinaryObjectData) {
 		jsonStr, _ := json.Marshal(manifest)
 		log.Printf("%s binary manifest: %s", ws.GetInfo(), jsonStr)
 	}
 
-	binaryMessageConsumer := func(ws core.WebSocketApi, binary []byte) {
+	binaryMessageConsumer := func(ws core.PushcaWebSocketApi, binary []byte) {
 		decodedBytes, err := base64.StdEncoding.DecodeString(string(binary))
 		if err != nil {
 			log.Printf("%s Error attempt of decoding base64 string", ws.GetInfo())
@@ -52,7 +52,7 @@ func main() {
 		log.Printf("%s binary message: %s", ws.GetInfo(), string(decodedBytes))
 	}
 
-	dataConsumer := func(ws core.WebSocketApi, binary model.Binary) {
+	dataConsumer := func(ws core.PushcaWebSocketApi, binary model.Binary) {
 		if binary.ID == "" {
 			log.Fatalf("Binary ID is empty")
 		}
@@ -87,7 +87,9 @@ func main() {
 	//httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
 	httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
 	//httpPostUrl := "http://localhost:8080/open-connection"
-
+	wsFactory := func() core.WebSocketApi {
+		return &core.GorillaWebSocket{Connection: nil}
+	}
 	pushcaWebSocket0 := &core.PushcaWebSocket{
 		PushcaApiUrl: httpPostUrl,
 		Client: model.PClient{
@@ -96,6 +98,7 @@ func main() {
 			DeviceId:      deviceId.String(),
 			ApplicationId: "PUSHCA_CLIENT",
 		},
+		WebSocketFactory:       wsFactory,
 		MessageConsumer:        messageConsumer,
 		AcknowledgeConsumer:    acknowledgeConsumer,
 		BinaryManifestConsumer: binaryManifestConsumer,
@@ -125,6 +128,7 @@ func main() {
 			DeviceId:      "web-browser",
 			ApplicationId: "PUSHCA_CLIENT",
 		},
+		WebSocketFactory:       wsFactory,
 		MessageConsumer:        messageConsumer,
 		AcknowledgeConsumer:    acknowledgeConsumer,
 		BinaryManifestConsumer: binaryManifestConsumer,
@@ -140,22 +144,22 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	errWsOpen := pushcaWebSocket0.OpenConnection(done)
+	errWsOpen := pushcaWebSocket0.Open(done)
 	if errWsOpen != nil {
 		log.Fatalf("cannot open web socket connection: client %s, error %s",
 			errWsOpen, pushcaWebSocket0.GetInfo())
 	}
-	defer func(ws core.WebSocketApi) {
-		ws.CloseWebSocket()
+	defer func(ws core.PushcaWebSocketApi) {
+		ws.Close()
 	}(pushcaWebSocket0)
 
-	errWsOpen = pushcaWebSocket1.OpenConnection(done)
+	errWsOpen = pushcaWebSocket1.Open(done)
 	if errWsOpen != nil {
 		log.Fatalf("cannot open web socket connection: client %s, error %s",
 			pushcaWebSocket1.GetInfo(), errWsOpen)
 	}
-	defer func(ws core.WebSocketApi) {
-		ws.CloseWebSocket()
+	defer func(ws core.PushcaWebSocketApi) {
+		ws.Close()
 	}(pushcaWebSocket1)
 
 	pushcaWebSocket0.SendMessageWithAcknowledge4("1", pushcaWebSocket1.Client, false, "test message")

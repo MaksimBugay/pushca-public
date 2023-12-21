@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"io"
 	"log"
 	"net/http"
@@ -36,14 +35,15 @@ type PushcaWebSocket struct {
 	Client                               model.PClient
 	WsBaseUrl                            string
 	Token                                string
-	Connection                           *websocket.Conn
-	MessageConsumer, AcknowledgeConsumer func(ws WebSocketApi, message string)
-	BinaryManifestConsumer               func(ws WebSocketApi, message model.BinaryObjectData)
-	BinaryMessageConsumer                func(ws WebSocketApi, message []byte)
-	DataConsumer                         func(ws WebSocketApi, data model.Binary)
-	UnknownDatagramConsumer              func(ws WebSocketApi, data model.UnknownDatagram)
+	WebSocketFactory                     func() WebSocketApi
+	MessageConsumer, AcknowledgeConsumer func(ws PushcaWebSocketApi, message string)
+	BinaryManifestConsumer               func(ws PushcaWebSocketApi, message model.BinaryObjectData)
+	BinaryMessageConsumer                func(ws PushcaWebSocketApi, message []byte)
+	DataConsumer                         func(ws PushcaWebSocketApi, data model.Binary)
+	UnknownDatagramConsumer              func(ws PushcaWebSocketApi, data model.UnknownDatagram)
 	Binaries                             map[uuid.UUID]*model.BinaryObjectData
 	AcknowledgeCallbacks                 *sync.Map
+	webSocket                            WebSocketApi
 	mutex                                sync.Mutex
 	writeToSocketMutex                   sync.Mutex
 	done                                 chan struct{}
@@ -60,7 +60,7 @@ func (wsPushca *PushcaWebSocket) GetFullInfo() string {
 	}
 	return string(jsonStr)
 }
-func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
+func (wsPushca *PushcaWebSocket) Open(done chan struct{}) error {
 	wsPushca.done = done
 	openConnectionRequest := &modelrequest.OpenConnectionRequest{
 		Client: wsPushca.Client,
@@ -105,7 +105,6 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 	} else {
 		log.Print("No token found")
 	}
-
 	err := wsPushca.OpenWebSocket()
 	if err != nil {
 		return err
@@ -120,10 +119,10 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 			case <-done:
 				return
 			case <-ticker.C:
-				if wsPushca.Connection == nil {
+				if wsPushca.webSocket.IsClosed() {
 					errorCounter = errorCounter + 1
 					if errorCounter > (PushcaTokenTtlSec / pingInterval) {
-						_ = wsPushca.OpenConnection(wsPushca.done)
+						_ = wsPushca.Open(wsPushca.done)
 					} else {
 						_ = wsPushca.OpenWebSocket()
 					}
@@ -143,7 +142,7 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 			case <-done:
 				return
 			case <-ticker.C:
-				if wsPushca.Connection != nil {
+				if !wsPushca.webSocket.IsClosed() {
 					wsPushca.RefreshToken()
 				}
 			}
@@ -153,25 +152,25 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 }
 
 func (wsPushca *PushcaWebSocket) OpenWebSocket() error {
-	conn, errWs := openWsConnection(
+	if wsPushca.webSocket == nil {
+		wsPushca.webSocket = wsPushca.WebSocketFactory()
+	}
+	errWs := wsPushca.webSocket.Open(
 		wsPushca.WsBaseUrl+wsPushca.Token,
 		wsPushca.processMessage,
 		wsPushca.processBinary,
-		func(err error) {
-			wsPushca.Connection = nil
-		},
+		nil,
 		wsPushca.done,
 	)
 	if errWs != nil {
 		log.Printf("Unable to open web socket connection due to %s", errWs)
 		return errWs
 	}
-	wsPushca.Connection = conn
 	return nil
 }
 
-func (wsPushca *PushcaWebSocket) CloseWebSocket() {
-	closeWsConnection(wsPushca.Connection)
+func (wsPushca *PushcaWebSocket) Close() {
+	wsPushca.webSocket.Close()
 }
 
 func closeHttpResponse(response *http.Response) {
@@ -585,79 +584,11 @@ func (wsPushca *PushcaWebSocket) executeWithRepeatOnFailure(id string, operation
 func (wsPushca *PushcaWebSocket) wsConnectionWriteJSON(v interface{}) error {
 	wsPushca.writeToSocketMutex.Lock()
 	defer wsPushca.writeToSocketMutex.Unlock()
-	return wsPushca.Connection.WriteJSON(v)
+	return wsPushca.webSocket.WriteJSON(v)
 }
 
 func (wsPushca *PushcaWebSocket) wsConnectionWriteBinary(data []byte) error {
 	wsPushca.writeToSocketMutex.Lock()
 	defer wsPushca.writeToSocketMutex.Unlock()
-	return wsPushca.Connection.WriteMessage(websocket.BinaryMessage, data)
-}
-
-func isWebSocketClosed(err error) bool {
-	if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
-		log.Printf("Connection was abnormally closed: %v", err)
-	} else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-		//log.Printf("Connection was normally closed: %v", err)
-	} else if strings.Contains(err.Error(), "connection was aborted") {
-		log.Printf("Connection was closed because of network issues: %v", err)
-	} else {
-		return false
-	}
-	return true
-}
-
-func openWsConnection(wsUrl string,
-	messageConsumer func(inMessage string),
-	dataConsumer func(inBinary []byte),
-	onCloseListener func(err error),
-	done chan struct{}) (*websocket.Conn, error) {
-	conn, _, errWs := websocket.DefaultDialer.Dial(wsUrl, nil)
-	if errWs != nil {
-		return nil, errWs
-	}
-	conn.SetCloseHandler(func(code int, text string) error {
-		log.Printf("Connection was closed: code %v, text %s", code, text)
-		return nil
-	})
-	stopSocket := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-stopSocket:
-				return
-			case <-done:
-				return
-			default:
-				mType, message, err := conn.ReadMessage()
-				if err != nil {
-					if isWebSocketClosed(err) {
-						onCloseListener(err)
-						close(stopSocket)
-					} else {
-						log.Println("read from socket error:", err)
-					}
-				} else if mType == websocket.TextMessage {
-					messageConsumer(string(message))
-				} else if mType == websocket.BinaryMessage {
-					dataConsumer(message)
-				}
-			}
-		}
-	}()
-	return conn, nil
-}
-
-func closeWsConnection(conn *websocket.Conn) {
-	err0 := conn.WriteMessage(
-		websocket.CloseMessage,
-		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	if err0 != nil {
-		log.Printf("WS cannot be closed normally due to %s", err0)
-	}
-	time.Sleep(1 * time.Second)
-	err := conn.Close()
-	if err != nil {
-		log.Printf("Ws connection was closed with error: %s", err)
-	}
+	return wsPushca.webSocket.WriteBinary(data)
 }
