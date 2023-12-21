@@ -100,6 +100,7 @@ func main() {
 		AcknowledgeConsumer:    acknowledgeConsumer,
 		BinaryManifestConsumer: binaryManifestConsumer,
 		BinaryMessageConsumer:  binaryMessageConsumer,
+		DataConsumer:           dataConsumer,
 		Binaries:               make(map[uuid.UUID]*model.BinaryObjectData),
 		AcknowledgeCallbacks:   new(sync.Map),
 	}

@@ -44,6 +44,7 @@ type PushcaWebSocket struct {
 	Binaries                             map[uuid.UUID]*model.BinaryObjectData
 	AcknowledgeCallbacks                 *sync.Map
 	mutex                                sync.Mutex
+	writeToSocketMutex                   sync.Mutex
 	done                                 chan struct{}
 }
 
@@ -155,7 +156,7 @@ func closeHttpResponse(response *http.Response) {
 }
 
 func (wsPushca *PushcaWebSocket) CloseConnection() {
-	err0 := wsPushca.Connection.WriteMessage(
+	err0 := wsPushca.wsConnectionWriteMessage(
 		websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	if err0 != nil {
@@ -171,7 +172,7 @@ func (wsPushca *PushcaWebSocket) PingServer() {
 	command := model.CommandWithMetaData{
 		Command: "PING",
 	}
-	errWs := wsPushca.Connection.WriteJSON(command)
+	errWs := wsPushca.wsConnectionWriteJSON(command)
 	if errWs != nil {
 		log.Printf("Cannot send PING to server: client %s, error %s", wsPushca.GetInfo(), errWs)
 	}
@@ -197,7 +198,7 @@ func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge4(msgID string, dest 
 
 	wsPushca.executeWithRepeatOnFailure(id,
 		func() error {
-			return wsPushca.Connection.WriteJSON(command)
+			return wsPushca.wsConnectionWriteJSON(command)
 		},
 		func(err error) {
 			log.Printf("Cannot send message: client %s, error %s", wsPushca.GetInfo(), err)
@@ -220,7 +221,7 @@ func (wsPushca *PushcaWebSocket) SendAcknowledge(id string) {
 		MetaData: metaData,
 	}
 
-	errWs := wsPushca.Connection.WriteJSON(command)
+	errWs := wsPushca.wsConnectionWriteJSON(command)
 	if errWs != nil {
 		log.Printf("Cannot send acknowledge: client %s, error %s", wsPushca.GetInfo(), errWs)
 	}
@@ -240,7 +241,7 @@ func (wsPushca *PushcaWebSocket) BroadcastMessage4(id string, dest model.ClientF
 		MetaData: metaData,
 	}
 
-	errWs := wsPushca.Connection.WriteJSON(command)
+	errWs := wsPushca.wsConnectionWriteJSON(command)
 	if errWs != nil {
 		log.Printf("Cannot broadcast message: client %s, error %s", wsPushca.GetInfo(), errWs)
 	}
@@ -422,14 +423,14 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage4(dest model.PClient, message 
 		wsPushca.executeWithRepeatOnFailure(
 			util.BuildAcknowledgeId(id.String(), order),
 			func() error {
-				return wsPushca.Connection.WriteMessage(websocket.BinaryMessage, append(prefix, message...))
+				return wsPushca.wsConnectionWriteMessage(websocket.BinaryMessage, append(prefix, message...))
 			},
 			func(err error) {
 				log.Printf("Cannot send bimary message: client %s, error %s", wsPushca.GetInfo(), err)
 			},
 		)
 	} else {
-		errWs := wsPushca.Connection.WriteMessage(websocket.BinaryMessage, append(prefix, message...))
+		errWs := wsPushca.wsConnectionWriteMessage(websocket.BinaryMessage, append(prefix, message...))
 		if errWs != nil {
 			log.Printf("Cannot send bimary message: client %s, error %s", wsPushca.GetInfo(), errWs)
 		}
@@ -489,14 +490,14 @@ func (wsPushca *PushcaWebSocket) SendBinary(binaryObjectData model.BinaryObjectD
 			wsPushca.executeWithRepeatOnFailure(
 				util.BuildAcknowledgeId(binaryObjectData.ID, d.Order),
 				func() error {
-					return wsPushca.Connection.WriteMessage(websocket.BinaryMessage, d.Data)
+					return wsPushca.wsConnectionWriteMessage(websocket.BinaryMessage, d.Data)
 				},
 				func(err error) {
 					log.Printf("Cannot send bimary data: client %s, error %s", wsPushca.GetInfo(), err)
 				},
 			)
 		} else {
-			errWs := wsPushca.Connection.WriteMessage(websocket.BinaryMessage, d.Data)
+			errWs := wsPushca.wsConnectionWriteMessage(websocket.BinaryMessage, d.Data)
 			if errWs != nil {
 				log.Printf("Cannot send bimary data: client %s, error %s", wsPushca.GetInfo(), errWs)
 			}
@@ -555,4 +556,15 @@ func (wsPushca *PushcaWebSocket) executeWithRepeatOnFailure(id string, operation
 	} else {
 		log.Printf("Impossible to complete operation: id %s", id)
 	}
+}
+func (wsPushca *PushcaWebSocket) wsConnectionWriteJSON(v interface{}) error {
+	wsPushca.writeToSocketMutex.Lock()
+	defer wsPushca.writeToSocketMutex.Unlock()
+	return wsPushca.Connection.WriteJSON(v)
+}
+
+func (wsPushca *PushcaWebSocket) wsConnectionWriteMessage(messageType int, data []byte) error {
+	wsPushca.writeToSocketMutex.Lock()
+	defer wsPushca.writeToSocketMutex.Unlock()
+	return wsPushca.Connection.WriteMessage(messageType, data)
 }
