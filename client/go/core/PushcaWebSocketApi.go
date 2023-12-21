@@ -10,7 +10,8 @@ type (
 		GetFullInfo() string
 		GetInfo() string
 		OpenConnection(done chan struct{}) error
-		CloseConnection()
+		CloseWebSocket()
+		OpenWebSocket() error
 		processMessage(inMessage string)
 		processBinary(inBinary []byte)
 		PingServer()

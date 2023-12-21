@@ -84,8 +84,8 @@ func main() {
 		ApplicationId: "PUSHCA_CLIENT",
 	}
 
-	httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
-	//httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
+	//httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
+	httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
 	//httpPostUrl := "http://localhost:8080/open-connection"
 
 	pushcaWebSocket0 := &core.PushcaWebSocket{
@@ -121,7 +121,7 @@ func main() {
 		PushcaApiUrl: httpPostUrl,
 		Client: model.PClient{
 			WorkSpaceId:   "workSpaceMain",
-			AccountId:     "clientGo10@test.ee",
+			AccountId:     "clientGo1@test.ee",
 			DeviceId:      "web-browser",
 			ApplicationId: "PUSHCA_CLIENT",
 		},
@@ -146,7 +146,7 @@ func main() {
 			errWsOpen, pushcaWebSocket0.GetInfo())
 	}
 	defer func(ws core.WebSocketApi) {
-		ws.CloseConnection()
+		ws.CloseWebSocket()
 	}(pushcaWebSocket0)
 
 	errWsOpen = pushcaWebSocket1.OpenConnection(done)
@@ -155,7 +155,7 @@ func main() {
 			pushcaWebSocket1.GetInfo(), errWsOpen)
 	}
 	defer func(ws core.WebSocketApi) {
-		ws.CloseConnection()
+		ws.CloseWebSocket()
 	}(pushcaWebSocket1)
 
 	pushcaWebSocket0.SendMessageWithAcknowledge4("1", pushcaWebSocket1.Client, false, "test message")
@@ -186,7 +186,7 @@ func main() {
 	pushcaWebSocket1.SendBinary7(pushcaWebSocket0.Client, data,
 		"vlc-3.0.11-win64-copy.exe",
 		//"Reproducing_multiple_java_headless-copy.mov",
-		uuid.Nil, util.DefaultChunkSize, true, false)
+		uuid.Nil, util.DefaultChunkSize, true, true)
 	defer close(done)
 	for {
 		select {

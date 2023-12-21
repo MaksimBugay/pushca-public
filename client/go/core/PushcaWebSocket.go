@@ -105,32 +105,10 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 		log.Print("No token found")
 	}
 
-	conn, _, errWs := websocket.DefaultDialer.Dial(wsPushca.WsUrl, nil)
-	if errWs != nil {
-		log.Printf("Unable to open web socket connection due to %s", errWs)
-		return errWs
+	err := wsPushca.OpenWebSocket()
+	if err != nil {
+		return err
 	}
-	wsPushca.Connection = conn
-	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			default:
-				mType, message, err := conn.ReadMessage()
-				if err != nil {
-					log.Println("read:", err)
-					return
-				}
-				if mType == websocket.TextMessage {
-					wsPushca.processMessage(string(message))
-				}
-				if mType == websocket.BinaryMessage {
-					wsPushca.processBinary(message)
-				}
-			}
-		}
-	}()
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
@@ -139,12 +117,38 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 			case <-done:
 				return
 			case <-ticker.C:
-				wsPushca.PingServer()
+				if wsPushca.Connection == nil {
+					_ = wsPushca.OpenWebSocket()
+				} else {
+					wsPushca.PingServer()
+				}
 				wsPushca.removeExpiredManifests()
 			}
 		}
 	}()
 	return nil
+}
+
+func (wsPushca *PushcaWebSocket) OpenWebSocket() error {
+	conn, errWs := openWsConnection(
+		wsPushca.WsUrl,
+		wsPushca.processMessage,
+		wsPushca.processBinary,
+		func(err error) {
+			wsPushca.Connection = nil
+		},
+		wsPushca.done,
+	)
+	if errWs != nil {
+		log.Printf("Unable to open web socket connection due to %s", errWs)
+		return errWs
+	}
+	wsPushca.Connection = conn
+	return nil
+}
+
+func (wsPushca *PushcaWebSocket) CloseWebSocket() {
+	closeWsConnection(wsPushca.Connection)
 }
 
 func closeHttpResponse(response *http.Response) {
@@ -155,19 +159,6 @@ func closeHttpResponse(response *http.Response) {
 	}
 }
 
-func (wsPushca *PushcaWebSocket) CloseConnection() {
-	err0 := wsPushca.wsConnectionWriteMessage(
-		websocket.CloseMessage,
-		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	if err0 != nil {
-		log.Printf("WS cannot be closed normally due to %s", err0)
-	}
-	time.Sleep(1 * time.Second)
-	err := wsPushca.Connection.Close()
-	if err != nil {
-		log.Printf("Ws connection was closed with error: %s", err)
-	}
-}
 func (wsPushca *PushcaWebSocket) PingServer() {
 	command := model.CommandWithMetaData{
 		Command: "PING",
@@ -423,14 +414,14 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage4(dest model.PClient, message 
 		wsPushca.executeWithRepeatOnFailure(
 			util.BuildAcknowledgeId(id.String(), order),
 			func() error {
-				return wsPushca.wsConnectionWriteMessage(websocket.BinaryMessage, append(prefix, message...))
+				return wsPushca.wsConnectionWriteBinary(append(prefix, message...))
 			},
 			func(err error) {
 				log.Printf("Cannot send bimary message: client %s, error %s", wsPushca.GetInfo(), err)
 			},
 		)
 	} else {
-		errWs := wsPushca.wsConnectionWriteMessage(websocket.BinaryMessage, append(prefix, message...))
+		errWs := wsPushca.wsConnectionWriteBinary(append(prefix, message...))
 		if errWs != nil {
 			log.Printf("Cannot send bimary message: client %s, error %s", wsPushca.GetInfo(), errWs)
 		}
@@ -490,14 +481,14 @@ func (wsPushca *PushcaWebSocket) SendBinary(binaryObjectData model.BinaryObjectD
 			wsPushca.executeWithRepeatOnFailure(
 				util.BuildAcknowledgeId(binaryObjectData.ID, d.Order),
 				func() error {
-					return wsPushca.wsConnectionWriteMessage(websocket.BinaryMessage, d.Data)
+					return wsPushca.wsConnectionWriteBinary(d.Data)
 				},
 				func(err error) {
 					log.Printf("Cannot send bimary data: client %s, error %s", wsPushca.GetInfo(), err)
 				},
 			)
 		} else {
-			errWs := wsPushca.wsConnectionWriteMessage(websocket.BinaryMessage, d.Data)
+			errWs := wsPushca.wsConnectionWriteBinary(d.Data)
 			if errWs != nil {
 				log.Printf("Cannot send bimary data: client %s, error %s", wsPushca.GetInfo(), errWs)
 			}
@@ -563,8 +554,76 @@ func (wsPushca *PushcaWebSocket) wsConnectionWriteJSON(v interface{}) error {
 	return wsPushca.Connection.WriteJSON(v)
 }
 
-func (wsPushca *PushcaWebSocket) wsConnectionWriteMessage(messageType int, data []byte) error {
+func (wsPushca *PushcaWebSocket) wsConnectionWriteBinary(data []byte) error {
 	wsPushca.writeToSocketMutex.Lock()
 	defer wsPushca.writeToSocketMutex.Unlock()
-	return wsPushca.Connection.WriteMessage(messageType, data)
+	return wsPushca.Connection.WriteMessage(websocket.BinaryMessage, data)
+}
+
+func isWebSocketClosed(err error) bool {
+	if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+		log.Printf("Connection was abnormally closed: %v", err)
+	} else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+		//log.Printf("Connection was normally closed: %v", err)
+	} else if strings.Contains(err.Error(), "connection was aborted") {
+		log.Printf("Connection was closed because of network issues: %v", err)
+	} else {
+		return false
+	}
+	return true
+}
+
+func openWsConnection(wsUrl string,
+	messageConsumer func(inMessage string),
+	dataConsumer func(inBinary []byte),
+	onCloseListener func(err error),
+	done chan struct{}) (*websocket.Conn, error) {
+	conn, _, errWs := websocket.DefaultDialer.Dial(wsUrl, nil)
+	if errWs != nil {
+		return nil, errWs
+	}
+	conn.SetCloseHandler(func(code int, text string) error {
+		log.Printf("Connection was closed: code %v, text %s", code, text)
+		return nil
+	})
+	stopSocket := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stopSocket:
+				return
+			case <-done:
+				return
+			default:
+				mType, message, err := conn.ReadMessage()
+				if err != nil {
+					if isWebSocketClosed(err) {
+						onCloseListener(err)
+						close(stopSocket)
+					} else {
+						log.Println("read from socket error:", err)
+					}
+				} else if mType == websocket.TextMessage {
+					messageConsumer(string(message))
+				} else if mType == websocket.BinaryMessage {
+					dataConsumer(message)
+				}
+			}
+		}
+	}()
+	return conn, nil
+}
+
+func closeWsConnection(conn *websocket.Conn) {
+	err0 := conn.WriteMessage(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	if err0 != nil {
+		log.Printf("WS cannot be closed normally due to %s", err0)
+	}
+	time.Sleep(1 * time.Second)
+	err := conn.Close()
+	if err != nil {
+		log.Printf("Ws connection was closed with error: %s", err)
+	}
 }
