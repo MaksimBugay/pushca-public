@@ -27,6 +27,7 @@ const (
 	MaxInteger               = 2147483647
 	AcknowledgeTimeout       = 10 * time.Second
 	MaxRepeatAttemptNumber   = 3
+	PushcaTokenTtlSec        = 60 * 20
 )
 
 type PushcaWebSocket struct {
@@ -110,16 +111,24 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 		return err
 	}
 	go func() {
-		ticker := time.NewTicker(15 * time.Second)
+		pingInterval := 15
+		ticker := time.NewTicker(time.Duration(pingInterval) * time.Second)
 		defer ticker.Stop()
+		errorCounter := 0
 		for {
 			select {
 			case <-done:
 				return
 			case <-ticker.C:
 				if wsPushca.Connection == nil {
-					_ = wsPushca.OpenWebSocket()
+					errorCounter = errorCounter + 1
+					if errorCounter > (PushcaTokenTtlSec / pingInterval) {
+						_ = wsPushca.OpenConnection(wsPushca.done)
+					} else {
+						_ = wsPushca.OpenWebSocket()
+					}
 				} else {
+					errorCounter = 0
 					wsPushca.PingServer()
 				}
 				wsPushca.removeExpiredManifests()
