@@ -33,7 +33,7 @@ type PushcaWebSocket struct {
 	PushcaApiUrl                         string
 	PusherId                             string
 	Client                               model.PClient
-	WsUrl                                string
+	WsBaseUrl                            string
 	Token                                string
 	Connection                           *websocket.Conn
 	MessageConsumer, AcknowledgeConsumer func(ws WebSocketApi, message string)
@@ -95,12 +95,12 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 	}
 	ocResponse.LogAsString()
 	wsPushca.PusherId = ocResponse.PusherInstanceId
-	wsPushca.WsUrl = ocResponse.ExternalAdvertisedUrl
-	//wsPushca.WsUrl = ocResponse.BrowserAdvertisedUrl
-	lastSlashIndex := strings.LastIndex(wsPushca.WsUrl, "/")
-	if lastSlashIndex != -1 && lastSlashIndex < len(wsPushca.WsUrl)-1 {
-		wsPushca.Token = wsPushca.WsUrl[lastSlashIndex+1:]
-		//log.Printf("Token was successfully extracted %s", wsPushca.Token)
+	wsUrl := ocResponse.ExternalAdvertisedUrl
+	lastSlashIndex := strings.LastIndex(wsUrl, "/")
+	if lastSlashIndex != -1 && lastSlashIndex < len(wsUrl)-1 {
+		wsPushca.Token = wsUrl[lastSlashIndex+1:]
+		wsPushca.WsBaseUrl = wsUrl[0 : lastSlashIndex+1]
+		log.Printf("Token was successfully extracted %s", wsPushca.Token)
 	} else {
 		log.Print("No token found")
 	}
@@ -131,7 +131,7 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 
 func (wsPushca *PushcaWebSocket) OpenWebSocket() error {
 	conn, errWs := openWsConnection(
-		wsPushca.WsUrl,
+		wsPushca.WsBaseUrl+wsPushca.Token,
 		wsPushca.processMessage,
 		wsPushca.processBinary,
 		func(err error) {
