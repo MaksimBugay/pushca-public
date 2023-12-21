@@ -100,7 +100,7 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 	if lastSlashIndex != -1 && lastSlashIndex < len(wsUrl)-1 {
 		wsPushca.Token = wsUrl[lastSlashIndex+1:]
 		wsPushca.WsBaseUrl = wsUrl[0 : lastSlashIndex+1]
-		log.Printf("Token was successfully extracted %s", wsPushca.Token)
+		log.Printf("Token was successfully extracted: client %v", wsPushca.GetInfo())
 	} else {
 		log.Print("No token found")
 	}
@@ -123,6 +123,20 @@ func (wsPushca *PushcaWebSocket) OpenConnection(done chan struct{}) error {
 					wsPushca.PingServer()
 				}
 				wsPushca.removeExpiredManifests()
+			}
+		}
+	}()
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if wsPushca.Connection != nil {
+					wsPushca.RefreshToken()
+				}
 			}
 		}
 	}()
@@ -158,6 +172,15 @@ func closeHttpResponse(response *http.Response) {
 		}
 	}
 }
+func (wsPushca *PushcaWebSocket) RefreshToken() {
+	command := model.CommandWithMetaData{
+		Command: "REFRESH_TOKEN",
+	}
+	errWs := wsPushca.wsConnectionWriteJSON(command)
+	if errWs != nil {
+		log.Printf("Cannot send refresh token request to server: client %s, error %s", wsPushca.GetInfo(), errWs)
+	}
+}
 
 func (wsPushca *PushcaWebSocket) PingServer() {
 	command := model.CommandWithMetaData{
@@ -168,6 +191,7 @@ func (wsPushca *PushcaWebSocket) PingServer() {
 		log.Printf("Cannot send PING to server: client %s, error %s", wsPushca.GetInfo(), errWs)
 	}
 }
+
 func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge4(msgID string, dest model.PClient, preserveOrder bool, message string) {
 	metaData := make(map[string]interface{})
 
@@ -346,6 +370,7 @@ func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 	}
 	if strings.HasPrefix(inMessage, TokenPrefix) {
 		wsPushca.Token = strings.Replace(inMessage, TokenPrefix, "", 1)
+		log.Printf("Token was successfully refreshed: client %v", wsPushca.GetInfo())
 		return
 	}
 	if strings.HasPrefix(inMessage, BinaryManifestPrefix) {
