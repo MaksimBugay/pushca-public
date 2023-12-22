@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
@@ -41,6 +42,7 @@ type PushcaWebSocket struct {
 	BinaryMessageConsumer                func(ws PushcaWebSocketApi, message []byte)
 	DataConsumer                         func(ws PushcaWebSocketApi, data model.Binary)
 	UnknownDatagramConsumer              func(ws PushcaWebSocketApi, data model.UnknownDatagram)
+	TlsConfig                            *tls.Config
 	Binaries                             map[uuid.UUID]*model.BinaryObjectData
 	AcknowledgeCallbacks                 *sync.Map
 	webSocket                            WebSocketApi
@@ -160,6 +162,7 @@ func (wsPushca *PushcaWebSocket) OpenWebSocket() error {
 		wsPushca.processMessage,
 		wsPushca.processBinary,
 		nil,
+		wsPushca.TlsConfig,
 		wsPushca.done,
 	)
 	if errWs != nil {

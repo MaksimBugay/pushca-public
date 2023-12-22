@@ -1,6 +1,7 @@
 package core
 
 import (
+	"crypto/tls"
 	"github.com/gorilla/websocket"
 	"log"
 	"strings"
@@ -15,8 +16,17 @@ func (wsGorilla *GorillaWebSocket) Open(wsUrl string,
 	messageConsumer func(inMessage string),
 	dataConsumer func(inBinary []byte),
 	onCloseListener func(err error),
+	tlsConfig *tls.Config,
 	done chan struct{}) error {
-	conn, _, errWs := websocket.DefaultDialer.Dial(wsUrl, nil)
+	var wsDialer *websocket.Dialer
+	if tlsConfig == nil {
+		wsDialer = websocket.DefaultDialer
+	} else {
+		wsDialer = &websocket.Dialer{
+			TLSClientConfig: tlsConfig,
+		}
+	}
+	conn, _, errWs := wsDialer.Dial(wsUrl, nil)
 	if errWs != nil {
 		return errWs
 	}

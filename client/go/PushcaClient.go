@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -16,7 +17,29 @@ import (
 	"time"
 )
 
+func configureTLS() (*tls.Config, error) {
+	certFile := "C:\\mbugai\\work\\certificates\\push-app-rc.multiloginapp.net\\pushca-rc.crt" // Path to your certificate file (.pem)
+	keyFile := "C:\\mbugai\\work\\certificates\\push-app-rc.multiloginapp.net\\pushca-rc.key"  // Path to your private key file (.pem)
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: true,
+	}
+
+	return tlsConfig, nil
+}
+
 func main() {
+	tlsConfig, err := configureTLS()
+	if err != nil {
+		log.Fatalf("cannot load tls config due to %s", err)
+	}
+	print(tlsConfig)
 	done := make(chan struct{})
 	deviceId, errRandomUuid := uuid.NewRandom()
 	if errRandomUuid != nil {
@@ -84,8 +107,9 @@ func main() {
 		ApplicationId: "PUSHCA_CLIENT",
 	}
 
+	httpPostUrl := "https://app-rc.multiloginapp.net/pushca-with-tls-support/open-connection"
 	//httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
-	httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
+	//httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
 	//httpPostUrl := "http://localhost:8080/open-connection"
 	wsFactory := func() core.WebSocketApi {
 		return &core.GorillaWebSocket{Connection: nil}
@@ -104,6 +128,7 @@ func main() {
 		BinaryManifestConsumer: binaryManifestConsumer,
 		BinaryMessageConsumer:  binaryMessageConsumer,
 		DataConsumer:           dataConsumer,
+		TlsConfig:              tlsConfig,
 		Binaries:               make(map[uuid.UUID]*model.BinaryObjectData),
 		AcknowledgeCallbacks:   new(sync.Map),
 	}
@@ -134,6 +159,7 @@ func main() {
 		BinaryManifestConsumer: binaryManifestConsumer,
 		BinaryMessageConsumer:  binaryMessageConsumer,
 		DataConsumer:           dataConsumer,
+		TlsConfig:              tlsConfig,
 		Binaries:               make(map[uuid.UUID]*model.BinaryObjectData),
 		AcknowledgeCallbacks:   new(sync.Map),
 	}
