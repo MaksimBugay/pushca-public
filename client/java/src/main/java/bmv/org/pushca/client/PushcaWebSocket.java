@@ -16,6 +16,7 @@ import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectData;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toDatagramPrefix;
 import static org.apache.commons.lang3.ArrayUtils.addAll;
 
+import bmv.org.pushca.client.exception.WebsocketConnectionIsBrokenException;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.ClientFilter;
@@ -467,6 +468,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   private void executeWithRepeatOnFailure(String id, Runnable operation) {
+    Exception error = null;
     for (int i = 0; i < PushcaWebSocket.MAX_REPEAT_ATTEMPT_NUMBER; i++) {
       operation.run();
       try {
@@ -474,10 +476,11 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
           return;
         }
       } catch (Exception e) {
+        error = e;
         LOGGER.error("Failed execute operation attempt", e);
       }
     }
-    throw new RuntimeException("Impossible to complete operation");
+    throw new WebsocketConnectionIsBrokenException(error);
   }
 
   private void keepAliveJob() {

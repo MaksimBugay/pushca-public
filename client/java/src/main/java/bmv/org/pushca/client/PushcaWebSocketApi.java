@@ -1,5 +1,6 @@
 package bmv.org.pushca.client;
 
+import bmv.org.pushca.client.exception.WebsocketConnectionIsBrokenException;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.ClientFilter;
@@ -40,14 +41,44 @@ public interface PushcaWebSocketApi {
       BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer,
       Consumer<BinaryObjectData> binaryManifestConsumer);
 
+  /**
+   * acknowledge Pushca about received message (Pushca forwards acknowledge to sender)
+   *
+   * @param id - message id
+   */
   void sendAcknowledge(String id);
 
+  /**
+   * acknowledge Pushca about received datagram (Pushca forwards acknowledge to sender)
+   *
+   * @param binaryId - binary(file) id
+   * @param order    - datagram order in binary
+   */
   void sendAcknowledge(UUID binaryId, int order);
 
+  /**
+   * send message to some client and wait for acknowledge, if no acknowledge after defined number of
+   * send attempts then throw exception
+   *
+   * @param id            - message id (if null then will be assigned by Pushca)
+   * @param dest          - client who should receive a message
+   * @param preserveOrder - keep sending order during delivery
+   * @param message       - message text
+   * @throws WebsocketConnectionIsBrokenException - failed delivery exception
+   */
   void sendMessageWithAcknowledge(String id, PClient dest, boolean preserveOrder,
-      String message);
+      String message) throws WebsocketConnectionIsBrokenException;
 
-  void sendMessageWithAcknowledge(String id, PClient dest, String message);
+  /**
+   * short version of sendMessageWithAcknowledge method, that uses defaults: preserveOrder = false
+   *
+   * @param id      - message id (if null then will be assigned by Pushca)
+   * @param dest    - client who should receive a message
+   * @param message - message text
+   * @throws WebsocketConnectionIsBrokenException - failed delivery exception
+   */
+  void sendMessageWithAcknowledge(String id, PClient dest, String message)
+      throws WebsocketConnectionIsBrokenException;
 
   void BroadcastMessage(String id, ClientFilter dest, boolean preserveOrder, String message);
 
