@@ -12,11 +12,30 @@ import java.util.function.Consumer;
 
 public interface PushcaWebSocketApi {
 
+  /**
+   * processes an incoming binary message from Pushca
+   *
+   * @param ws                      - websocket connection object
+   * @param binary                  - incoming binary message
+   * @param dataConsumer            - external handler of completed binaries
+   * @param unknownDatagramConsumer - external handler of datagrams without manifest (usually used
+   *                                for torrents like protocol implementation)
+   * @param binaryMessageConsumer   - external handler of binary messages
+   */
   void processBinary(WebSocketApi ws, byte[] binary,
       BiConsumer<WebSocketApi, Binary> dataConsumer,
       BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer,
       BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer);
 
+  /**
+   * processes a WebSocket message received from Pushca.
+   *
+   * @param ws
+   * @param inMessage
+   * @param messageConsumer
+   * @param acknowledgeConsumer
+   * @param binaryManifestConsumer
+   */
   void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer,
       Consumer<BinaryObjectData> binaryManifestConsumer);
