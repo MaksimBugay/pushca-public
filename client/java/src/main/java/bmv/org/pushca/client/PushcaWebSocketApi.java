@@ -28,13 +28,13 @@ public interface PushcaWebSocketApi {
       BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer);
 
   /**
-   * processes a WebSocket message received from Pushca.
+   * processes an incoming text message from Pushca
    *
-   * @param ws
-   * @param inMessage
-   * @param messageConsumer
-   * @param acknowledgeConsumer
-   * @param binaryManifestConsumer
+   * @param ws                     - websocket connection object
+   * @param inMessage              - incoming text message
+   * @param messageConsumer        - external handler of text messages
+   * @param acknowledgeConsumer    - external handler of received acknowledges
+   * @param binaryManifestConsumer - external handler of reveived binary manifests
    */
   void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer,
