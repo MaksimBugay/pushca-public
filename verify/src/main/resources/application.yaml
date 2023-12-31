@@ -25,8 +25,8 @@ logging:
 
 verification:
   pushca-coordinator:
-#    url: http://127.0.0.1:8050
-    url: http://push-app-rc.multiloginapp.net:8050
+    url: http://127.0.0.1:8050
+#    url: http://push-app-rc.multiloginapp.net:8050
 #    url: https://app-rc.multiloginapp.net/pushca
 #should be always odd
   number-of-clients: 51

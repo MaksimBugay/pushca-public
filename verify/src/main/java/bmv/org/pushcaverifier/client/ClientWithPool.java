@@ -2,8 +2,9 @@ package bmv.org.pushcaverifier.client;
 
 import static bmv.org.pushcaverifier.util.DateTimeUtility.getCurrentTimestampMs;
 
-import bmv.org.pushcaverifier.client.rest.request.CommandWithMetaData;
 import bmv.org.pushcaverifier.model.TestMessage;
+import bmv.org.pushcaverifier.pushca.Command;
+import bmv.org.pushcaverifier.pushca.PushcaMessageFactoryService;
 import bmv.org.pushcaverifier.util.BmvObjectUtils;
 import bmv.org.pushcaverifier.util.JsonUtility;
 import java.nio.ByteBuffer;
@@ -71,13 +72,13 @@ public class ClientWithPool {
       String mainMessage = message;
       if (message.contains("@@")) {
         String[] messageParts = message.split("@@");
-        if ("ACKNOWLEDGE".equals(messageParts[0])) {
+        if ("ACKNOWLEDGE".equals(messageParts[1])) {
           LOGGER.debug("Acknowledge was accepted: {}", messageParts[1]);
           UUID msgId;
           try {
-            msgId = UUID.fromString(messageParts[1]);
+            msgId = UUID.fromString(messageParts[0]);
           } catch (Exception ex) {
-            String idStr = messageParts[1].substring(0, messageParts[1].lastIndexOf("-"));
+            String idStr = messageParts[0].substring(0, messageParts[0].lastIndexOf("-"));
             msgId = UUID.fromString(idStr);
           }
           acknowledgeHistory.put(msgId, getCurrentTimestampMs());
@@ -168,8 +169,10 @@ public class ClientWithPool {
   }
 
   public void sendAcknowledge(String messageId) {
-    send(JsonUtility.toJson(new CommandWithMetaData("ACKNOWLEDGE",
-        Map.of("messageId", messageId))));
+    send(PushcaMessageFactoryService.buildCommandMessage(
+        Command.ACKNOWLEDGE,
+        Map.of("messageId", messageId)
+    ).command());
   }
 
   public synchronized void init(String pusherId) {

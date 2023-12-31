@@ -6,12 +6,13 @@ import static bmv.org.pushcaverifier.util.BmvObjectUtils.uuidToBytes;
 import static bmv.org.pushcaverifier.util.JsonUtility.toJson;
 import static org.apache.commons.lang3.ArrayUtils.addAll;
 
-import bmv.org.pushcaverifier.client.rest.request.CommandWithMetaData;
 import bmv.org.pushcaverifier.client.rest.request.SendNotificationRequest;
 import bmv.org.pushcaverifier.client.rest.request.SendNotificationWithAcknowledgeRequest;
 import bmv.org.pushcaverifier.client.rest.request.SendNotificationWithDeliveryGuaranteeRequest;
 import bmv.org.pushcaverifier.config.ConfigService;
 import bmv.org.pushcaverifier.model.TestMessage;
+import bmv.org.pushcaverifier.pushca.Command;
+import bmv.org.pushcaverifier.pushca.PushcaMessageFactoryService;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
@@ -65,15 +66,14 @@ public class MessageService {
 
 
   public void sendMessageWithAcknowledge(ClientWithPool clientWithPool, TestMessage message) {
-    final CommandWithMetaData command =
-        new CommandWithMetaData("SEND_MESSAGE_WITH_ACKNOWLEDGE",
-            Map.of(
-                "id", message.id(),
-                "client", message.receiver(),
-                "message", toJson(message),
-                "preserveOrder", message.preserveOrder())
-        );
-    clientWithPool.send(toJson(command));
+    clientWithPool.send(PushcaMessageFactoryService.buildCommandMessage(
+        Command.SEND_MESSAGE_WITH_ACKNOWLEDGE,
+        Map.of(
+            "id", message.id(),
+            "client", message.receiver(),
+            "message", toJson(message),
+            "preserveOrder", message.preserveOrder())
+    ).command());
   }
 
   public Mono<Void> sendMessageWithAcknowledge(WebClient dedicatedWebClient, TestMessage message) {
@@ -115,11 +115,11 @@ public class MessageService {
   }
 
   public void sendMessage(ClientWithPool sender, TestMessage message) {
-    final CommandWithMetaData command =
-        new CommandWithMetaData("SEND_MESSAGE",
-            Map.of("filter", message.receiver(), "message", toJson(message), "preserveOrder",
-                message.preserveOrder()));
-    sender.send(toJson(command));
+    sender.send(PushcaMessageFactoryService.buildCommandMessage(
+        Command.SEND_MESSAGE,
+        Map.of("filter", message.receiver(), "message", toJson(message), "preserveOrder",
+                message.preserveOrder())
+    ).command());
   }
 
   public Mono<Void> sendMessage(WebClient dedicatedWebClient, TestMessage message) {

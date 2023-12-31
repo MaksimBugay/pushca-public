@@ -1,0 +1,18 @@
+package bmv.org.pushcaverifier.pushca;
+
+public enum Command {
+  SEND_MESSAGE,
+  SEND_MESSAGE_WITH_ACKNOWLEDGE,
+  SEND_MESSAGE_WITH_PRESERVED_ORDER,
+  SEND_ENVELOPES,
+  SEND_MESSAGE_TO_CHANNEL,
+  PING,
+  REFRESH_TOKEN,
+  ACKNOWLEDGE,
+  CREATE_CHANNEL,
+  MARK_CHANNEL_AS_READ,
+  REGISTER_FILTER,
+  REMOVE_FILTER;
+
+  //private final Class<?> metadataType;
+}
