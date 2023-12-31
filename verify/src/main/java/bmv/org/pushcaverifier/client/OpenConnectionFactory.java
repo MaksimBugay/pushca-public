@@ -6,18 +6,21 @@ import bmv.org.pushcaverifier.client.rest.request.OpenConnectionPoolRequest;
 import bmv.org.pushcaverifier.client.rest.request.OpenConnectionRequest;
 import bmv.org.pushcaverifier.client.rest.response.OpenConnectionPoolResponse;
 import bmv.org.pushcaverifier.client.rest.response.OpenConnectionResponse;
+import bmv.org.pushcaverifier.security.SslContextProvider;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
 import java.util.function.BiConsumer;
+import javax.net.ssl.SSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 @Component
@@ -104,6 +107,24 @@ public class OpenConnectionFactory {
     return pool;
   }
 
+    public static SSLContext getSslContext() {
+    String tlsStorePath = "";//"C:\\mbugai\\work\\mlx\\pushca\\docker\\conf\\pushca-rc-tls.p12";
+    //System.getProperty("PUSHCA_TLS_STORE_PATH");
+    char[] tlsStorePassword =
+        StringUtils.hasText(System.getProperty("PUSHCA_TLS_STORE_PASSWORD")) ? System.getProperty(
+            "PUSHCA_TLS_STORE_PASSWORD").toCharArray() : "DexterCool".toCharArray();
+    SslContextProvider sslContextProvider;
+    try {
+      sslContextProvider = new SslContextProvider(
+          tlsStorePath,
+          tlsStorePassword
+      );
+    } catch (Exception ex) {
+      System.out.println("Cannot initialize tls context: " + tlsStorePath);
+      throw new RuntimeException(ex);
+    }
+    return sslContextProvider.getSslContext();
+  }
   private SimpleClient createSimpleClient(PClientWithPusherId client, String pusherId,
       String externalAdvertisedUrl,
       BiConsumer<String, String> messageConsumer,
@@ -117,7 +138,7 @@ public class OpenConnectionFactory {
           pusherId,
           messageConsumer,
           dataConsumer,
-          afterCloseListener);
+          afterCloseListener, getSslContext());
     } catch (URISyntaxException e) {
       throw new RuntimeException(e);
     }

@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import javax.net.ssl.SSLContext;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft;
 import org.java_websocket.drafts.Draft_6455;
@@ -44,9 +45,12 @@ public class SimpleClient extends WebSocketClient {
       String pusherId,
       BiConsumer<String, String> messageConsumer,
       BiConsumer<SimpleClient, ByteBuffer> dataConsumer,
-      BiConsumer<Integer, String> afterCloseListener) {
+      BiConsumer<Integer, String> afterCloseListener, SSLContext sslContext) {
     super(serverUri, new Draft_6455(), Map.of("client-id", clientId),
         connectTimeoutMs);
+    if (sslContext != null) {
+      this.setSocketFactory(sslContext.getSocketFactory());
+    }
     this.clientId = clientId;
     this.pusherId = pusherId;
     this.messageConsumer = messageConsumer;

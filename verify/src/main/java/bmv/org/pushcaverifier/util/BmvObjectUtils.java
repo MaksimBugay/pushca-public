@@ -9,6 +9,7 @@ import java.io.RandomAccessFile;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
@@ -167,5 +168,14 @@ public final class BmvObjectUtils {
     }
     return Math.toIntExact((System.nanoTime() / 100 % bound));
     //return Math.toIntExact(Instant.now().get(ChronoField.MICRO_OF_SECOND) % bound);
+  }
+
+  public static int calculateStringHashCode(String s) {
+    byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
+    int h = 0;
+    for (byte v : bytes) {
+      h = 31 * h + (v & 0xff);
+    }
+    return h;
   }
 }

@@ -47,19 +47,19 @@ public class MessageService {
   }
 
   public void sendBinary(ClientWithPool clientWithPool, TestMessage message) {
-    int clientHashCode = new PClient(message.receiver()).hashCode();
+    int clientHashCode = message.receiver().getClient().hashCode();
     byte[] prefix = addAll(intToBytes(clientHashCode), booleanToBytes(false));
     prefix = addAll(prefix, uuidToBytes(UUID.fromString(message.id())));
-    prefix = addAll(prefix, intToBytes(0));
+    prefix = addAll(prefix, intToBytes(Integer.MAX_VALUE));
     clientWithPool.send(addAll(prefix, Base64.getEncoder().encode(toJson(message).getBytes(
         StandardCharsets.UTF_8))));
   }
 
   public void sendBinaryWithAcknowledge(ClientWithPool clientWithPool, TestMessage message) {
-    int clientHashCode = new PClient(message.receiver()).hashCode();
+    int clientHashCode = message.receiver().getClient().hashCode();
     byte[] prefix = addAll(intToBytes(clientHashCode), booleanToBytes(true));
     prefix = addAll(prefix, uuidToBytes(UUID.fromString(message.id())));
-    prefix = addAll(prefix, intToBytes(0));
+    prefix = addAll(prefix, intToBytes(Integer.MAX_VALUE));
     clientWithPool.send(addAll(prefix, Base64.getEncoder().encode(toJson(message).getBytes(
         StandardCharsets.UTF_8))));
   }

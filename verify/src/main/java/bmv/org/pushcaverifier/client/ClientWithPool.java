@@ -109,7 +109,7 @@ public class ClientWithPool {
       final int clientHash = BmvObjectUtils.bytesToInt(
           Arrays.copyOfRange(binary, 0, 4)
       );
-      if (clientHash != new PClient(this.client).hashCode()) {
+      if (clientHash != this.client.getClient().hashCode()) {
         throw new IllegalStateException("Cannot consume message from wrong Simple Client");
       }
       boolean withAcknowledge = BmvObjectUtils.bytesToBoolean(
