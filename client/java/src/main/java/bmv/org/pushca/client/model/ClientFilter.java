@@ -5,12 +5,15 @@ import java.util.List;
 
 public class ClientFilter {
 
-  public final String workSpaceId;
-  public final String accountId;
-  public final String deviceId;
-  public final String applicationId;
-  public final boolean findAny;
-  public final List<PClient> exclude;
+  public String workSpaceId;
+  public String accountId;
+  public String deviceId;
+  public String applicationId;
+  public boolean findAny;
+  public List<PClient> exclude;
+
+  public ClientFilter() {
+  }
 
   public ClientFilter(String workSpaceId, String accountId, String deviceId, String applicationId,
       boolean findAny, List<PClient> exclude) {

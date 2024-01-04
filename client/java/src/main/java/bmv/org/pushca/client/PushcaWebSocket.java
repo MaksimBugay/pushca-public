@@ -11,7 +11,9 @@ import static bmv.org.pushca.client.utils.BmvObjectUtils.toBinary;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectData;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toDatagramPrefix;
 import static bmv.org.pushca.core.Command.ACKNOWLEDGE;
+import static bmv.org.pushca.core.Command.ADD_MEMBERS_TO_CHANNEL;
 import static bmv.org.pushca.core.Command.CREATE_CHANNEL;
+import static bmv.org.pushca.core.Command.GET_CHANNELS;
 import static bmv.org.pushca.core.Command.REFRESH_TOKEN;
 import static bmv.org.pushca.core.Command.SEND_BINARY_MANIFEST;
 import static bmv.org.pushca.core.Command.SEND_MESSAGE;
@@ -35,7 +37,10 @@ import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.client.model.WebSocketState;
 import bmv.org.pushca.client.utils.BmvObjectUtils;
 import bmv.org.pushca.core.ChannelEvent;
+import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.Command;
+import bmv.org.pushca.core.GetChannelsWsResponse;
+import bmv.org.pushca.core.PChannel;
 import bmv.org.pushca.core.PushcaMessageFactory;
 import bmv.org.pushca.core.PushcaMessageFactory.CommandWithId;
 import bmv.org.pushca.core.PushcaMessageFactory.MessageType;
@@ -70,7 +75,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
@@ -460,7 +464,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public void createChannel(String id, @NotNull String name, ClientFilter... filters) {
+  public PChannel createChannel(String id, @NotNull String name, ClientFilter... filters) {
     String channelId = StringUtils.isEmpty(id) ? ID_GENERATOR.generate().toString() : id;
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("id", channelId);
@@ -470,6 +474,28 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     if (!"SUCCESS".equals(response)) {
       throw new IllegalStateException("Cannot create channel " + name);
     }
+    return new PChannel(channelId, name);
+  }
+
+  public void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("channel", channel);
+    metaData.put("filters", filters);
+    String response = sendCommand(ADD_MEMBERS_TO_CHANNEL, metaData);
+    if (!"SUCCESS".equals(response)) {
+      throw new IllegalStateException("Cannot add members to channel " + channel.name);
+    }
+  }
+
+  public List<ChannelWithInfo> getChannels(ClientFilter filter) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("filter", filter);
+    String responseJson = sendCommand(GET_CHANNELS, metaData);
+    GetChannelsWsResponse response = fromJson(responseJson, GetChannelsWsResponse.class);
+    if (StringUtils.isNotEmpty(response.error)) {
+      throw new IllegalStateException("Cannot retrieve list of channels: " + response.error);
+    }
+    return response.body.channels;
   }
 
   private CompletableFuture<String> registerCallback(String id, String details) {

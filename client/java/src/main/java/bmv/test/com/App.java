@@ -11,6 +11,8 @@ import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.tls.SslContextProvider;
+import bmv.org.pushca.core.ChannelWithInfo;
+import bmv.org.pushca.core.PChannel;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -21,6 +23,7 @@ import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -104,19 +107,21 @@ public class App {
         .withMessageConsumer(messageLogger)
         .withBinaryManifestConsumer((ws, data) -> System.out.println(toJson(data)))
         .withDataConsumer(dataConsumer)
-        .withChannelEventConsumer((ws,event) -> System.out.println("client0: " + toJson(event)))
+        .withChannelEventConsumer((ws, event) -> System.out.println("client0: " + toJson(event)))
         //.withSslContext(sslContextProvider.getSslContext())
         .build();
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1).withMessageConsumer(messageConsumer)
             .withBinaryMessageConsumer(binaryMessageConsumer)
-            .withChannelEventConsumer((ws,event) -> System.out.println("client1: " + toJson(event)))
+            .withChannelEventConsumer(
+                (ws, event) -> System.out.println("client1: " + toJson(event)))
             //.withSslContext(sslContextProvider.getSslContext())
             .build();
         PushcaWebSocket pushcaWebSocket1a = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1a).withMessageConsumer(messageConsumer)
             .withBinaryMessageConsumer(binaryMessageConsumer)
-            .withChannelEventConsumer((ws,event) -> System.out.println("client1a: " + toJson(event)))
+            .withChannelEventConsumer(
+                (ws, event) -> System.out.println("client1a: " + toJson(event)))
             //.withSslContext(sslContextProvider.getSslContext())
             .build()
     ) {
@@ -153,25 +158,36 @@ public class App {
       //-----------------------------binary with acknowledge----------------------------------------
       File file = new File(
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
-      file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
+      //file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
       byte[] data = Files.readAllBytes(file.toPath());
       /*pushcaWebSocket1.sendBinary(client0,
           data,
-          //"vlc-3.0.11-win64-copy.exe",
-          "Reproducing_multiple_java_headless-copy.mov",
+          "vlc-3.0.11-win64-copy.exe",
+          //"Reproducing_multiple_java_headless-copy.mov",
           UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)),
           PushcaWebSocket.DEFAULT_CHUNK_SIZE,
           true
       );*/
       //============================================================================================
       //=================================Channels===================================================
-      pushcaWebSocket0.createChannel(null,
-          "happy-pushca-channel",
+      PChannel channel0 = pushcaWebSocket0.createChannel(null,
+          "happy-pushca-channel-0",
           fromClientWithoutDeviceId(client0),
-          fromClientWithoutDeviceId(client1),
           fromClientWithoutDeviceId(client2)
       );
-      System.out.println("Channel was created");
+      pushcaWebSocket0.addMembersToChannel(channel0, fromClientWithoutDeviceId(client1));
+      List<ChannelWithInfo> channels =
+          pushcaWebSocket0.getChannels(fromClientWithoutDeviceId(client0));
+      ChannelWithInfo channel00 = channels.stream()
+          .filter(channelWithInfo -> channelWithInfo.channel.id.equals(channel0.id))
+          .findFirst().orElse(null);
+      if (channel00 == null) {
+        throw new IllegalStateException("Channel 0 is not in the list");
+      }
+      if (channel00.members.size() != 3) {
+        throw new IllegalStateException("Channel 0 has invalid list of members");
+      }
+      System.out.println("ALL GOOD");
       delay(Duration.ofHours(1));
     }
   }

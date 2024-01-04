@@ -7,6 +7,8 @@ import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.core.ChannelEvent;
+import bmv.org.pushca.core.ChannelWithInfo;
+import bmv.org.pushca.core.PChannel;
 import com.sun.istack.internal.NotNull;
 import java.util.List;
 import java.util.UUID;
@@ -111,5 +113,9 @@ public interface PushcaWebSocketApi {
   void sendBinary(BinaryObjectData binaryObjectData, boolean withAcknowledge,
       List<String> requestedIds);
 
-  void createChannel(String id, @NotNull String name, ClientFilter... filters);
+  PChannel createChannel(String id, @NotNull String name, ClientFilter... filters);
+
+  void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters);
+
+  List<ChannelWithInfo> getChannels(ClientFilter filter);
 }

@@ -14,5 +14,5 @@ public class ChannelEvent {
 
   public String channelId;
 
-  List<ClientFilter> filters;
+  public List<ClientFilter> filters;
 }
