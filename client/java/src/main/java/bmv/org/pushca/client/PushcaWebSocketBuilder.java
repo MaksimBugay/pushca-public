@@ -18,7 +18,6 @@ public class PushcaWebSocketBuilder {
   private BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer;
   private BiConsumer<WebSocketApi, Binary> dataConsumer;
   BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer;
-  private Consumer<String> acknowledgeConsumer;
   private Consumer<BinaryObjectData> binaryManifestConsumer;
   private BiConsumer<Integer, String> onCloseListener;
   private SSLContext sslContext;
@@ -63,11 +62,6 @@ public class PushcaWebSocketBuilder {
     return this;
   }
 
-  public PushcaWebSocketBuilder withAcknowledgeConsumer(Consumer<String> acknowledgeConsumer) {
-    this.acknowledgeConsumer = acknowledgeConsumer;
-    return this;
-  }
-
   public PushcaWebSocketBuilder withBinaryManifestConsumer(
       Consumer<BinaryObjectData> binaryManifestConsumer) {
     this.binaryManifestConsumer = binaryManifestConsumer;
@@ -92,7 +86,7 @@ public class PushcaWebSocketBuilder {
 
   public PushcaWebSocket build() {
     return new PushcaWebSocket(pushcaApiUrl, pusherId, client, connectTimeoutMs, messageConsumer,
-        binaryMessageConsumer, dataConsumer, unknownDatagramConsumer, acknowledgeConsumer,
+        binaryMessageConsumer, dataConsumer, unknownDatagramConsumer,
         binaryManifestConsumer, onCloseListener, sslContext, wsConnectionFactory);
   }
 }

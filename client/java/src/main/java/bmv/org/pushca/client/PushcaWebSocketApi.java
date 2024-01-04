@@ -34,11 +34,10 @@ public interface PushcaWebSocketApi {
    * @param ws                     - websocket connection object
    * @param inMessage              - incoming text message
    * @param messageConsumer        - external handler of text messages
-   * @param acknowledgeConsumer    - external handler of received acknowledges
    * @param binaryManifestConsumer - external handler of reveived binary manifests
    */
   void processMessage(WebSocketApi ws, String inMessage,
-      BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer,
+      BiConsumer<WebSocketApi, String> messageConsumer,
       Consumer<BinaryObjectData> binaryManifestConsumer);
 
   /**
@@ -98,8 +97,9 @@ public interface PushcaWebSocketApi {
 
   void sendBinaryMessage(PClient dest, byte[] message);
 
+  void sendBinaryManifest(ClientFilter dest, BinaryObjectData manifest);
   BinaryObjectData sendBinary(PClient dest, byte[] data, String name, UUID id, int chunkSize,
-      boolean withAcknowledge, boolean manifestOnly);
+      boolean withAcknowledge);
 
   void sendBinary(PClient dest, byte[] data, boolean withAcknowledge);
 

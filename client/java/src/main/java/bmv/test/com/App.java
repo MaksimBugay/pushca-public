@@ -23,7 +23,6 @@ import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import org.apache.commons.io.FileUtils;
 
 public class App {
@@ -64,24 +63,19 @@ public class App {
     );
 
     String pushcaApiUrl =
-        //    "http://localhost:8050";
-        //    "https://app-rc.multiloginapp.net/pushca-with-tls-support";
+            "http://localhost:8050";
+         //   "https://app-rc.multiloginapp.net/pushca-with-tls-support";
         //"http://push-app-rc.multiloginapp.net:8050";
-        "https://app-rc.multiloginapp.net/pushca";
+        //"https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
     final AtomicReference<String> lastMessage = new AtomicReference<>();
-    final AtomicReference<String> lastAcknowledge = new AtomicReference<>();
     BiConsumer<WebSocketApi, String> messageConsumer = (ws, msg) -> {
       System.out.println(MessageFormat.format("Message was received {0}", msg));
       lastMessage.set(msg);
     };
     BiConsumer<WebSocketApi, String> messageLogger = (ws, msg) -> System.out.println(msg);
-    Consumer<String> acknowledgeConsumer = ack -> {
-      System.out.println(MessageFormat.format("Acknowledge was received {0}", ack));
-      lastAcknowledge.set(ack);
-    };
     BiConsumer<WebSocketApi, Binary> dataConsumer = (ws, binary) -> {
       if (binary.id == null) {
         throw new IllegalStateException("Binary id is empty");
@@ -98,7 +92,7 @@ public class App {
       System.out.println(MessageFormat.format("Binary message was received: {0}", msg));
     };
     try (PushcaWebSocket pushcaWebSocket0 = new PushcaWebSocketBuilder(pushcaApiUrl,
-        client0).withAcknowledgeConsumer(acknowledgeConsumer)
+        client0)
         .withMessageConsumer(messageLogger)
         .withBinaryManifestConsumer(data -> System.out.println(toJson(data)))
         .withDataConsumer(dataConsumer)
@@ -107,7 +101,6 @@ public class App {
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1).withMessageConsumer(messageConsumer)
             .withBinaryMessageConsumer(binaryMessageConsumer)
-            .withAcknowledgeConsumer(acknowledgeConsumer)
             //.withSslContext(sslContextProvider.getSslContext())
             .build()) {
       delay(Duration.ofMillis(500));
@@ -130,12 +123,6 @@ public class App {
       //============================================================================================
       //---------------------message with acknowledge-----------------------------------------------
       pushcaWebSocket0.sendMessageWithAcknowledge(messageId, client1, testMessage1);
-      while (lastAcknowledge.get() == null) {
-        delay(Duration.ofMillis(200));
-      }
-      if (!messageId.equals(lastAcknowledge.get())) {
-        throw new IllegalStateException("Acknowledge was not received");
-      }
       if (!testMessage1.equals(lastMessage.get())) {
         throw new IllegalStateException("Message was not delivered");
       }
@@ -157,7 +144,7 @@ public class App {
           //"Reproducing_multiple_java_headless-copy.mov",
           UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)),
           PushcaWebSocket.DEFAULT_CHUNK_SIZE,
-          true, false
+          true
       );
       //============================================================================================
       delay(Duration.ofHours(1));

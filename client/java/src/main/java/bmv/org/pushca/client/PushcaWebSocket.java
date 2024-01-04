@@ -1,9 +1,5 @@
 package bmv.org.pushca.client;
 
-import static bmv.org.pushca.client.model.Command.ACKNOWLEDGE;
-import static bmv.org.pushca.client.model.Command.REFRESH_TOKEN;
-import static bmv.org.pushca.client.model.Command.SEND_MESSAGE;
-import static bmv.org.pushca.client.model.Command.SEND_MESSAGE_WITH_ACKNOWLEDGE;
 import static bmv.org.pushca.client.model.WebSocketState.CLOSING;
 import static bmv.org.pushca.client.model.WebSocketState.NOT_YET_CONNECTED;
 import static bmv.org.pushca.client.model.WebSocketState.PERMANENTLY_CLOSED;
@@ -14,20 +10,33 @@ import static bmv.org.pushca.client.utils.BmvObjectUtils.createScheduler;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.toBinary;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectData;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toDatagramPrefix;
+import static bmv.org.pushca.core.Command.ACKNOWLEDGE;
+import static bmv.org.pushca.core.Command.REFRESH_TOKEN;
+import static bmv.org.pushca.core.Command.SEND_BINARY_MANIFEST;
+import static bmv.org.pushca.core.Command.SEND_MESSAGE;
+import static bmv.org.pushca.core.Command.SEND_MESSAGE_WITH_ACKNOWLEDGE;
+import static bmv.org.pushca.core.PushcaMessageFactory.DEFAULT_RESPONSE;
+import static bmv.org.pushca.core.PushcaMessageFactory.ID_GENERATOR;
+import static bmv.org.pushca.core.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
+import static bmv.org.pushca.core.PushcaMessageFactory.isValidMessageType;
 import static org.apache.commons.lang3.ArrayUtils.addAll;
 
 import bmv.org.pushca.client.exception.WebsocketConnectionIsBrokenException;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.ClientFilter;
-import bmv.org.pushca.client.model.CommandWithMetaData;
 import bmv.org.pushca.client.model.Datagram;
 import bmv.org.pushca.client.model.OpenConnectionRequest;
 import bmv.org.pushca.client.model.OpenConnectionResponse;
 import bmv.org.pushca.client.model.PClient;
+import bmv.org.pushca.client.model.RefreshTokenWsResponse;
 import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.client.model.WebSocketState;
 import bmv.org.pushca.client.utils.BmvObjectUtils;
+import bmv.org.pushca.core.Command;
+import bmv.org.pushca.core.PushcaMessageFactory;
+import bmv.org.pushca.core.PushcaMessageFactory.CommandWithId;
+import bmv.org.pushca.core.PushcaMessageFactory.MessageType;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
@@ -68,12 +77,6 @@ import org.slf4j.LoggerFactory;
 
 public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
-  public static final String PUSHCA_INTERNAL_MESSAGE_DELIMITER = "@@";
-  public static final String ACKNOWLEDGE_PREFIX = "ACKNOWLEDGE" + PUSHCA_INTERNAL_MESSAGE_DELIMITER;
-  public static final String TOKEN_PREFIX = "TOKEN" + PUSHCA_INTERNAL_MESSAGE_DELIMITER;
-  public static final String BINARY_MANIFEST_BARE_PREFIX = "BINARY_MANIFEST";
-  public static final String BINARY_MANIFEST_PREFIX =
-      BINARY_MANIFEST_BARE_PREFIX + PUSHCA_INTERNAL_MESSAGE_DELIMITER;
   private static final Logger LOGGER = LoggerFactory.getLogger(PushcaWebSocket.class);
   private static final long REFRESH_TOKEN_INTERVAL_MS = Duration.ofMinutes(10).toMillis();
   private static final List<Integer> RECONNECT_INTERVALS = Arrays.asList(
@@ -81,7 +84,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   );
   public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
   public static final int MAX_REPEAT_ATTEMPT_NUMBER = 3;
-  public static final int ACKNOWLEDGE_TIMEOUT_SEC = 10;
+  public static final int CALLBACK_TIMEOUT_SEC = 10;
   private final String pusherId;
 
   private final String baseWsUrl;
@@ -123,7 +126,6 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer,
       BiConsumer<WebSocketApi, Binary> dataConsumer,
       BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer,
-      Consumer<String> acknowledgeConsumer,
       Consumer<BinaryObjectData> binaryManifestConsumer,
       BiConsumer<Integer, String> onCloseListener,
       SSLContext sslContext,
@@ -131,8 +133,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     this.wsConnectionFactory = wsConnectionFactory;
     this.client = client;
     this.wsMessageConsumer =
-        (ws, message) -> processMessage(ws, message, messageConsumer, acknowledgeConsumer,
-            binaryManifestConsumer);
+        (ws, message) -> processMessage(ws, message, messageConsumer, binaryManifestConsumer);
     this.wsDataConsumer =
         (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer, unknownDatagramConsumer,
             binaryMessageConsumer);
@@ -199,12 +200,17 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     final UUID binaryId = BmvObjectUtils.bytesToUuid(Arrays.copyOfRange(binary, 5, 21));
     final int order = BmvObjectUtils.bytesToInt(Arrays.copyOfRange(binary, 21, 25));
 
+/*
+    LOGGER.debug(MessageFormat.format(
+        "binary data received: id {0}, order {1}, with ack {2}", binaryId.toString(),
+        String.valueOf(order), String.valueOf(withAcknowledge)));
+*/
     //binary message was received
     if (Integer.MAX_VALUE == order) {
       Optional.ofNullable(binaryMessageConsumer)
           .ifPresent(c -> c.accept(webSocket, Arrays.copyOfRange(binary, 25, binary.length)));
       if (withAcknowledge) {
-        sendAcknowledge(binaryId, order);
+        sendAcknowledge(binaryId.toString());
       }
       return;
     }
@@ -258,39 +264,41 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void processMessage(WebSocketApi ws, String inMessage,
-      BiConsumer<WebSocketApi, String> messageConsumer, Consumer<String> acknowledgeConsumer,
+      BiConsumer<WebSocketApi, String> messageConsumer,
       Consumer<BinaryObjectData> binaryManifestConsumer) {
+    if (StringUtils.isEmpty(inMessage)) {
+      return;
+    }
     String message = inMessage;
-    if (StringUtils.isEmpty(message)) {
-      return;
-    }
-    if (message.startsWith(ACKNOWLEDGE_PREFIX)) {
-      String id = inMessage.replace(ACKNOWLEDGE_PREFIX, "");
-      waitingHall.computeIfPresent(id, (key, callback) -> {
-        callback.complete(key);
-        return callback;
-      });
-      Optional.ofNullable(acknowledgeConsumer)
-          .ifPresent(ac -> ac.accept(id));
-      return;
-    }
-    if (message.startsWith(TOKEN_PREFIX)) {
-      tokenHolder.set(message.replace(TOKEN_PREFIX, ""));
-      LOGGER.debug("New token was acquired: {}", tokenHolder.get());
-      return;
-    }
-    if (message.startsWith(BINARY_MANIFEST_PREFIX)) {
-      String json = inMessage.replace(BINARY_MANIFEST_PREFIX, "");
-      processBinaryManifest(json, binaryManifestConsumer);
-      return;
-    }
-    if (message.contains(PUSHCA_INTERNAL_MESSAGE_DELIMITER)) {
-      String[] parts = message.split(PUSHCA_INTERNAL_MESSAGE_DELIMITER);
-      sendAcknowledge(parts[0]);
-      if (parts.length == 3 && BINARY_MANIFEST_BARE_PREFIX.equals(parts[1])) {
-        processBinaryManifest(parts[2], binaryManifestConsumer);
-        return;
+    String[] parts = message.split(MESSAGE_PARTS_DELIMITER);
+    if (parts.length > 1) {
+      if (isValidMessageType(parts[1])) {
+        MessageType type = MessageType.valueOf(parts[1]);
+        switch (type) {
+          case ACKNOWLEDGE:
+            LOGGER.debug(MessageFormat.format("Acknowledge was received: {0}", parts[0]));
+            waitingHall.computeIfPresent(parts[0], (key, callback) -> {
+              callback.complete(DEFAULT_RESPONSE);
+              return callback;
+            });
+            return;
+          case BINARY_MANIFEST:
+            processBinaryManifest(parts[2], binaryManifestConsumer);
+            sendAcknowledge(parts[0]);
+            return;
+        /*case CHANNEL_MESSAGE:
+          break;
+        case CHANNEL_EVENT:
+          break;*/
+          case RESPONSE:
+            waitingHall.computeIfPresent(parts[0], (key, callback) -> {
+              callback.complete(parts.length < 3 ? DEFAULT_RESPONSE : parts[2]);
+              return callback;
+            });
+            return;
+        }
       }
+      sendAcknowledge(parts[0]);
       message = parts[1];
     }
     if (messageConsumer != null) {
@@ -310,9 +318,13 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void sendAcknowledge(String id) {
+    if (!webSocket.isOpen()) {
+      throw new IllegalStateException("Web socket connection is broken");
+    }
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("messageId", id);
-    webSocket.send(toJson(new CommandWithMetaData(ACKNOWLEDGE, metaData)));
+    CommandWithId cmd = PushcaMessageFactory.buildCommandMessage(ACKNOWLEDGE, metaData);
+    webSocket.send(cmd.commandBody);
   }
 
   public void sendAcknowledge(UUID binaryId, int order) {
@@ -322,22 +334,15 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public void sendMessageWithAcknowledge(String msgId, PClient dest, boolean preserveOrder,
       String message) {
-    if (!webSocket.isOpen()) {
-      throw new IllegalStateException("Web socket connection is broken");
-    }
-    String id = StringUtils.isEmpty(msgId) ? UUID.randomUUID().toString() : msgId;
+    String id = StringUtils.isEmpty(msgId) ? ID_GENERATOR.generate().toString() : msgId;
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("id", id);
     metaData.put("client", dest);
     metaData.put("sender", client);
     metaData.put("message", message);
     metaData.put("preserveOrder", preserveOrder);
-    final CommandWithMetaData command =
-        new CommandWithMetaData(SEND_MESSAGE_WITH_ACKNOWLEDGE, metaData);
-    executeWithRepeatOnFailure(
-        id,
-        () -> webSocket.send(toJson(command))
-    );
+
+    sendCommand(id, SEND_MESSAGE_WITH_ACKNOWLEDGE, metaData);
   }
 
   public void sendMessageWithAcknowledge(String id, PClient dest, String message) {
@@ -346,17 +351,14 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public void BroadcastMessage(String id, ClientFilter dest, boolean preserveOrder,
       String message) {
-    if (!webSocket.isOpen()) {
-      throw new IllegalStateException("Web socket connection is broken");
-    }
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("id", id);
     metaData.put("filter", dest);
     metaData.put("sender", client);
     metaData.put("message", message);
     metaData.put("preserveOrder", preserveOrder);
-    final CommandWithMetaData command = new CommandWithMetaData(SEND_MESSAGE, metaData);
-    webSocket.send(toJson(command));
+
+    sendCommand(SEND_MESSAGE, metaData);
   }
 
   public void BroadcastMessage(ClientFilter dest, String message) {
@@ -372,19 +374,17 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void sendBinaryMessage(PClient dest, byte[] message, UUID id, boolean withAcknowledge) {
-    if (!webSocket.isOpen()) {
-      throw new IllegalStateException("Web socket connection is broken");
-    }
-    UUID binaryMsgId = id == null ? UUID.randomUUID() : id;
+    UUID binaryMsgId = (id == null) ? ID_GENERATOR.generate() : id;
     int order = Integer.MAX_VALUE;
     byte[] prefix = toDatagramPrefix(binaryMsgId, order, dest, withAcknowledge);
+    byte[] binary = addAll(prefix, message);
     if (withAcknowledge) {
       executeWithRepeatOnFailure(
-          buildAcknowledgeId(binaryMsgId.toString(), order),
-          () -> webSocket.send(addAll(prefix, message))
+          binaryMsgId.toString(),
+          () -> webSocket.send(binary)
       );
     } else {
-      webSocket.send(addAll(prefix, message));
+      webSocket.send(binary);
     }
   }
 
@@ -392,19 +392,30 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendBinaryMessage(dest, message, null, false);
   }
 
+  @Override
+  public void sendBinaryManifest(ClientFilter dest, BinaryObjectData manifest) {
+    sendBinaryManifest(dest, manifest, true);
+  }
+
+  private void sendBinaryManifest(ClientFilter dest, BinaryObjectData manifest, boolean readOnly) {
+    manifest.redOnly = readOnly;
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("dest", dest);
+    metaData.put("manifest", manifest);
+
+    sendCommand(manifest.id, SEND_BINARY_MANIFEST, metaData);
+  }
+
   public void sendBinary(PClient dest, byte[] data) {
     sendBinary(dest, data, false);
   }
 
   public void sendBinary(PClient dest, byte[] data, boolean withAcknowledge) {
-    sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, withAcknowledge, false);
+    sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, withAcknowledge);
   }
 
   public BinaryObjectData sendBinary(PClient dest, byte[] data, String name, UUID id, int chunkSize,
-      boolean withAcknowledge, boolean manifestOnly) {
-    if (!webSocket.isOpen()) {
-      throw new IllegalStateException("Web socket connection is broken");
-    }
+      boolean withAcknowledge) {
     BinaryObjectData binaryObjectData = toBinaryObjectData(
         dest,
         id,
@@ -414,15 +425,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         pusherId,
         withAcknowledge
     );
-    binaryObjectData.redOnly = manifestOnly;
-    if (withAcknowledge) {
-      sendMessageWithAcknowledge(null, dest, buildBinaryManifest(binaryObjectData));
-    } else {
-      sendMessage(dest, buildBinaryManifest(binaryObjectData));
-    }
-    if (manifestOnly) {
-      return binaryObjectData;
-    }
+    sendBinaryManifest(new ClientFilter(dest), binaryObjectData, false);
     sendBinary(binaryObjectData, withAcknowledge, null);
     return binaryObjectData;
   }
@@ -448,36 +451,42 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  private CompletableFuture<String> registerAcknowledgeCallback(String id) {
-    CompletableFuture<String> ackCallback = new CompletableFuture<>();
-    ackCallback.whenComplete((dId, error) -> waitingHall.remove(dId));
-    waitingHall.put(id, ackCallback);
+  private CompletableFuture<String> registerCallback(String id, String details) {
+    CompletableFuture<String> callback = new CompletableFuture<>();
+    callback.whenComplete((dId, error) -> waitingHall.remove(dId));
+    waitingHall.put(id, callback);
     return CompletableFuture.supplyAsync(() -> {
           try {
-            return ackCallback.get(ACKNOWLEDGE_TIMEOUT_SEC, TimeUnit.SECONDS);
+            return callback.get(CALLBACK_TIMEOUT_SEC, TimeUnit.SECONDS);
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
           } catch (ExecutionException | TimeoutException error) {
-            LOGGER.error("Failed acknowledge: client {}, id {}, error {}", client.accountId, id,
+            LOGGER.error("Failed callback: client {}, id {}, details {}, error {}",
+                client.accountId, id, details,
                 error.getMessage() == null ? error.getClass().getName() : error.getMessage());
           }
-          ackCallback.complete(id);
+          callback.complete(id);
           return null;
         },
         acknowledgeTimeoutScheduler);
   }
 
-  private void executeWithRepeatOnFailure(String id, Runnable operation) {
+  private String executeWithRepeatOnFailure(String id, Runnable operation) {
+    return executeWithRepeatOnFailure(id, operation, "");
+  }
+
+  private String executeWithRepeatOnFailure(String id, Runnable operation, String details) {
     Exception error = null;
     for (int i = 0; i < PushcaWebSocket.MAX_REPEAT_ATTEMPT_NUMBER; i++) {
       operation.run();
       try {
-        if (registerAcknowledgeCallback(id).get() != null) {
-          return;
+        String response = registerCallback(id, details).get();
+        if (response != null) {
+          return response;
         }
       } catch (Exception e) {
         error = e;
-        LOGGER.error("Failed execute operation attempt", e);
+        LOGGER.error("Failed execute operation attempt: details " + details, e);
       }
     }
     throw new WebsocketConnectionIsBrokenException(error);
@@ -493,8 +502,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       if (lastTokenRefreshTime.get() == 0
           || System.currentTimeMillis() - lastTokenRefreshTime.get() > REFRESH_TOKEN_INTERVAL_MS) {
         removeExpiredManifests();
-        lastTokenRefreshTime.set(System.currentTimeMillis());
-        webSocket.send(toJson(new CommandWithMetaData(REFRESH_TOKEN)));
+        refreshToken();
       }
       return;
     }
@@ -510,6 +518,20 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
     if (RECONNECT_INTERVALS.contains(reConnectIndex.getAndIncrement())) {
       reConnect();
+    }
+  }
+
+  private void refreshToken() {
+    lastTokenRefreshTime.set(System.currentTimeMillis());
+    String responseJson = sendCommand(REFRESH_TOKEN, null);
+    RefreshTokenWsResponse refreshTokenWsResponse =
+        fromJson(responseJson, RefreshTokenWsResponse.class);
+    if (StringUtils.isNotEmpty(refreshTokenWsResponse.error)) {
+      throw new IllegalStateException(
+          "Failed refresh token attempt: " + refreshTokenWsResponse.error);
+    }
+    if (StringUtils.isNotEmpty(refreshTokenWsResponse.body)) {
+      tokenHolder.set(refreshTokenWsResponse.body);
     }
   }
 
@@ -553,8 +575,21 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     return fromJson(responseJson.toString(), OpenConnectionResponse.class);
   }
 
-  public String buildBinaryManifest(BinaryObjectData binaryObjectData) {
-    return MessageFormat.format("{0}{1}", BINARY_MANIFEST_PREFIX, toJson(binaryObjectData));
+  public String sendCommand(Command command, Map<String, Object> metaData) {
+    return sendCommand(null, command, metaData);
+  }
+
+  public String sendCommand(String id, Command command, Map<String, Object> metaData) {
+    if (!webSocket.isOpen()) {
+      throw new IllegalStateException("Web socket connection is broken");
+    }
+    CommandWithId cmd = (metaData == null) ? PushcaMessageFactory.buildCommandMessage(command) :
+        PushcaMessageFactory.buildCommandMessage(command, metaData);
+    return executeWithRepeatOnFailure(
+        StringUtils.isEmpty(id) ? cmd.id : id,
+        () -> webSocket.send(cmd.commandBody),
+        MessageFormat.format("command {0}, metadata {1}", command.name(), toJson(metaData))
+    );
   }
 
   private void removeExpiredManifests() {
