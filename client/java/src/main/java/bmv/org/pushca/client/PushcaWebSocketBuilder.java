@@ -4,8 +4,8 @@ import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.UnknownDatagram;
+import bmv.org.pushca.core.ChannelEvent;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import javax.net.ssl.SSLContext;
 
 public class PushcaWebSocketBuilder {
@@ -17,8 +17,10 @@ public class PushcaWebSocketBuilder {
   private BiConsumer<WebSocketApi, String> messageConsumer;
   private BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer;
   private BiConsumer<WebSocketApi, Binary> dataConsumer;
-  BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer;
-  private Consumer<BinaryObjectData> binaryManifestConsumer;
+  private BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer;
+
+  private BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer;
+  private BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer;
   private BiConsumer<Integer, String> onCloseListener;
   private SSLContext sslContext;
   private WsConnectionFactory wsConnectionFactory = new WsConnectionWithJavaWebSocketFactory();
@@ -62,8 +64,14 @@ public class PushcaWebSocketBuilder {
     return this;
   }
 
+  public PushcaWebSocketBuilder withChannelEventConsumer(
+      BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer) {
+    this.channelEventConsumer = channelEventConsumer;
+    return this;
+  }
+
   public PushcaWebSocketBuilder withBinaryManifestConsumer(
-      Consumer<BinaryObjectData> binaryManifestConsumer) {
+      BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer) {
     this.binaryManifestConsumer = binaryManifestConsumer;
     return this;
   }
@@ -86,7 +94,7 @@ public class PushcaWebSocketBuilder {
 
   public PushcaWebSocket build() {
     return new PushcaWebSocket(pushcaApiUrl, pusherId, client, connectTimeoutMs, messageConsumer,
-        binaryMessageConsumer, dataConsumer, unknownDatagramConsumer,
-        binaryManifestConsumer, onCloseListener, sslContext, wsConnectionFactory);
+        binaryMessageConsumer, dataConsumer, unknownDatagramConsumer, binaryManifestConsumer,
+        channelEventConsumer, onCloseListener, sslContext, wsConnectionFactory);
   }
 }

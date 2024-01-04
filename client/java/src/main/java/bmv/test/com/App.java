@@ -1,5 +1,6 @@
 package bmv.test.com;
 
+import static bmv.org.pushca.client.model.ClientFilter.fromClientWithoutDeviceId;
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.delay;
 
@@ -50,6 +51,13 @@ public class App {
         "PUSHCA_CLIENT"
     );
 
+    PClient client1a = new PClient(
+        "workSpaceMain",
+        "clientJava1@test.ee",
+        UUID.randomUUID().toString(),
+        "PUSHCA_CLIENT"
+    );
+
     PClient client2 = new PClient(
         "workSpaceMain",
         "clientGo10@test.ee",
@@ -63,10 +71,10 @@ public class App {
     );
 
     String pushcaApiUrl =
-            "http://localhost:8050";
-         //   "https://app-rc.multiloginapp.net/pushca-with-tls-support";
-        //"http://push-app-rc.multiloginapp.net:8050";
-        //"https://app-rc.multiloginapp.net/pushca";
+        "http://localhost:8050";
+    //   "https://app-rc.multiloginapp.net/pushca-with-tls-support";
+    //"http://push-app-rc.multiloginapp.net:8050";
+    //"https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
@@ -94,15 +102,24 @@ public class App {
     try (PushcaWebSocket pushcaWebSocket0 = new PushcaWebSocketBuilder(pushcaApiUrl,
         client0)
         .withMessageConsumer(messageLogger)
-        .withBinaryManifestConsumer(data -> System.out.println(toJson(data)))
+        .withBinaryManifestConsumer((ws, data) -> System.out.println(toJson(data)))
         .withDataConsumer(dataConsumer)
+        .withChannelEventConsumer((ws,event) -> System.out.println("client0: " + toJson(event)))
         //.withSslContext(sslContextProvider.getSslContext())
         .build();
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1).withMessageConsumer(messageConsumer)
             .withBinaryMessageConsumer(binaryMessageConsumer)
+            .withChannelEventConsumer((ws,event) -> System.out.println("client1: " + toJson(event)))
             //.withSslContext(sslContextProvider.getSslContext())
-            .build()) {
+            .build();
+        PushcaWebSocket pushcaWebSocket1a = new PushcaWebSocketBuilder(pushcaApiUrl,
+            client1a).withMessageConsumer(messageConsumer)
+            .withBinaryMessageConsumer(binaryMessageConsumer)
+            .withChannelEventConsumer((ws,event) -> System.out.println("client1a: " + toJson(event)))
+            //.withSslContext(sslContextProvider.getSslContext())
+            .build()
+    ) {
       delay(Duration.ofMillis(500));
       lastMessage.set(null);
       delay(Duration.ofSeconds(3));
@@ -136,17 +153,25 @@ public class App {
       //-----------------------------binary with acknowledge----------------------------------------
       File file = new File(
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
-      //file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
+      file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
       byte[] data = Files.readAllBytes(file.toPath());
-      pushcaWebSocket1.sendBinary(client0,
+      /*pushcaWebSocket1.sendBinary(client0,
           data,
-          "vlc-3.0.11-win64-copy.exe",
-          //"Reproducing_multiple_java_headless-copy.mov",
+          //"vlc-3.0.11-win64-copy.exe",
+          "Reproducing_multiple_java_headless-copy.mov",
           UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)),
           PushcaWebSocket.DEFAULT_CHUNK_SIZE,
           true
-      );
+      );*/
       //============================================================================================
+      //=================================Channels===================================================
+      pushcaWebSocket0.createChannel(null,
+          "happy-pushca-channel",
+          fromClientWithoutDeviceId(client0),
+          fromClientWithoutDeviceId(client1),
+          fromClientWithoutDeviceId(client2)
+      );
+      System.out.println("Channel was created");
       delay(Duration.ofHours(1));
     }
   }

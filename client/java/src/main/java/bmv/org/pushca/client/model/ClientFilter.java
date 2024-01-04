@@ -29,4 +29,8 @@ public class ClientFilter {
   public ClientFilter(PClient client) {
     this(client.workSpaceId, client.accountId, client.deviceId, client.applicationId);
   }
+
+  public static ClientFilter fromClientWithoutDeviceId(PClient client) {
+    return new ClientFilter(client.workSpaceId, client.accountId, null, client.applicationId);
+  }
 }

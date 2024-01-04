@@ -6,10 +6,11 @@ import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.UnknownDatagram;
+import bmv.org.pushca.core.ChannelEvent;
+import com.sun.istack.internal.NotNull;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 public interface PushcaWebSocketApi {
 
@@ -38,7 +39,8 @@ public interface PushcaWebSocketApi {
    */
   void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<WebSocketApi, String> messageConsumer,
-      Consumer<BinaryObjectData> binaryManifestConsumer);
+      BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer,
+      BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer);
 
   /**
    * acknowledge Pushca about received message (Pushca forwards acknowledge to sender)
@@ -98,6 +100,7 @@ public interface PushcaWebSocketApi {
   void sendBinaryMessage(PClient dest, byte[] message);
 
   void sendBinaryManifest(ClientFilter dest, BinaryObjectData manifest);
+
   BinaryObjectData sendBinary(PClient dest, byte[] data, String name, UUID id, int chunkSize,
       boolean withAcknowledge);
 
@@ -107,4 +110,6 @@ public interface PushcaWebSocketApi {
 
   void sendBinary(BinaryObjectData binaryObjectData, boolean withAcknowledge,
       List<String> requestedIds);
+
+  void createChannel(String id, @NotNull String name, ClientFilter... filters);
 }

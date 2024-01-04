@@ -11,6 +11,7 @@ import static bmv.org.pushca.client.utils.BmvObjectUtils.toBinary;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectData;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toDatagramPrefix;
 import static bmv.org.pushca.core.Command.ACKNOWLEDGE;
+import static bmv.org.pushca.core.Command.CREATE_CHANNEL;
 import static bmv.org.pushca.core.Command.REFRESH_TOKEN;
 import static bmv.org.pushca.core.Command.SEND_BINARY_MANIFEST;
 import static bmv.org.pushca.core.Command.SEND_MESSAGE;
@@ -33,10 +34,12 @@ import bmv.org.pushca.client.model.RefreshTokenWsResponse;
 import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.client.model.WebSocketState;
 import bmv.org.pushca.client.utils.BmvObjectUtils;
+import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.Command;
 import bmv.org.pushca.core.PushcaMessageFactory;
 import bmv.org.pushca.core.PushcaMessageFactory.CommandWithId;
 import bmv.org.pushca.core.PushcaMessageFactory.MessageType;
+import com.sun.istack.internal.NotNull;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
@@ -126,14 +129,16 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer,
       BiConsumer<WebSocketApi, Binary> dataConsumer,
       BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer,
-      Consumer<BinaryObjectData> binaryManifestConsumer,
+      BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer,
+      BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer,
       BiConsumer<Integer, String> onCloseListener,
       SSLContext sslContext,
       WsConnectionFactory wsConnectionFactory) {
     this.wsConnectionFactory = wsConnectionFactory;
     this.client = client;
     this.wsMessageConsumer =
-        (ws, message) -> processMessage(ws, message, messageConsumer, binaryManifestConsumer);
+        (ws, message) -> processMessage(ws, message, messageConsumer, channelEventConsumer,
+            binaryManifestConsumer);
     this.wsDataConsumer =
         (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer, unknownDatagramConsumer,
             binaryMessageConsumer);
@@ -265,7 +270,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<WebSocketApi, String> messageConsumer,
-      Consumer<BinaryObjectData> binaryManifestConsumer) {
+      BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer,
+      BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer) {
     if (StringUtils.isEmpty(inMessage)) {
       return;
     }
@@ -283,13 +289,16 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
             });
             return;
           case BINARY_MANIFEST:
-            processBinaryManifest(parts[2], binaryManifestConsumer);
+            processBinaryManifest(ws, parts[2], binaryManifestConsumer);
             sendAcknowledge(parts[0]);
             return;
         /*case CHANNEL_MESSAGE:
-          break;
-        case CHANNEL_EVENT:
           break;*/
+          case CHANNEL_EVENT:
+            if (channelEventConsumer != null) {
+              channelEventConsumer.accept(ws, fromJson(parts[2], ChannelEvent.class));
+            }
+            return;
           case RESPONSE:
             waitingHall.computeIfPresent(parts[0], (key, callback) -> {
               callback.complete(parts.length < 3 ? DEFAULT_RESPONSE : parts[2]);
@@ -306,14 +315,14 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  private void processBinaryManifest(String json,
-      Consumer<BinaryObjectData> binaryManifestConsumer) {
+  private void processBinaryManifest(WebSocketApi ws, String json,
+      BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer) {
     BinaryObjectData binaryObjectData = fromJson(json, BinaryObjectData.class);
     if (!binaryObjectData.redOnly) {
       binaries.putIfAbsent(binaryObjectData.getBinaryId(), binaryObjectData);
     }
     if (binaryManifestConsumer != null) {
-      binaryManifestConsumer.accept(binaryObjectData);
+      binaryManifestConsumer.accept(ws, binaryObjectData);
     }
   }
 
@@ -448,6 +457,18 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       }
     } else {
       datagrams.forEach(datagram -> webSocket.send(datagram.data));
+    }
+  }
+
+  public void createChannel(String id, @NotNull String name, ClientFilter... filters) {
+    String channelId = StringUtils.isEmpty(id) ? ID_GENERATOR.generate().toString() : id;
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("id", channelId);
+    metaData.put("name", name);
+    metaData.put("filters", filters);
+    String response = sendCommand(CREATE_CHANNEL, metaData);
+    if (!"SUCCESS".equals(response)) {
+      throw new IllegalStateException("Cannot create channel " + name);
     }
   }
 
