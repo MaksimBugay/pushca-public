@@ -70,10 +70,10 @@ public class App {
         "PUSHCA_CLIENT"
     );
 
-    SslContextProvider sslContextProvider = new SslContextProvider(
+    /*SslContextProvider sslContextProvider = new SslContextProvider(
         "C:\\mbugai\\work\\mlx\\pushca\\docker\\conf\\pushca-rc-tls.p12",
         "pwd".toCharArray()
-    );
+    );*/
 
     String pushcaApiUrl =
         "http://localhost:8050";
@@ -173,14 +173,14 @@ public class App {
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
       //file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
       byte[] data = Files.readAllBytes(file.toPath());
-      /*pushcaWebSocket1.sendBinary(client0,
+      pushcaWebSocket1.sendBinary(client0,
           data,
           "vlc-3.0.11-win64-copy.exe",
           //"Reproducing_multiple_java_headless-copy.mov",
           UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)),
           PushcaWebSocket.DEFAULT_CHUNK_SIZE,
           true
-      );*/
+      );
       //============================================================================================
       //=================================Channels===================================================
       PChannel channel0 = pushcaWebSocket0.createChannel(null,
