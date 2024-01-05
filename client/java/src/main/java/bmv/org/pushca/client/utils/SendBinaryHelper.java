@@ -42,14 +42,13 @@ public final class SendBinaryHelper {
     datagram.order = order;
     datagram.size = chunk.length;
     datagram.md5 = calculateSha256(chunk);
-    datagram.prefix = toDatagramPrefix(binaryId, order, dest, withAcknowledge);
+    datagram.prefix = toDatagramPrefix(binaryId, order, dest.hashCode(), withAcknowledge);
     datagram.data = addAll(datagram.prefix, chunk);
 
     return datagram;
   }
 
-  public static byte[] toDatagramPrefix(UUID id, int order, PClient dest, boolean withAcknowledge) {
-    int clientHashCode = dest.hashCode();
+  public static byte[] toDatagramPrefix(UUID id, int order, int clientHashCode, boolean withAcknowledge) {
     byte[] prefix = addAll(intToBytes(clientHashCode), booleanToBytes(withAcknowledge));
     prefix = addAll(prefix, uuidToBytes(id));
     return addAll(prefix, intToBytes(order));

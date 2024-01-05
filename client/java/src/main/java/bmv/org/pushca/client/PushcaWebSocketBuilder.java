@@ -15,13 +15,13 @@ public class PushcaWebSocketBuilder {
   private String pusherId;
   private final PClient client;
   private int connectTimeoutMs = 0;
-  private BiConsumer<WebSocketApi, String> messageConsumer;
-  private BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer;
-  private BiConsumer<WebSocketApi, Binary> dataConsumer;
-  private BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer;
-  private BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer;
-  private BiConsumer<WebSocketApi, ChannelMessage> channelMessageConsumer;
-  private BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer;
+  private BiConsumer<PushcaWebSocketApi, String> messageConsumer;
+  private BiConsumer<PushcaWebSocketApi, byte[]> binaryMessageConsumer;
+  private BiConsumer<PushcaWebSocketApi, Binary> dataConsumer;
+  private BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer;
+  private BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer;
+  private BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer;
+  private BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer;
   private BiConsumer<Integer, String> onCloseListener;
   private SSLContext sslContext;
   private WsConnectionFactory wsConnectionFactory = new WsConnectionWithJavaWebSocketFactory();
@@ -42,43 +42,43 @@ public class PushcaWebSocketBuilder {
   }
 
   public PushcaWebSocketBuilder withMessageConsumer(
-      BiConsumer<WebSocketApi, String> messageConsumer) {
+      BiConsumer<PushcaWebSocketApi, String> messageConsumer) {
     this.messageConsumer = messageConsumer;
     return this;
   }
 
   public PushcaWebSocketBuilder withBinaryMessageConsumer(
-      BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer) {
+      BiConsumer<PushcaWebSocketApi, byte[]> binaryMessageConsumer) {
     this.binaryMessageConsumer = binaryMessageConsumer;
     return this;
   }
 
   public PushcaWebSocketBuilder withDataConsumer(
-      BiConsumer<WebSocketApi, Binary> dataConsumer) {
+      BiConsumer<PushcaWebSocketApi, Binary> dataConsumer) {
     this.dataConsumer = dataConsumer;
     return this;
   }
 
   public PushcaWebSocketBuilder withUnknownDatagramConsumer(
-      BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer) {
+      BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer) {
     this.unknownDatagramConsumer = unknownDatagramConsumer;
     return this;
   }
 
   public PushcaWebSocketBuilder withChannelEventConsumer(
-      BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer) {
+      BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer) {
     this.channelEventConsumer = channelEventConsumer;
     return this;
   }
 
   public PushcaWebSocketBuilder withChannelMessageConsumer(
-      BiConsumer<WebSocketApi, ChannelMessage> channelMessageConsumer) {
+      BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer) {
     this.channelMessageConsumer = channelMessageConsumer;
     return this;
   }
 
   public PushcaWebSocketBuilder withBinaryManifestConsumer(
-      BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer) {
+      BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer) {
     this.binaryManifestConsumer = binaryManifestConsumer;
     return this;
   }

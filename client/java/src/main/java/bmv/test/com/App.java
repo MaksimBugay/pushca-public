@@ -5,12 +5,14 @@ import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.delay;
 
 import bmv.org.pushca.client.PushcaWebSocket;
+import bmv.org.pushca.client.PushcaWebSocketApi;
 import bmv.org.pushca.client.PushcaWebSocketBuilder;
-import bmv.org.pushca.client.WebSocketApi;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.tls.SslContextProvider;
+import bmv.org.pushca.core.ChannelEvent;
+import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
 import java.io.BufferedReader;
@@ -57,7 +59,7 @@ public class App {
     PClient client1a = new PClient(
         "workSpaceMain",
         "clientJava1@test.ee",
-        UUID.randomUUID().toString(),
+        "mobile-device",
         "PUSHCA_CLIENT"
     );
 
@@ -82,12 +84,12 @@ public class App {
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
     final AtomicReference<String> lastMessage = new AtomicReference<>();
-    BiConsumer<WebSocketApi, String> messageConsumer = (ws, msg) -> {
-      System.out.println(MessageFormat.format("Message was received {0}", msg));
+    BiConsumer<PushcaWebSocketApi, String> messageConsumer = (ws, msg) -> {
+      System.out.println(
+          MessageFormat.format("{0}: message was received {1}", ws.getClientInfo(), msg));
       lastMessage.set(msg);
     };
-    BiConsumer<WebSocketApi, String> messageLogger = (ws, msg) -> System.out.println(msg);
-    BiConsumer<WebSocketApi, Binary> dataConsumer = (ws, binary) -> {
+    BiConsumer<PushcaWebSocketApi, Binary> dataConsumer = (ws, binary) -> {
       if (binary.id == null) {
         throw new IllegalStateException("Binary id is empty");
       }
@@ -98,36 +100,41 @@ public class App {
       }
       System.out.println("Binary data was received and stored");
     };
-    BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer = (ws, bytes) -> {
+    BiConsumer<PushcaWebSocketApi, byte[]> binaryMessageConsumer = (ws, bytes) -> {
       String msg = new String(Base64.getDecoder().decode(bytes), StandardCharsets.UTF_8);
-      System.out.println(MessageFormat.format("Binary message was received: {0}", msg));
+      System.out.println(
+          MessageFormat.format("{0}: binary message was received: {1}", ws.getClientInfo(), msg));
     };
+    BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer =
+        (ws, event) -> System.out.println(
+            MessageFormat.format("{0}: channel event was received: {1}", ws.getClientInfo(),
+                toJson(event)));
+    BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer =
+        (ws, channelMessage) -> System.out.println(
+            MessageFormat.format("{0}: channel message was received: {1}", ws.getClientInfo(),
+                toJson(channelMessage)));
+
     try (PushcaWebSocket pushcaWebSocket0 = new PushcaWebSocketBuilder(pushcaApiUrl,
         client0)
-        .withMessageConsumer(messageLogger)
+        .withMessageConsumer(messageConsumer)
         .withBinaryManifestConsumer((ws, data) -> System.out.println(toJson(data)))
         .withDataConsumer(dataConsumer)
-        .withChannelEventConsumer((ws, event) -> System.out.println("client0: " + toJson(event)))
-        .withChannelMessageConsumer(
-            (ws, channelMessage) -> System.out.println("client0: " + toJson(channelMessage)))
+        .withChannelEventConsumer(channelEventConsumer)
+        .withChannelMessageConsumer(channelMessageConsumer)
         //.withSslContext(sslContextProvider.getSslContext())
         .build();
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1).withMessageConsumer(messageConsumer)
             .withBinaryMessageConsumer(binaryMessageConsumer)
-            .withChannelEventConsumer(
-                (ws, event) -> System.out.println("client1: " + toJson(event)))
-            .withChannelMessageConsumer(
-                (ws, channelMessage) -> System.out.println("client1: " + toJson(channelMessage)))
+            .withChannelEventConsumer(channelEventConsumer)
+            .withChannelMessageConsumer(channelMessageConsumer)
             //.withSslContext(sslContextProvider.getSslContext())
             .build();
         PushcaWebSocket pushcaWebSocket1a = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1a).withMessageConsumer(messageConsumer)
             .withBinaryMessageConsumer(binaryMessageConsumer)
-            .withChannelEventConsumer(
-                (ws, event) -> System.out.println("client1a: " + toJson(event)))
-            .withChannelMessageConsumer(
-                (ws, channelMessage) -> System.out.println("client1a: " + toJson(channelMessage)))
+            .withChannelEventConsumer(channelEventConsumer)
+            .withChannelMessageConsumer(channelMessageConsumer)
             //.withSslContext(sslContextProvider.getSslContext())
             .build()
     ) {
@@ -147,7 +154,7 @@ public class App {
       //---------------------broadcast message------------------------------------------------------
       ClientFilter filter = new ClientFilter(client0.workSpaceId, null, null, null,
           false, Collections.singletonList(client0));
-      pushcaWebSocket0.BroadcastMessage(filter, "Broadcast message test");
+      pushcaWebSocket0.broadcastMessage(filter, "Broadcast message test");
       //============================================================================================
       //---------------------message with acknowledge-----------------------------------------------
       pushcaWebSocket0.sendMessageWithAcknowledge(messageId, client1, testMessage1);
@@ -157,9 +164,9 @@ public class App {
       System.out.println("Message was delivered with acknowledge");
       //============================================================================================
       //-----------------------------binary message-------------------------------------------------
-      pushcaWebSocket0.sendBinaryMessage(client1,
-          Base64.getEncoder().encode("Binary message test".getBytes(StandardCharsets.UTF_8)), null,
-          true);
+      byte[] binaryMsg =
+          Base64.getEncoder().encode("Binary message test".getBytes(StandardCharsets.UTF_8));
+      pushcaWebSocket0.sendBinaryMessage(client1, binaryMsg, null, true);
       //============================================================================================
       //-----------------------------binary with acknowledge----------------------------------------
       File file = new File(
@@ -218,6 +225,9 @@ public class App {
       }
 
       pushcaWebSocket1.removeMeFromChannel(channel0);
+
+      pushcaWebSocket0.broadcastBinaryMessage(fromClientWithoutDeviceId(client1a), binaryMsg);
+      pushcaWebSocket0.removeUnusedFilters();
       System.out.println("ALL GOOD");
       delay(Duration.ofHours(1));
     }

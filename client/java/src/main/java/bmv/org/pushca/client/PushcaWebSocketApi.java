@@ -17,6 +17,8 @@ import java.util.function.BiConsumer;
 
 public interface PushcaWebSocketApi {
 
+  String getClientInfo();
+
   /**
    * processes an incoming binary message from Pushca
    *
@@ -28,9 +30,9 @@ public interface PushcaWebSocketApi {
    * @param binaryMessageConsumer   - external handler of binary messages
    */
   void processBinary(WebSocketApi ws, byte[] binary,
-      BiConsumer<WebSocketApi, Binary> dataConsumer,
-      BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer,
-      BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer);
+      BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
+      BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer,
+      BiConsumer<PushcaWebSocketApi, byte[]> binaryMessageConsumer);
 
   /**
    * processes an incoming text message from Pushca
@@ -41,10 +43,10 @@ public interface PushcaWebSocketApi {
    * @param binaryManifestConsumer - external handler of reveived binary manifests
    */
   void processMessage(WebSocketApi ws, String inMessage,
-      BiConsumer<WebSocketApi, String> messageConsumer,
-      BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer,
-      BiConsumer<WebSocketApi, ChannelMessage> channelMessageConsumer,
-      BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer);
+      BiConsumer<PushcaWebSocketApi, String> messageConsumer,
+      BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer,
+      BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer,
+      BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer);
 
   /**
    * acknowledge Pushca about received message (Pushca forwards acknowledge to sender)
@@ -85,7 +87,7 @@ public interface PushcaWebSocketApi {
   void sendMessageWithAcknowledge(String id, PClient dest, String message)
       throws WebsocketConnectionIsBrokenException;
 
-  void BroadcastMessage(String id, ClientFilter dest, boolean preserveOrder, String message);
+  void broadcastMessage(String id, ClientFilter dest, boolean preserveOrder, String message);
 
   /**
    * Send message to all connected clients that pass filter
@@ -93,11 +95,15 @@ public interface PushcaWebSocketApi {
    * @param dest    - filter of receivers
    * @param message - message text
    */
-  void BroadcastMessage(ClientFilter dest, String message);
+  void broadcastMessage(ClientFilter dest, String message);
 
   void sendMessage(String id, PClient dest, boolean preserveOrder, String message);
 
   void sendMessage(PClient dest, String message);
+
+  void broadcastBinaryMessage(ClientFilter dest, byte[] message, UUID id);
+
+  void broadcastBinaryMessage(ClientFilter dest, byte[] message);
 
   void sendBinaryMessage(PClient dest, byte[] message, UUID id, boolean withAcknowledge);
 
