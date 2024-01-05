@@ -141,7 +141,11 @@ public class ClientWithPool {
         );
       }
       if (withAcknowledge) {
-        sendAcknowledge(buildId(binaryId, order));
+        if (order == Integer.MAX_VALUE) {
+          sendAcknowledge(binaryId.toString());
+        } else {
+          sendAcknowledge(buildId(binaryId, order));
+        }
         //send(Arrays.copyOfRange(binary, 0, 25));
       }
     };
