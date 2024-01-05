@@ -14,9 +14,12 @@ import static bmv.org.pushca.core.Command.ACKNOWLEDGE;
 import static bmv.org.pushca.core.Command.ADD_MEMBERS_TO_CHANNEL;
 import static bmv.org.pushca.core.Command.CREATE_CHANNEL;
 import static bmv.org.pushca.core.Command.GET_CHANNELS;
+import static bmv.org.pushca.core.Command.MARK_CHANNEL_AS_READ;
 import static bmv.org.pushca.core.Command.REFRESH_TOKEN;
+import static bmv.org.pushca.core.Command.REMOVE_ME_FROM_CHANNEL;
 import static bmv.org.pushca.core.Command.SEND_BINARY_MANIFEST;
 import static bmv.org.pushca.core.Command.SEND_MESSAGE;
+import static bmv.org.pushca.core.Command.SEND_MESSAGE_TO_CHANNEL;
 import static bmv.org.pushca.core.Command.SEND_MESSAGE_WITH_ACKNOWLEDGE;
 import static bmv.org.pushca.core.PushcaMessageFactory.DEFAULT_RESPONSE;
 import static bmv.org.pushca.core.PushcaMessageFactory.ID_GENERATOR;
@@ -37,6 +40,7 @@ import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.client.model.WebSocketState;
 import bmv.org.pushca.client.utils.BmvObjectUtils;
 import bmv.org.pushca.core.ChannelEvent;
+import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.Command;
 import bmv.org.pushca.core.GetChannelsWsResponse;
@@ -135,6 +139,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer,
       BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer,
       BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer,
+      BiConsumer<WebSocketApi, ChannelMessage> channelMessageConsumer,
       BiConsumer<Integer, String> onCloseListener,
       SSLContext sslContext,
       WsConnectionFactory wsConnectionFactory) {
@@ -142,7 +147,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     this.client = client;
     this.wsMessageConsumer =
         (ws, message) -> processMessage(ws, message, messageConsumer, channelEventConsumer,
-            binaryManifestConsumer);
+            channelMessageConsumer, binaryManifestConsumer);
     this.wsDataConsumer =
         (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer, unknownDatagramConsumer,
             binaryMessageConsumer);
@@ -275,6 +280,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   public void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<WebSocketApi, String> messageConsumer,
       BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer,
+      BiConsumer<WebSocketApi, ChannelMessage> channelMessageConsumer,
       BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer) {
     if (StringUtils.isEmpty(inMessage)) {
       return;
@@ -296,8 +302,11 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
             processBinaryManifest(ws, parts[2], binaryManifestConsumer);
             sendAcknowledge(parts[0]);
             return;
-        /*case CHANNEL_MESSAGE:
-          break;*/
+          case CHANNEL_MESSAGE:
+            if (channelMessageConsumer != null) {
+              channelMessageConsumer.accept(ws, fromJson(parts[2], ChannelMessage.class));
+            }
+            return;
           case CHANNEL_EVENT:
             if (channelEventConsumer != null) {
               channelEventConsumer.accept(ws, fromJson(parts[2], ChannelEvent.class));
@@ -496,6 +505,35 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       throw new IllegalStateException("Cannot retrieve list of channels: " + response.error);
     }
     return response.body.channels;
+  }
+
+  public void markChannelAsRead(@NotNull PChannel channel, ClientFilter filter) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("channel", channel);
+    metaData.put("filter", filter);
+    String response = sendCommand(MARK_CHANNEL_AS_READ, metaData);
+    if (!"SUCCESS".equals(response)) {
+      throw new IllegalStateException("Cannot mark channel as read: " + channel.name);
+    }
+  }
+
+  public void sendMessageToChannel(@NotNull PChannel channel, String message) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("channel", channel);
+    metaData.put("message", message);
+    String response = sendCommand(SEND_MESSAGE_TO_CHANNEL, metaData);
+    if (!"SUCCESS".equals(response)) {
+      throw new IllegalStateException("Cannot send message to channel " + channel.name);
+    }
+  }
+
+  public void removeMeFromChannel(@NotNull PChannel channel) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("channel", channel);
+    String response = sendCommand(REMOVE_ME_FROM_CHANNEL, metaData);
+    if (!"SUCCESS".equals(response)) {
+      throw new IllegalStateException("Cannot remove myself from channel " + channel.name);
+    }
   }
 
   private CompletableFuture<String> registerCallback(String id, String details) {

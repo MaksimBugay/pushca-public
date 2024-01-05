@@ -108,6 +108,8 @@ public class App {
         .withBinaryManifestConsumer((ws, data) -> System.out.println(toJson(data)))
         .withDataConsumer(dataConsumer)
         .withChannelEventConsumer((ws, event) -> System.out.println("client0: " + toJson(event)))
+        .withChannelMessageConsumer(
+            (ws, channelMessage) -> System.out.println("client0: " + toJson(channelMessage)))
         //.withSslContext(sslContextProvider.getSslContext())
         .build();
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
@@ -115,6 +117,8 @@ public class App {
             .withBinaryMessageConsumer(binaryMessageConsumer)
             .withChannelEventConsumer(
                 (ws, event) -> System.out.println("client1: " + toJson(event)))
+            .withChannelMessageConsumer(
+                (ws, channelMessage) -> System.out.println("client1: " + toJson(channelMessage)))
             //.withSslContext(sslContextProvider.getSslContext())
             .build();
         PushcaWebSocket pushcaWebSocket1a = new PushcaWebSocketBuilder(pushcaApiUrl,
@@ -122,6 +126,8 @@ public class App {
             .withBinaryMessageConsumer(binaryMessageConsumer)
             .withChannelEventConsumer(
                 (ws, event) -> System.out.println("client1a: " + toJson(event)))
+            .withChannelMessageConsumer(
+                (ws, channelMessage) -> System.out.println("client1a: " + toJson(channelMessage)))
             //.withSslContext(sslContextProvider.getSslContext())
             .build()
     ) {
@@ -187,6 +193,31 @@ public class App {
       if (channel00.members.size() != 3) {
         throw new IllegalStateException("Channel 0 has invalid list of members");
       }
+      pushcaWebSocket1.markChannelAsRead(channel0, null);
+      channels = pushcaWebSocket1.getChannels(fromClientWithoutDeviceId(client1));
+      channel00 = channels.stream()
+          .filter(channelWithInfo -> channelWithInfo.channel.id.equals(channel0.id))
+          .findFirst().orElse(null);
+      if (channel00 == null) {
+        throw new IllegalStateException("Channel 0 is not in the list");
+      }
+      if (!channel00.read) {
+        throw new IllegalStateException("Channel 0 was not not marked as read");
+      }
+      pushcaWebSocket0.sendMessageToChannel(channel0, "Hello Guys");
+
+      channels = pushcaWebSocket1a.getChannels(fromClientWithoutDeviceId(client1a));
+      channel00 = channels.stream()
+          .filter(channelWithInfo -> channelWithInfo.channel.id.equals(channel0.id))
+          .findFirst().orElse(null);
+      if (channel00 == null) {
+        throw new IllegalStateException("Channel 0 is not in the list");
+      }
+      if (channel00.counter != 1) {
+        throw new IllegalStateException("wrong channel message counter");
+      }
+
+      pushcaWebSocket1.removeMeFromChannel(channel0);
       System.out.println("ALL GOOD");
       delay(Duration.ofHours(1));
     }

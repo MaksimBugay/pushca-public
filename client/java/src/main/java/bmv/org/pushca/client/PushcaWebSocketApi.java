@@ -7,6 +7,7 @@ import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.core.ChannelEvent;
+import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
 import com.sun.istack.internal.NotNull;
@@ -42,6 +43,7 @@ public interface PushcaWebSocketApi {
   void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<WebSocketApi, String> messageConsumer,
       BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer,
+      BiConsumer<WebSocketApi, ChannelMessage> channelMessageConsumer,
       BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer);
 
   /**
@@ -117,5 +119,11 @@ public interface PushcaWebSocketApi {
 
   void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters);
 
-  List<ChannelWithInfo> getChannels(ClientFilter filter);
+  List<ChannelWithInfo> getChannels(@NotNull ClientFilter filter);
+
+  void markChannelAsRead(@NotNull PChannel channel, ClientFilter filter);
+
+  void sendMessageToChannel(@NotNull PChannel channel, String message);
+
+  void removeMeFromChannel(@NotNull PChannel channel);
 }

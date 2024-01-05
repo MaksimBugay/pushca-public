@@ -5,6 +5,7 @@ import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.core.ChannelEvent;
+import bmv.org.pushca.core.ChannelMessage;
 import java.util.function.BiConsumer;
 import javax.net.ssl.SSLContext;
 
@@ -18,8 +19,8 @@ public class PushcaWebSocketBuilder {
   private BiConsumer<WebSocketApi, byte[]> binaryMessageConsumer;
   private BiConsumer<WebSocketApi, Binary> dataConsumer;
   private BiConsumer<WebSocketApi, UnknownDatagram> unknownDatagramConsumer;
-
   private BiConsumer<WebSocketApi, ChannelEvent> channelEventConsumer;
+  private BiConsumer<WebSocketApi, ChannelMessage> channelMessageConsumer;
   private BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer;
   private BiConsumer<Integer, String> onCloseListener;
   private SSLContext sslContext;
@@ -70,6 +71,12 @@ public class PushcaWebSocketBuilder {
     return this;
   }
 
+  public PushcaWebSocketBuilder withChannelMessageConsumer(
+      BiConsumer<WebSocketApi, ChannelMessage> channelMessageConsumer) {
+    this.channelMessageConsumer = channelMessageConsumer;
+    return this;
+  }
+
   public PushcaWebSocketBuilder withBinaryManifestConsumer(
       BiConsumer<WebSocketApi, BinaryObjectData> binaryManifestConsumer) {
     this.binaryManifestConsumer = binaryManifestConsumer;
@@ -95,6 +102,7 @@ public class PushcaWebSocketBuilder {
   public PushcaWebSocket build() {
     return new PushcaWebSocket(pushcaApiUrl, pusherId, client, connectTimeoutMs, messageConsumer,
         binaryMessageConsumer, dataConsumer, unknownDatagramConsumer, binaryManifestConsumer,
-        channelEventConsumer, onCloseListener, sslContext, wsConnectionFactory);
+        channelEventConsumer, channelMessageConsumer, onCloseListener, sslContext,
+        wsConnectionFactory);
   }
 }
