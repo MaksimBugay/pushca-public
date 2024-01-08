@@ -106,14 +106,14 @@ paths:
               $ref: '#/components/schemas/OpenConnectionRequest'
         required: true
       responses:
-        "429":
-          description: Too many requests
         "200":
           description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenConnectionResponse'
+        "429":
+          description: Too many requests
   /open-connection-pool:
     post:
       tags:
@@ -148,10 +148,10 @@ paths:
               $ref: '#/components/schemas/RegisterHistoryOwnerRequest'
         required: true
       responses:
-        "200":
-          description: Success
         "500":
           description: Unexpected error
+        "200":
+          description: Success
   /history/list:
     post:
       tags:
@@ -165,14 +165,14 @@ paths:
               $ref: '#/components/schemas/GetHistoryRequest'
         required: true
       responses:
-        "429":
-          description: Too many requests
         "200":
           description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HistoryPageResponse'
+        "429":
+          description: Too many requests
   /create-channel:
     post:
       tags:
@@ -186,12 +186,12 @@ paths:
               $ref: '#/components/schemas/CreateChannelRequest'
         required: true
       responses:
+        "200":
+          description: successfully created
         "409":
           description: already exists
         "400":
           description: empty name
-        "200":
-          description: successfully created
   /channels-for-filter:
     post:
       tags:
@@ -232,6 +232,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetChannelMembersResponse'
+        "400":
+          description: empty channel id or name
+  /channel-history/list:
+    post:
+      tags:
+      - public-channel-api-controller
+      summary: Get channle message history
+      operationId: getChannelHistory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetChannelHistoryRequest'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryPageResponse'
         "400":
           description: empty channel id or name
   /add-members-to-channel:
@@ -298,10 +319,10 @@ paths:
               $ref: '#/components/schemas/RemoveHistoryOwnerRequest'
         required: true
       responses:
-        "200":
-          description: Success
         "500":
           description: Unexpected error
+        "200":
+          description: Success
 components:
   schemas:
     ClientSearchData:
@@ -579,6 +600,16 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ClientSearchData'
+    GetChannelHistoryRequest:
+      required:
+      - channel
+      type: object
+      properties:
+        channel:
+          $ref: '#/components/schemas/PChannel'
+        offset:
+          type: integer
+          format: int32
     AddMembersToChannelRequest:
       required:
       - actor
