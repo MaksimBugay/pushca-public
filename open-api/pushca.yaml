@@ -19,10 +19,29 @@ paths:
               $ref: '#/components/schemas/SendNotificationRequest'
         required: true
       responses:
-        "200":
-          description: Success
         "429":
           description: Too many requests
+        "200":
+          description: Success
+  /send-notification-with-delivery-guarantee:
+    post:
+      tags:
+      - public-api-controller
+      summary: Send notification with delivery guarantee
+      operationId: sendNotificationWithDeliveryGuarantee
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendNotificationWithDeliveryGuaranteeRequest'
+        required: true
+      responses:
+        "503":
+          description: Unexpected error
+        "200":
+          description: Success
+        "404":
+          description: Client is not connected
   /send-notification-with-acknowledge:
     post:
       tags:
@@ -38,6 +57,40 @@ paths:
       responses:
         "408":
           description: Acknowledge time out
+        "200":
+          description: Success
+  /send-message-to-channel:
+    post:
+      tags:
+      - public-channel-api-controller
+      summary: Send message to channel
+      operationId: sendMessageToChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageToChannelRequest'
+        required: true
+      responses:
+        "400":
+          description: empty channel id or name
+        "200":
+          description: successfully sent
+  /send-binary:
+    post:
+      tags:
+      - public-api-controller
+      summary: Send binary
+      operationId: sendBinary
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendBinaryRequest'
+        required: true
+      responses:
+        "429":
+          description: Too many requests
         "200":
           description: Success
   /open-connection:
@@ -61,6 +114,194 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenConnectionResponse'
+  /open-connection-pool:
+    post:
+      tags:
+      - public-api-controller
+      summary: Open connection pool
+      operationId: openConnectionPool
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenConnectionPoolRequest'
+        required: true
+      responses:
+        "429":
+          description: Too many requests
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenConnectionPoolResponse'
+  /history/register-owner:
+    post:
+      tags:
+      - public-api-controller
+      summary: Register history owner
+      operationId: registerHistoryOwner
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterHistoryOwnerRequest'
+        required: true
+      responses:
+        "200":
+          description: Success
+        "500":
+          description: Unexpected error
+  /history/list:
+    post:
+      tags:
+      - public-api-controller
+      summary: Get message history
+      operationId: getHistory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetHistoryRequest'
+        required: true
+      responses:
+        "429":
+          description: Too many requests
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryPageResponse'
+  /create-channel:
+    post:
+      tags:
+      - public-channel-api-controller
+      summary: Create a new channel
+      operationId: createChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChannelRequest'
+        required: true
+      responses:
+        "409":
+          description: already exists
+        "400":
+          description: empty name
+        "200":
+          description: successfully created
+  /channels-for-filter:
+    post:
+      tags:
+      - public-channel-api-controller
+      summary: Get all channels that have provided filter as a member
+      operationId: getChannels
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilterRequest'
+        required: true
+      responses:
+        "400":
+          description: empty filter
+        "200":
+          description: returns set of channels with short info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetChannelsResponse'
+  /channel-members:
+    post:
+      tags:
+      - public-channel-api-controller
+      summary: Get members of the channel
+      operationId: getChannelMembers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetChannelMembersRequest'
+        required: true
+      responses:
+        "200":
+          description: returns set of filters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetChannelMembersResponse'
+        "400":
+          description: empty channel id or name
+  /add-members-to-channel:
+    post:
+      tags:
+      - public-channel-api-controller
+      summary: Add new members into channel
+      operationId: addMembersToChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMembersToChannelRequest'
+        required: true
+      responses:
+        "200":
+          description: successfully added
+        "400":
+          description: empty channel id or name
+  /remove-members-from-channel:
+    delete:
+      tags:
+      - public-channel-api-controller
+      summary: Remove members from channel
+      operationId: removeMembersFromChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemoveMembersFromChannelRequest'
+        required: true
+      responses:
+        "200":
+          description: successfully removed
+        "400":
+          description: empty channel id or name
+  /remove-channel:
+    delete:
+      tags:
+      - public-channel-api-controller
+      summary: Remove channel for all members
+      operationId: removeChannel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemoveChannelRequest'
+        required: true
+      responses:
+        "200":
+          description: successfully removed
+        "400":
+          description: empty channel id or name
+  /history/remove-owner:
+    delete:
+      tags:
+      - public-api-controller
+      summary: Remove history owner
+      operationId: removeHistoryOwner
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemoveHistoryOwnerRequest'
+        required: true
+      responses:
+        "200":
+          description: Success
+        "500":
+          description: Unexpected error
 components:
   schemas:
     ClientSearchData:
@@ -96,10 +337,21 @@ components:
       properties:
         id:
           type: string
+        sender:
+          $ref: '#/components/schemas/PClient'
         filter:
           $ref: '#/components/schemas/ClientSearchData'
         preserveOrder:
           type: boolean
+        message:
+          type: string
+    SendNotificationWithDeliveryGuaranteeRequest:
+      type: object
+      properties:
+        client:
+          $ref: '#/components/schemas/PClient'
+        sender:
+          $ref: '#/components/schemas/PClient'
         message:
           type: string
     SendNotificationWithAcknowledgeRequest:
@@ -107,12 +359,65 @@ components:
       properties:
         id:
           type: string
+        sender:
+          $ref: '#/components/schemas/PClient'
         client:
           $ref: '#/components/schemas/PClient'
         preserveOrder:
           type: boolean
         message:
           type: string
+    PChannel:
+      required:
+      - id
+      - name
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientSearchData'
+    SendMessageToChannelRequest:
+      required:
+      - sender
+      type: object
+      properties:
+        sender:
+          $ref: '#/components/schemas/PClient'
+        channel:
+          $ref: '#/components/schemas/PChannel'
+        message:
+          type: string
+    BinaryChunk:
+      type: object
+      properties:
+        size:
+          type: integer
+          format: int32
+        md5:
+          type: string
+        order:
+          type: integer
+          format: int32
+    SendBinaryRequest:
+      type: object
+      properties:
+        client:
+          $ref: '#/components/schemas/PClient'
+        sender:
+          $ref: '#/components/schemas/PClient'
+        name:
+          type: string
+        withAcknowledge:
+          type: boolean
+        chunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/BinaryChunk'
     OpenConnectionRequest:
       type: object
       properties:
@@ -129,3 +434,191 @@ components:
           type: string
         internalAdvertisedUrl:
           type: string
+        browserAdvertisedUrl:
+          type: string
+    OpenConnectionPoolRequest:
+      type: object
+      properties:
+        client:
+          $ref: '#/components/schemas/PClient'
+        pusherInstanceId:
+          type: string
+        poolSize:
+          type: integer
+          format: int32
+    OpenConnectionPoolResponse:
+      type: object
+      properties:
+        pusherInstanceId:
+          type: string
+        addresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/PusherAddress'
+    PusherAddress:
+      type: object
+      properties:
+        externalAdvertisedUrl:
+          type: string
+        internalAdvertisedUrl:
+          type: string
+        browserAdvertisedUrl:
+          type: string
+    RegisterHistoryOwnerRequest:
+      type: object
+      properties:
+        client:
+          $ref: '#/components/schemas/PClient'
+    GetHistoryRequest:
+      type: object
+      properties:
+        client:
+          $ref: '#/components/schemas/PClient'
+        offset:
+          type: integer
+          format: int32
+    HistoryPageResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/PushcaMessage'
+        offset:
+          type: integer
+          format: int32
+        latest:
+          type: integer
+          format: int32
+        more:
+          type: integer
+          format: int32
+    PushcaMessage:
+      type: object
+      properties:
+        sender:
+          $ref: '#/components/schemas/PClient'
+        channelId:
+          type: string
+        clientMessageId:
+          type: string
+        transactionId:
+          type: string
+        index:
+          type: integer
+          format: int32
+        body:
+          type: string
+        isBase64:
+          type: boolean
+        withAck:
+          type: boolean
+        sendTime:
+          type: integer
+          format: int64
+    CreateChannelRequest:
+      required:
+      - actor
+      - name
+      type: object
+      properties:
+        actor:
+          $ref: '#/components/schemas/PClient'
+        id:
+          type: string
+        name:
+          type: string
+        filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientSearchData'
+    FilterRequest:
+      required:
+      - filter
+      type: object
+      properties:
+        filter:
+          $ref: '#/components/schemas/ClientSearchData'
+    ChannelWithInfo:
+      type: object
+      properties:
+        channel:
+          $ref: '#/components/schemas/PChannel'
+        members:
+          uniqueItems: true
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientSearchData'
+        counter:
+          type: integer
+          format: int64
+        time:
+          type: integer
+          format: int64
+        read:
+          type: boolean
+    GetChannelsResponse:
+      type: object
+      properties:
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelWithInfo'
+    GetChannelMembersRequest:
+      required:
+      - channel
+      type: object
+      properties:
+        channel:
+          $ref: '#/components/schemas/PChannel'
+    GetChannelMembersResponse:
+      type: object
+      properties:
+        filters:
+          uniqueItems: true
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientSearchData'
+    AddMembersToChannelRequest:
+      required:
+      - actor
+      - channel
+      type: object
+      properties:
+        actor:
+          $ref: '#/components/schemas/PClient'
+        channel:
+          $ref: '#/components/schemas/PChannel'
+        filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientSearchData'
+    RemoveMembersFromChannelRequest:
+      required:
+      - actor
+      - channel
+      type: object
+      properties:
+        actor:
+          $ref: '#/components/schemas/PClient'
+        channel:
+          $ref: '#/components/schemas/PChannel'
+        filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientSearchData'
+    RemoveChannelRequest:
+      required:
+      - actor
+      - channel
+      type: object
+      properties:
+        actor:
+          $ref: '#/components/schemas/PClient'
+        channel:
+          $ref: '#/components/schemas/PChannel'
+    RemoveHistoryOwnerRequest:
+      type: object
+      properties:
+        client:
+          $ref: '#/components/schemas/PClient'

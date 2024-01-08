@@ -226,15 +226,71 @@ public interface PushcaWebSocketApi {
   void sendBinary(String binaryId, boolean withAcknowledge, List<String> requestedIds);
 
   //====================================CHANNEL API=================================================
+
+  /**
+   * Create a new channel. Channel is a logical unit with group chat features for set of client
+   * filters. Every filter defines the only one channel member. It can be several clients under the
+   * same filter that provides multi-device support. The most common channel member filter is filter
+   * with fixed workspace and application id, omitted device id and account id that actually
+   * represent information about member. Every member can access message history that is linked to
+   * channel
+   *
+   * @param id      - channel id (if null then will be assigned by Pushca)
+   * @param name    - channel name
+   * @param filters - channel members
+   * @return - channel object for future communications
+   */
   PChannel createChannel(String id, @NotNull String name, ClientFilter... filters);
 
+  /**
+   * Add new members into existing channel
+   *
+   * @param channel - channel object
+   * @param filters - new members
+   */
   void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters);
 
+  /**
+   * Return list of channels that contains provided filter as a member
+   *
+   * @param filter - member filter
+   * @return list of channels with information about message counter, last update time and read
+   * status
+   */
   List<ChannelWithInfo> getChannels(@NotNull ClientFilter filter);
 
+  /**
+   * Change read status of provided channel to true (already red)
+   *
+   * @param channel - channel object
+   * @param filter  - member filter (if null will be resolved by server but better provide it to
+   *                improve performance)
+   */
   void markChannelAsRead(@NotNull PChannel channel, ClientFilter filter);
 
+  /**
+   * Send text message to channel, all members will receive a notification
+   *
+   * @param channel - channel object
+   * @param message - message text
+   */
   void sendMessageToChannel(@NotNull PChannel channel, String message);
 
+  /**
+   * Send binary message to channel, all members will receive a notification. Binary message is used
+   * to support some custom protocol, that protocol should contain information about sender and
+   * destination channel
+   *
+   * @param channel - channel object
+   * @param message - binary data
+   */
+  void sendBinaryMessageToChannel(@NotNull PChannel channel, byte[] message);
+
+  /**
+   * Remove connected client from some channel, client will stop receive events/messages from
+   * channel
+   *
+   * @param channel - channel object
+   */
   void removeMeFromChannel(@NotNull PChannel channel);
 }

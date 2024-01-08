@@ -76,13 +76,17 @@ public class App {
     );*/
 
     String pushcaApiUrl =
-     //   "http://localhost:8050";
-    //   "https://app-rc.multiloginapp.net/pushca-with-tls-support";
-    //"http://push-app-rc.multiloginapp.net:8050";
-    "https://app-rc.multiloginapp.net/pushca";
+        //   "http://localhost:8050";
+        //   "https://app-rc.multiloginapp.net/pushca-with-tls-support";
+        //"http://push-app-rc.multiloginapp.net:8050";
+        "https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
+    final byte[] binaryMsg =
+        Base64.getEncoder().encode("Binary message test".getBytes(StandardCharsets.UTF_8));
+    final byte[] binaryMsg1 =
+        Base64.getEncoder().encode("Binary message test1".getBytes(StandardCharsets.UTF_8));
     final AtomicReference<String> lastMessage = new AtomicReference<>();
     BiConsumer<PushcaWebSocketApi, String> messageConsumer = (ws, msg) -> {
       System.out.println(
@@ -164,8 +168,6 @@ public class App {
       System.out.println("Message was delivered with acknowledge");
       //============================================================================================
       //-----------------------------binary message-------------------------------------------------
-      byte[] binaryMsg =
-          Base64.getEncoder().encode("Binary message test".getBytes(StandardCharsets.UTF_8));
       pushcaWebSocket0.sendBinaryMessage(null, client1, binaryMsg, true);
       //============================================================================================
       //-----------------------------binary with acknowledge----------------------------------------
@@ -173,14 +175,14 @@ public class App {
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
       //file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
       byte[] data = Files.readAllBytes(file.toPath());
-      pushcaWebSocket1.sendBinary(client0,
+      /*pushcaWebSocket1.sendBinary(client0,
           data,
           "vlc-3.0.11-win64-copy.exe",
           //"Reproducing_multiple_java_headless-copy.mov",
           UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)),
           PushcaWebSocket.DEFAULT_CHUNK_SIZE,
           true
-      );
+      );*/
       //============================================================================================
       //=================================Channels===================================================
       PChannel channel0 = pushcaWebSocket0.createChannel(null,
@@ -212,6 +214,8 @@ public class App {
         throw new IllegalStateException("Channel 0 was not not marked as read");
       }
       pushcaWebSocket0.sendMessageToChannel(channel0, "Hello Guys");
+      pushcaWebSocket1.sendBinaryMessageToChannel(channel0, binaryMsg1);
+      delay(Duration.ofMillis(100));
 
       channels = pushcaWebSocket1a.getChannels(fromClientWithoutDeviceId(client1a));
       channel00 = channels.stream()
@@ -220,7 +224,7 @@ public class App {
       if (channel00 == null) {
         throw new IllegalStateException("Channel 0 is not in the list");
       }
-      if (channel00.counter != 1) {
+      if (channel00.counter != 2) {
         throw new IllegalStateException("wrong channel message counter");
       }
 

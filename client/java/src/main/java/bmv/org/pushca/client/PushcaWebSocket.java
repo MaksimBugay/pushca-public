@@ -560,6 +560,10 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
+  public void sendBinaryMessageToChannel(@NotNull PChannel channel, byte[] message) {
+    sendBinaryMessage(channel.hashCode(), message, null, false);
+  }
+
   public void removeMeFromChannel(@NotNull PChannel channel) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("channel", channel);
