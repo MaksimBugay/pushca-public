@@ -17,6 +17,8 @@ type (
 
 		WriteJSON(v interface{}) error
 
+		WriteMessage(msg string) error
+
 		WriteBinary(data []byte) error
 	}
 )

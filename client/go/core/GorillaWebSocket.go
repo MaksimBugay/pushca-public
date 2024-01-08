@@ -86,6 +86,10 @@ func (wsGorilla *GorillaWebSocket) IsClosed() bool {
 	return wsGorilla.Connection == nil
 }
 
+func (wsGorilla *GorillaWebSocket) WriteMessage(msg string) error {
+	return wsGorilla.Connection.WriteMessage(websocket.TextMessage, []byte(msg))
+}
+
 func (wsGorilla *GorillaWebSocket) WriteJSON(v interface{}) error {
 	return wsGorilla.Connection.WriteJSON(v)
 }

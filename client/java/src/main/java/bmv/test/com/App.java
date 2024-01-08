@@ -76,10 +76,10 @@ public class App {
     );*/
 
     String pushcaApiUrl =
-        //   "http://localhost:8050";
+           "http://localhost:8050";
         //   "https://app-rc.multiloginapp.net/pushca-with-tls-support";
         //"http://push-app-rc.multiloginapp.net:8050";
-        "https://app-rc.multiloginapp.net/pushca";
+        //"https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";

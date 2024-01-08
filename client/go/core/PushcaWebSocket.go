@@ -321,7 +321,7 @@ func (wsPushca *PushcaWebSocket) processBinary(inBinary []byte) {
 			wsPushca.BinaryMessageConsumer(wsPushca, inBinary[25:])
 		}
 		if withAcknowledge {
-			wsPushca.SendAcknowledge2(binaryID, order)
+			wsPushca.SendAcknowledge(binaryID.String())
 		}
 		return
 	}
@@ -448,7 +448,7 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage4(dest model.PClient, message 
 
 	if withAcknowledge {
 		wsPushca.executeWithRepeatOnFailure(
-			util.BuildAcknowledgeId(id.String(), order),
+			id.String(),
 			func() error {
 				return wsPushca.wsConnectionWriteBinary(append(prefix, message...))
 			},
@@ -584,6 +584,39 @@ func (wsPushca *PushcaWebSocket) executeWithRepeatOnFailure(id string, operation
 		log.Printf("Impossible to complete operation: id %s", id)
 	}
 }
+
+func (wsPushca *PushcaWebSocket) wsConnectionWriteCommand(command util.Command,
+	metadata map[string]interface{}, waitForCallback bool) error {
+	wsPushca.writeToSocketMutex.Lock()
+	defer wsPushca.writeToSocketMutex.Unlock()
+	id := uuid.New().String()
+	commandStr, err := util.PrepareCommand(command, metadata, id)
+	if err != nil {
+		return err
+	}
+	if waitForCallback {
+		wsPushca.executeWithRepeatOnFailure(
+			id,
+			func() error {
+				return wsPushca.wsConnectionWriteMessage(commandStr)
+			},
+			func(err error) {
+				log.Printf("Cannot send command %s: client %s, error %s",
+					command.String(), wsPushca.GetInfo(), err)
+			},
+		)
+		return nil
+	} else {
+		return wsPushca.webSocket.WriteMessage(commandStr)
+	}
+}
+
+func (wsPushca *PushcaWebSocket) wsConnectionWriteMessage(msg string) error {
+	wsPushca.writeToSocketMutex.Lock()
+	defer wsPushca.writeToSocketMutex.Unlock()
+	return wsPushca.webSocket.WriteMessage(msg)
+}
+
 func (wsPushca *PushcaWebSocket) wsConnectionWriteJSON(v interface{}) error {
 	wsPushca.writeToSocketMutex.Lock()
 	defer wsPushca.writeToSocketMutex.Unlock()

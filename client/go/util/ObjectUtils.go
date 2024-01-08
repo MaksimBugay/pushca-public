@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
 	"io"
@@ -11,6 +12,14 @@ import (
 )
 
 const DefaultChunkSize = 1024 * 1024
+
+func ToJson(args interface{}) (string, error) {
+	jsonBytes, err := json.Marshal(args)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonBytes), nil
+}
 
 func CalculateStringHashCode(s string) int32 {
 	var h int32
