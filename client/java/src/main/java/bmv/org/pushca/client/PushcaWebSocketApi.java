@@ -40,6 +40,10 @@ public interface PushcaWebSocketApi {
    * @param ws                     - websocket connection object
    * @param inMessage              - incoming text message
    * @param messageConsumer        - external handler of text messages
+   * @param channelEventConsumer   - external handler of channel related events like created,
+   *                               removed etc.
+   * @param channelMessageConsumer - dedicated external handler of channel messages (object with
+   *                               additional info about channel, sender etc.)
    * @param binaryManifestConsumer - external handler of reveived binary manifests
    */
   void processMessage(WebSocketApi ws, String inMessage,
@@ -73,7 +77,7 @@ public interface PushcaWebSocketApi {
    * @param message       - message text
    * @throws WebsocketConnectionIsBrokenException - failed delivery exception
    */
-  void sendMessageWithAcknowledge(String id, PClient dest, boolean preserveOrder,
+  void sendMessageWithAcknowledge(String id, @NotNull PClient dest, boolean preserveOrder,
       String message) throws WebsocketConnectionIsBrokenException;
 
   /**
@@ -87,27 +91,77 @@ public interface PushcaWebSocketApi {
   void sendMessageWithAcknowledge(String id, PClient dest, String message)
       throws WebsocketConnectionIsBrokenException;
 
-  void broadcastMessage(String id, ClientFilter dest, boolean preserveOrder, String message);
+  /**
+   * Send message to all connected clients that met the filtering requirements
+   *
+   * @param id            - message id (if null then will be assigned by Pushca)
+   * @param dest          - filter of receivers
+   * @param preserveOrder - keep sending order during delivery
+   * @param message       - message text
+   */
+  void broadcastMessage(String id, @NotNull ClientFilter dest, boolean preserveOrder,
+      String message);
 
   /**
-   * Send message to all connected clients that pass filter
+   * short version of broadcastMessage method, that uses defaults: id = null, preserveOrder = false
    *
    * @param dest    - filter of receivers
    * @param message - message text
    */
-  void broadcastMessage(ClientFilter dest, String message);
+  void broadcastMessage(@NotNull ClientFilter dest, String message);
 
-  void sendMessage(String id, PClient dest, boolean preserveOrder, String message);
+  /**
+   * Send message to provided client
+   *
+   * @param id            - message id (if null then will be assigned by Pushca)
+   * @param dest          - client
+   * @param preserveOrder - keep sending order during delivery
+   * @param message       - message text
+   */
+  void sendMessage(String id, @NotNull PClient dest, boolean preserveOrder, String message);
 
+  /**
+   * short version of sendMessage method, that uses defaults: id = null, preserveOrder = false
+   *
+   * @param dest    - client
+   * @param message - message text
+   */
   void sendMessage(PClient dest, String message);
 
-  void broadcastBinaryMessage(ClientFilter dest, byte[] message, UUID id);
+  /**
+   * Send binary message to all connected clients that met the filtering requirements
+   *
+   * @param id      - message id (if null then will be assigned by Pushca)
+   * @param dest    - filter of receivers
+   * @param message - binary data
+   */
+  void broadcastBinaryMessage(@NotNull ClientFilter dest, byte[] message, UUID id);
 
-  void broadcastBinaryMessage(ClientFilter dest, byte[] message);
+  /**
+   * short version of broadcastBinaryMessage method, that uses defaults: id = null
+   *
+   * @param dest    - filter of receivers
+   * @param message - binary data
+   */
+  void broadcastBinaryMessage(@NotNull ClientFilter dest, byte[] message);
 
-  void sendBinaryMessage(PClient dest, byte[] message, UUID id, boolean withAcknowledge);
+  /**
+   * Send binary message to provided client
+   *
+   * @param id              - message id (if null then will be assigned by Pushca)
+   * @param dest            - client
+   * @param message         - binary data
+   * @param withAcknowledge - wait for acknowledge from receiver
+   */
+  void sendBinaryMessage(UUID id, @NotNull PClient dest, byte[] message, boolean withAcknowledge);
 
-  void sendBinaryMessage(PClient dest, byte[] message);
+    /**
+   * short version of sendBinaryMessage method, that uses defaults: id = null, withAcknowledge = false
+   *
+   * @param dest    - client
+   * @param message - binary data
+   */
+  void sendBinaryMessage(@NotNull PClient dest, byte[] message);
 
   void sendBinaryManifest(ClientFilter dest, BinaryObjectData manifest);
 

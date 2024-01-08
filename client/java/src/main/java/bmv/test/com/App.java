@@ -76,10 +76,10 @@ public class App {
     );*/
 
     String pushcaApiUrl =
-        "http://localhost:8050";
+     //   "http://localhost:8050";
     //   "https://app-rc.multiloginapp.net/pushca-with-tls-support";
     //"http://push-app-rc.multiloginapp.net:8050";
-    //"https://app-rc.multiloginapp.net/pushca";
+    "https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
@@ -166,7 +166,7 @@ public class App {
       //-----------------------------binary message-------------------------------------------------
       byte[] binaryMsg =
           Base64.getEncoder().encode("Binary message test".getBytes(StandardCharsets.UTF_8));
-      pushcaWebSocket0.sendBinaryMessage(client1, binaryMsg, null, true);
+      pushcaWebSocket0.sendBinaryMessage(null, client1, binaryMsg, true);
       //============================================================================================
       //-----------------------------binary with acknowledge----------------------------------------
       File file = new File(

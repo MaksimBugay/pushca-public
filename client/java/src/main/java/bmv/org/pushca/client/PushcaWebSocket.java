@@ -414,7 +414,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     broadcastBinaryMessage(dest, message, null);
   }
 
-  public void sendBinaryMessage(PClient dest, byte[] message, UUID id, boolean withAcknowledge) {
+  public void sendBinaryMessage(UUID id, PClient dest, byte[] message, boolean withAcknowledge) {
     sendBinaryMessage(dest.hashCode(), message, id, withAcknowledge);
   }
 
@@ -435,7 +435,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void sendBinaryMessage(PClient dest, byte[] message) {
-    sendBinaryMessage(dest, message, null, false);
+    sendBinaryMessage(null, dest, message, false);
   }
 
   @Override
