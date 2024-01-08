@@ -476,7 +476,16 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     return binaryObjectData;
   }
 
-  public void sendBinary(BinaryObjectData binaryObjectData, boolean withAcknowledge,
+  public void sendBinary(String binaryId, boolean withAcknowledge, List<String> requestedIds) {
+    BinaryObjectData binaryObjectData = binaries.get(binaryId);
+    if (binaryObjectData == null) {
+      LOGGER.error("Unknown binary with id = {}", binaryId);
+      return;
+    }
+    sendBinary(binaryObjectData, withAcknowledge, requestedIds);
+  }
+
+  private void sendBinary(BinaryObjectData binaryObjectData, boolean withAcknowledge,
       List<String> requestedIds) {
     Predicate<Datagram> filter =
         requestedIds == null ? dgm -> Boolean.TRUE : dgm -> requestedIds.contains(

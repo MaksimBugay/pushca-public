@@ -67,6 +67,8 @@ public interface PushcaWebSocketApi {
    */
   void sendAcknowledge(UUID binaryId, int order);
 
+  //=================================TEXT MESSAGE API===============================================
+
   /**
    * send message to some client and wait for acknowledge, if no acknowledge after defined number of
    * send attempts then throw exception
@@ -128,6 +130,8 @@ public interface PushcaWebSocketApi {
    */
   void sendMessage(PClient dest, String message);
 
+  //=============================BINARY MESSAGE API=================================================
+
   /**
    * Send binary message to all connected clients that met the filtering requirements
    *
@@ -155,26 +159,73 @@ public interface PushcaWebSocketApi {
    */
   void sendBinaryMessage(UUID id, @NotNull PClient dest, byte[] message, boolean withAcknowledge);
 
-    /**
-   * short version of sendBinaryMessage method, that uses defaults: id = null, withAcknowledge = false
+  /**
+   * short version of sendBinaryMessage method, that uses defaults: id = null, withAcknowledge =
+   * false
    *
    * @param dest    - client
    * @param message - binary data
    */
   void sendBinaryMessage(@NotNull PClient dest, byte[] message);
 
-  void sendBinaryManifest(ClientFilter dest, BinaryObjectData manifest);
+  //====================================BINARY(FILE) API============================================
 
-  BinaryObjectData sendBinary(PClient dest, byte[] data, String name, UUID id, int chunkSize,
-      boolean withAcknowledge);
+  /**
+   * Send binary manifest object to all connected clients that met the filtering requirements
+   *
+   * @param dest     - filter of receivers
+   * @param manifest - json object with binary metadata and information about all chunks
+   */
+  void sendBinaryManifest(@NotNull ClientFilter dest, BinaryObjectData manifest);
 
-  void sendBinary(PClient dest, byte[] data, boolean withAcknowledge);
+  /**
+   * Send binary (usually file) to provided client
+   *
+   * @param dest            - client (receiver)
+   * @param data            - binary data
+   * @param name            - file name
+   * @param id              - binary id (if null then will be assigned by Pushca)
+   * @param chunkSize       - pushca client splits file into chunks before sending and sends it
+   *                        chunk by chunk
+   * @param withAcknowledge - wait for acknowledge of previous chunk delivery by receiver before
+   *                        send the next chunk
+   * @return - binary manifest (usually used for torrents like protocol implementation)
+   */
+  BinaryObjectData sendBinary(@NotNull PClient dest, byte[] data, String name, UUID id,
+      int chunkSize, boolean withAcknowledge);
 
-  void sendBinary(PClient dest, byte[] data);
+  /**
+   * short version of sendBinary method, that uses defaults: name = null, id = null, chunkSize =
+   * 1Mb
+   *
+   * @param dest            - client (receiver)
+   * @param data            - binary data
+   * @param withAcknowledge - wait for acknowledge of previous chunk delivery by receiver before
+   *                        send the next chunk
+   */
+  void sendBinary(@NotNull PClient dest, byte[] data, boolean withAcknowledge);
 
-  void sendBinary(BinaryObjectData binaryObjectData, boolean withAcknowledge,
-      List<String> requestedIds);
+  /**
+   * short version of sendBinary method, that uses defaults: name = null, id = null, chunkSize =
+   * 1Mb, withAcknowledge = false
+   *
+   * @param dest - client (receiver)
+   * @param data - binary data
+   */
+  void sendBinary(@NotNull PClient dest, byte[] data);
 
+  /**
+   * Send only requested chunks of binary (file) that manifest was already shared between sender and
+   * receiver (usually used for torrents like protocol implementation)
+   *
+   * @param binaryId        - binary id
+   * @param withAcknowledge - wait for acknowledge of previous chunk delivery by receiver before
+   *                        send the next chunk
+   * @param requestedIds    - identifiers of requested chunks
+   */
+  void sendBinary(String binaryId, boolean withAcknowledge, List<String> requestedIds);
+
+  //====================================CHANNEL API=================================================
   PChannel createChannel(String id, @NotNull String name, ClientFilter... filters);
 
   void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters);
