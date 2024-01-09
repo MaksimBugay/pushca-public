@@ -39,7 +39,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("cannot load tls config due to %s", err)
 	}
-	print(tlsConfig)
+	tlsConfig = nil
 	done := make(chan struct{})
 	deviceId, errRandomUuid := uuid.NewRandom()
 	if errRandomUuid != nil {
@@ -55,10 +55,6 @@ func main() {
 
 	messageConsumer := func(ws core.PushcaWebSocketApi, message string) {
 		log.Printf("%s message: %s", ws.GetInfo(), message)
-	}
-
-	acknowledgeConsumer := func(ws core.PushcaWebSocketApi, id string) {
-		log.Printf("%s acknowledge: %s", ws.GetInfo(), id)
 	}
 
 	binaryManifestConsumer := func(ws core.PushcaWebSocketApi, manifest model.BinaryObjectData) {
@@ -107,8 +103,8 @@ func main() {
 		ApplicationId: "PUSHCA_CLIENT",
 	}
 
-	httpPostUrl := "https://app-rc.multiloginapp.net/pushca-with-tls-support/open-connection"
-	//httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
+	//httpPostUrl := "https://app-rc.multiloginapp.net/pushca-with-tls-support/open-connection"
+	httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
 	//httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
 	//httpPostUrl := "http://localhost:8080/open-connection"
 	wsFactory := func() core.WebSocketApi {
@@ -117,19 +113,18 @@ func main() {
 	pushcaWebSocket0 := &core.PushcaWebSocket{
 		PushcaApiUrl: httpPostUrl,
 		Client: model.PClient{
-			WorkSpaceId:   "workSpaceMain",
+			WorkSpaceId:   "workSpaceGo",
 			AccountId:     "clientGo0@test.ee",
 			DeviceId:      deviceId.String(),
 			ApplicationId: "PUSHCA_CLIENT",
 		},
 		WebSocketFactory:       wsFactory,
 		MessageConsumer:        messageConsumer,
-		AcknowledgeConsumer:    acknowledgeConsumer,
 		BinaryManifestConsumer: binaryManifestConsumer,
 		BinaryMessageConsumer:  binaryMessageConsumer,
 		DataConsumer:           dataConsumer,
 		TlsConfig:              tlsConfig,
-		Binaries:               make(map[uuid.UUID]*model.BinaryObjectData),
+		Binaries:               new(sync.Map),
 		AcknowledgeCallbacks:   new(sync.Map),
 	}
 	log.Printf("Pusher instance id: %v", pushcaWebSocket0.PusherId)
@@ -148,19 +143,18 @@ func main() {
 	pushcaWebSocket1 := &core.PushcaWebSocket{
 		PushcaApiUrl: httpPostUrl,
 		Client: model.PClient{
-			WorkSpaceId:   "workSpaceMain",
+			WorkSpaceId:   "workSpaceGo",
 			AccountId:     "clientGo1@test.ee",
 			DeviceId:      "web-browser",
 			ApplicationId: "PUSHCA_CLIENT",
 		},
 		WebSocketFactory:       wsFactory,
 		MessageConsumer:        messageConsumer,
-		AcknowledgeConsumer:    acknowledgeConsumer,
 		BinaryManifestConsumer: binaryManifestConsumer,
 		BinaryMessageConsumer:  binaryMessageConsumer,
 		DataConsumer:           dataConsumer,
 		TlsConfig:              tlsConfig,
-		Binaries:               make(map[uuid.UUID]*model.BinaryObjectData),
+		Binaries:               new(sync.Map),
 		AcknowledgeCallbacks:   new(sync.Map),
 	}
 	//================================================================================
@@ -188,7 +182,11 @@ func main() {
 		ws.Close()
 	}(pushcaWebSocket1)
 
-	pushcaWebSocket0.SendMessageWithAcknowledge4("1", pushcaWebSocket1.Client, false, "test message")
+	//time.Sleep(2000 * time.Second)
+	newToken := pushcaWebSocket0.RefreshToken()
+	log.Printf("New Token: %v", newToken)
+
+	pushcaWebSocket0.SendMessageWithAcknowledge4("1", pushcaWebSocket1.Client, false, "test message with ack")
 	clientFilter := model.ClientFilter{
 		WorkSpaceID: "workSpaceMain",
 	}
@@ -216,7 +214,7 @@ func main() {
 	pushcaWebSocket1.SendBinary7(pushcaWebSocket0.Client, data,
 		"vlc-3.0.11-win64-copy.exe",
 		//"Reproducing_multiple_java_headless-copy.mov",
-		uuid.Nil, util.DefaultChunkSize, true, true)
+		uuid.Nil, util.DefaultChunkSize, true)
 	defer close(done)
 	for {
 		select {

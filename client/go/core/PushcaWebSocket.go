@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"io"
 	"log"
@@ -40,7 +41,7 @@ type PushcaWebSocket struct {
 	DataConsumer            func(ws PushcaWebSocketApi, data model.Binary)
 	UnknownDatagramConsumer func(ws PushcaWebSocketApi, data model.UnknownDatagram)
 	TlsConfig               *tls.Config
-	Binaries                map[uuid.UUID]*model.BinaryObjectData
+	Binaries                *sync.Map
 	AcknowledgeCallbacks    *sync.Map
 	webSocket               WebSocketApi
 	mutex                   sync.Mutex
@@ -310,8 +311,14 @@ func (wsPushca *PushcaWebSocket) processBinary(inBinary []byte) {
 		return
 	}
 	//-----------------------------------------------------------------------------
-	binaryData := wsPushca.Binaries[binaryID]
-	if binaryData == nil {
+	var binaryData model.BinaryObjectData
+	if value, ok := wsPushca.Binaries.Load(binaryID); ok {
+		if tmp, ok := value.(model.BinaryObjectData); ok {
+			binaryData = tmp
+		} else {
+			fmt.Println("Type assertion failed")
+		}
+	} else {
 		if wsPushca.UnknownDatagramConsumer != nil {
 			wsPushca.UnknownDatagramConsumer(wsPushca, model.UnknownDatagram{
 				BinaryId: binaryID,
@@ -341,7 +348,7 @@ func (wsPushca *PushcaWebSocket) processBinary(inBinary []byte) {
 		if wsPushca.DataConsumer != nil {
 			wsPushca.DataConsumer(wsPushca, binaryData.ToBinary(&wsPushca.mutex))
 		}
-		delete(wsPushca.Binaries, binaryID)
+		wsPushca.Binaries.Delete(binaryID)
 		log.Printf("Binary was successfully received: id=%v, name=%s", binaryID, binaryData.Name)
 	}
 }
@@ -356,6 +363,7 @@ func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 
 		switch parts[1] {
 		case model.Acknowledge.String():
+			log.Printf("Acknowledge was received: client %s, id %s", wsPushca.GetInfo(), parts[0])
 			if callback, ok := wsPushca.AcknowledgeCallbacks.Load(parts[0]); ok {
 				if tmp, ok := callback.(*model.AcknowledgeCallback); ok {
 					tmp.Received <- DefaultResponse
@@ -399,7 +407,9 @@ func (wsPushca *PushcaWebSocket) processBinaryManifest(manifestJSON string) {
 	}
 	if !binaryObjectData.ReadOnly {
 		binaryId, _ := uuid.Parse(binaryObjectData.ID)
-		wsPushca.Binaries[binaryId] = &binaryObjectData
+		log.Printf("Binary manifest was registered: client %s, id %s", wsPushca.GetInfo(), binaryId.String())
+		binaryObjectData.Created = time.Now().UnixMilli()
+		wsPushca.Binaries.Store(binaryId, binaryObjectData)
 	}
 	if wsPushca.BinaryManifestConsumer != nil {
 		wsPushca.BinaryManifestConsumer(wsPushca, binaryObjectData)
@@ -411,15 +421,26 @@ func (wsPushca *PushcaWebSocket) removeExpiredManifests() {
 	now := time.Now().UnixMilli()
 
 	// Identify keys eligible for removal
-	for key, value := range wsPushca.Binaries {
-		if now-value.Created > (30 * time.Minute).Milliseconds() { // Remove entries created over 30 minutes ago
-			toRemove = append(toRemove, key)
+	var allBinaries []model.BinaryObjectData
+
+	// Using Range to iterate over the map
+	wsPushca.Binaries.Range(func(key, value interface{}) bool {
+		if castedValue, ok := value.(model.BinaryObjectData); ok {
+			allBinaries = append(allBinaries, castedValue)
+		}
+		return true // Continue iterating
+	})
+
+	for _, manifest := range allBinaries {
+		if now-manifest.Created > (30 * time.Minute).Milliseconds() { // Remove entries created over 30 minutes ago
+			binaryId, _ := uuid.Parse(manifest.ID)
+			toRemove = append(toRemove, binaryId)
 		}
 	}
 
 	// Remove identified keys
 	for _, key := range toRemove {
-		delete(wsPushca.Binaries, key)
+		wsPushca.Binaries.Delete(key)
 	}
 }
 
@@ -455,8 +476,27 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage2(dest model.PClient, message 
 	wsPushca.SendBinaryMessage4(dest, message, uuid.Nil, false)
 }
 
+func (wsPushca *PushcaWebSocket) sendBinaryManifest(dest model.ClientFilter,
+	manifest model.BinaryObjectData, readOnly bool) {
+	manifest.ReadOnly = readOnly
+
+	metaData := make(map[string]interface{})
+	metaData["dest"] = dest
+	metaData["manifest"] = manifest
+
+	_, errWs := wsPushca.wsConnectionWriteCommand(SendBinaryManifest, metaData,
+		true, manifest.ID, nil)
+	if errWs != nil {
+		log.Printf("Cannot send binary manifest: client %s, error %s", wsPushca.GetInfo(), errWs)
+	}
+}
+
+func (wsPushca *PushcaWebSocket) SendBinaryManifest(dest model.ClientFilter, manifest model.BinaryObjectData) {
+	wsPushca.sendBinaryManifest(dest, manifest, true)
+}
+
 func (wsPushca *PushcaWebSocket) SendBinary7(dest model.PClient, data []byte, name string, pId uuid.UUID, chunkSize int,
-	withAcknowledge bool, manifestOnly bool) model.BinaryObjectData {
+	withAcknowledge bool) model.BinaryObjectData {
 	id := pId
 	if id == uuid.Nil {
 		id = uuid.New()
@@ -464,16 +504,8 @@ func (wsPushca *PushcaWebSocket) SendBinary7(dest model.PClient, data []byte, na
 
 	binaryObjectData := model.ToBinaryObjectData(dest, id, name, wsPushca.Client,
 		util.SplitToChunks(data, chunkSize), wsPushca.PusherId, withAcknowledge)
-	binaryObjectData.ReadOnly = manifestOnly
-	if withAcknowledge {
-		wsPushca.SendMessageWithAcknowledge3("", dest, binaryObjectData.BuildBinaryManifest())
-	} else {
-		wsPushca.SendMessage2(dest, binaryObjectData.BuildBinaryManifest())
-	}
-
-	if manifestOnly {
-		return binaryObjectData
-	}
+	binaryObjectData.ReadOnly = false
+	wsPushca.sendBinaryManifest(model.FromClient(dest), binaryObjectData, false)
 	wsPushca.SendBinary(binaryObjectData, withAcknowledge, nil)
 	return binaryObjectData
 }
@@ -520,7 +552,7 @@ func (wsPushca *PushcaWebSocket) SendBinary(binaryObjectData model.BinaryObjectD
 }
 
 func (wsPushca *PushcaWebSocket) SendBinary3(dest model.PClient, data []byte, withAcknowledge bool) {
-	wsPushca.SendBinary7(dest, data, "", uuid.Nil, util.DefaultChunkSize, withAcknowledge, false)
+	wsPushca.SendBinary7(dest, data, "", uuid.Nil, util.DefaultChunkSize, withAcknowledge)
 }
 
 func (wsPushca *PushcaWebSocket) SendBinary2(dest model.PClient, data []byte) {
