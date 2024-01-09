@@ -1,6 +1,6 @@
 package model
 
 type AcknowledgeCallback struct {
-	Received chan bool
+	Received chan string
 	Done     chan struct{}
 }

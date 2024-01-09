@@ -2,7 +2,6 @@ package util
 
 import (
 	"fmt"
-	"github.com/google/uuid"
 	"pushca-client/core"
 )
 
@@ -55,15 +54,11 @@ func (c Command) String() string {
 }
 
 func PrepareCommand(command Command, metadata map[string]interface{}, callbackId string) (string, error) {
-	id := callbackId
-	if len(id) == 0 {
-		id = uuid.New().String()
-	}
 	metaJson, err := ToJson(metadata)
 	if err != nil {
 		return "", err
 	}
-	commandStr := fmt.Sprintf("%s%s%s%s%s", id, core.MessagePartsDelimiter,
+	commandStr := fmt.Sprintf("%s%s%s%s%s", callbackId, core.MessagePartsDelimiter,
 		command, core.MessagePartsDelimiter,
 		metaJson)
 	return commandStr, nil

@@ -19,36 +19,33 @@ import (
 )
 
 const (
-	AcknowledgePrefix        = "ACKNOWLEDGE@@"
-	TokenPrefix              = "TOKEN@@"
-	BinaryManifestBarePrefix = "BINARY_MANIFEST"
-	BinaryManifestPrefix     = BinaryManifestBarePrefix + "@@"
-	MessagePartsDelimiter    = "@@"
-	MaxInteger               = 2147483647
-	AcknowledgeTimeout       = 10 * time.Second
-	MaxRepeatAttemptNumber   = 3
-	PushcaTokenTtlSec        = 60 * 20
+	MessagePartsDelimiter  = "@@"
+	DefaultResponse        = "SUCCESS"
+	MaxInteger             = 2147483647
+	AcknowledgeTimeout     = 10 * time.Second
+	MaxRepeatAttemptNumber = 3
+	PushcaTokenTtlSec      = 60 * 20
 )
 
 type PushcaWebSocket struct {
-	PushcaApiUrl                         string
-	PusherId                             string
-	Client                               model.PClient
-	WsBaseUrl                            string
-	Token                                string
-	WebSocketFactory                     func() WebSocketApi
-	MessageConsumer, AcknowledgeConsumer func(ws PushcaWebSocketApi, message string)
-	BinaryManifestConsumer               func(ws PushcaWebSocketApi, message model.BinaryObjectData)
-	BinaryMessageConsumer                func(ws PushcaWebSocketApi, message []byte)
-	DataConsumer                         func(ws PushcaWebSocketApi, data model.Binary)
-	UnknownDatagramConsumer              func(ws PushcaWebSocketApi, data model.UnknownDatagram)
-	TlsConfig                            *tls.Config
-	Binaries                             map[uuid.UUID]*model.BinaryObjectData
-	AcknowledgeCallbacks                 *sync.Map
-	webSocket                            WebSocketApi
-	mutex                                sync.Mutex
-	writeToSocketMutex                   sync.Mutex
-	done                                 chan struct{}
+	PushcaApiUrl            string
+	PusherId                string
+	Client                  model.PClient
+	WsBaseUrl               string
+	Token                   string
+	WebSocketFactory        func() WebSocketApi
+	MessageConsumer         func(ws PushcaWebSocketApi, message string)
+	BinaryManifestConsumer  func(ws PushcaWebSocketApi, message model.BinaryObjectData)
+	BinaryMessageConsumer   func(ws PushcaWebSocketApi, message []byte)
+	DataConsumer            func(ws PushcaWebSocketApi, data model.Binary)
+	UnknownDatagramConsumer func(ws PushcaWebSocketApi, data model.UnknownDatagram)
+	TlsConfig               *tls.Config
+	Binaries                map[uuid.UUID]*model.BinaryObjectData
+	AcknowledgeCallbacks    *sync.Map
+	webSocket               WebSocketApi
+	mutex                   sync.Mutex
+	writeToSocketMutex      sync.Mutex
+	done                    chan struct{}
 }
 
 func (wsPushca *PushcaWebSocket) GetInfo() string {
@@ -367,36 +364,39 @@ func (wsPushca *PushcaWebSocket) processMessage(inMessage string) {
 		return
 	}
 	message := inMessage
-	if strings.HasPrefix(inMessage, AcknowledgePrefix) {
-		id := strings.Replace(inMessage, AcknowledgePrefix, "", 1)
-		if callback, ok := wsPushca.AcknowledgeCallbacks.Load(id); ok {
-			if tmp, ok := callback.(*model.AcknowledgeCallback); ok {
-				tmp.Received <- true
-			}
-		}
-		if wsPushca.AcknowledgeConsumer != nil {
-			wsPushca.AcknowledgeConsumer(wsPushca, id)
-		}
-		return
-	}
-	if strings.HasPrefix(inMessage, TokenPrefix) {
-		wsPushca.Token = strings.Replace(inMessage, TokenPrefix, "", 1)
-		log.Printf("Token was successfully refreshed: client %v", wsPushca.GetInfo())
-		return
-	}
-	if strings.HasPrefix(inMessage, BinaryManifestPrefix) {
-		manifestJSON := strings.Replace(inMessage, BinaryManifestPrefix, "", 1)
-		wsPushca.processBinaryManifest(manifestJSON)
-		return
-	}
 	if strings.Contains(inMessage, MessagePartsDelimiter) {
 		parts := strings.Split(inMessage, MessagePartsDelimiter)
-		wsPushca.SendAcknowledge(parts[0])
-		if len(parts) == 3 && BinaryManifestBarePrefix == parts[1] {
-			wsPushca.processBinaryManifest(parts[2])
+
+		switch parts[1] {
+		case model.Acknowledge.String():
+			if callback, ok := wsPushca.AcknowledgeCallbacks.Load(parts[0]); ok {
+				if tmp, ok := callback.(*model.AcknowledgeCallback); ok {
+					tmp.Received <- DefaultResponse
+				}
+			}
 			return
+		case model.BinaryManifest.String():
+			wsPushca.processBinaryManifest(parts[2])
+			wsPushca.SendAcknowledge(parts[0])
+			return
+		case model.Response.String():
+			var response string
+			if len(parts) == 3 {
+				response = parts[2]
+			} else {
+				response = DefaultResponse
+			}
+			if callback, ok := wsPushca.AcknowledgeCallbacks.Load(parts[0]); ok {
+				if tmp, ok := callback.(*model.AcknowledgeCallback); ok {
+
+					tmp.Received <- response
+				}
+			}
+			return
+		default:
+			wsPushca.SendAcknowledge(parts[0])
+			message = parts[1]
 		}
-		message = parts[1]
 	}
 	if wsPushca.MessageConsumer != nil {
 		wsPushca.MessageConsumer(wsPushca, message)
@@ -542,33 +542,33 @@ func (wsPushca *PushcaWebSocket) SendBinary2(dest model.PClient, data []byte) {
 
 func (wsPushca *PushcaWebSocket) registerAcknowledgeCallback(id string) *model.AcknowledgeCallback {
 	ackCallback := &model.AcknowledgeCallback{
-		Received: make(chan bool),
+		Received: make(chan string),
 		Done:     wsPushca.done,
 	}
 	wsPushca.AcknowledgeCallbacks.Store(id, ackCallback)
 	return ackCallback
 }
 
-func (wsPushca *PushcaWebSocket) WaitForAcknowledge(id string) bool {
+func (wsPushca *PushcaWebSocket) WaitForAcknowledge(id string) (string, error) {
 	ackCallback := wsPushca.registerAcknowledgeCallback(id)
 	select {
 	case <-ackCallback.Done:
-		return false
+		return "", errors.New("no result was received")
 	case result := <-ackCallback.Received:
-		return result
+		return result, nil
 	case <-time.After(AcknowledgeTimeout):
-		log.Printf("Acknowledge timed out: id %s\n", id)
-		return false
+		return "", errors.New("callback timed out")
 	}
 }
 
-func (wsPushca *PushcaWebSocket) executeWithRepeatOnFailure(id string, operation func() error, logError func(err error)) {
+func (wsPushca *PushcaWebSocket) executeWithRepeatOnFailure(id string, operation func() error,
+	logError func(err error)) string {
 	for i := 0; i < MaxRepeatAttemptNumber; i++ {
 		err := operation()
 		if err == nil {
-			acknowledged := wsPushca.WaitForAcknowledge(id)
-			if acknowledged {
-				return
+			response, err := wsPushca.WaitForAcknowledge(id)
+			if err == nil {
+				return response
 			}
 		} else {
 			if logError != nil {
@@ -583,19 +583,23 @@ func (wsPushca *PushcaWebSocket) executeWithRepeatOnFailure(id string, operation
 	} else {
 		log.Printf("Impossible to complete operation: id %s", id)
 	}
+	return ""
 }
 
 func (wsPushca *PushcaWebSocket) wsConnectionWriteCommand(command util.Command,
-	metadata map[string]interface{}, waitForCallback bool) error {
+	metadata map[string]interface{}, waitForCallback bool, callbackId string) (string, error) {
 	wsPushca.writeToSocketMutex.Lock()
 	defer wsPushca.writeToSocketMutex.Unlock()
-	id := uuid.New().String()
+	id := callbackId
+	if len(id) == 0 {
+		id = uuid.New().String()
+	}
 	commandStr, err := util.PrepareCommand(command, metadata, id)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if waitForCallback {
-		wsPushca.executeWithRepeatOnFailure(
+		response := wsPushca.executeWithRepeatOnFailure(
 			id,
 			func() error {
 				return wsPushca.wsConnectionWriteMessage(commandStr)
@@ -605,9 +609,14 @@ func (wsPushca *PushcaWebSocket) wsConnectionWriteCommand(command util.Command,
 					command.String(), wsPushca.GetInfo(), err)
 			},
 		)
-		return nil
+		return response, nil
 	} else {
-		return wsPushca.webSocket.WriteMessage(commandStr)
+		err := wsPushca.webSocket.WriteMessage(commandStr)
+		if err == nil {
+			return DefaultResponse, nil
+		} else {
+			return "", err
+		}
 	}
 }
 
