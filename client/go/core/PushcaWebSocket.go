@@ -142,7 +142,10 @@ func (wsPushca *PushcaWebSocket) Open(done chan struct{}) error {
 				return
 			case <-ticker.C:
 				if !wsPushca.webSocket.IsClosed() {
-					wsPushca.RefreshToken()
+					newToken := wsPushca.RefreshToken()
+					if len(newToken) > 0 {
+						wsPushca.Token = newToken
+					}
 				}
 			}
 		}
@@ -180,21 +183,18 @@ func closeHttpResponse(response *http.Response) {
 		}
 	}
 }
-func (wsPushca *PushcaWebSocket) RefreshToken() {
-	command := model.CommandWithMetaData{
-		Command: "REFRESH_TOKEN",
-	}
-	errWs := wsPushca.wsConnectionWriteJSON(command)
+func (wsPushca *PushcaWebSocket) RefreshToken() string {
+	response, errWs := wsPushca.wsConnectionWriteCommand(RefreshToken, nil,
+		true, "", nil)
 	if errWs != nil {
 		log.Printf("Cannot send refresh token request to server: client %s, error %s", wsPushca.GetInfo(), errWs)
+		return ""
 	}
+	return response
 }
 
 func (wsPushca *PushcaWebSocket) PingServer() {
-	command := model.CommandWithMetaData{
-		Command: "PING",
-	}
-	errWs := wsPushca.wsConnectionWriteJSON(command)
+	_, errWs := wsPushca.wsConnectionWriteShortCommand(Ping, nil)
 	if errWs != nil {
 		log.Printf("Cannot send PING to server: client %s, error %s", wsPushca.GetInfo(), errWs)
 	}
@@ -214,18 +214,14 @@ func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge4(msgID string, dest 
 	metaData["message"] = message
 	metaData["preserveOrder"] = preserveOrder
 
-	command := model.CommandWithMetaData{
-		Command:  "SEND_MESSAGE_WITH_ACKNOWLEDGE",
-		MetaData: metaData,
+	_, err := wsPushca.wsConnectionWriteCommand(
+		SendMessageWithAcknowledge,
+		metaData, true, id,
+		nil,
+	)
+	if err != nil {
+		log.Printf("Cannot send message: client %s, error %s", wsPushca.GetInfo(), err)
 	}
-
-	wsPushca.executeWithRepeatOnFailure(id,
-		func() error {
-			return wsPushca.wsConnectionWriteJSON(command)
-		},
-		func(err error) {
-			log.Printf("Cannot send message: client %s, error %s", wsPushca.GetInfo(), err)
-		})
 }
 
 func (wsPushca *PushcaWebSocket) SendMessageWithAcknowledge3(id string, dest model.PClient, message string) {
@@ -239,12 +235,7 @@ func (wsPushca *PushcaWebSocket) SendAcknowledge(id string) {
 	metaData := make(map[string]interface{})
 	metaData["messageId"] = id
 
-	command := model.CommandWithMetaData{
-		Command:  "ACKNOWLEDGE",
-		MetaData: metaData,
-	}
-
-	errWs := wsPushca.wsConnectionWriteJSON(command)
+	_, errWs := wsPushca.wsConnectionWriteShortCommand(Acknowledge, metaData)
 	if errWs != nil {
 		log.Printf("Cannot send acknowledge: client %s, error %s", wsPushca.GetInfo(), errWs)
 	}
@@ -259,12 +250,8 @@ func (wsPushca *PushcaWebSocket) BroadcastMessage4(id string, dest model.ClientF
 	metaData["message"] = message
 	metaData["preserveOrder"] = preserveOrder
 
-	command := model.CommandWithMetaData{
-		Command:  "SEND_MESSAGE",
-		MetaData: metaData,
-	}
-
-	errWs := wsPushca.wsConnectionWriteJSON(command)
+	_, errWs := wsPushca.wsConnectionWriteCommand(SendMessage, metaData,
+		true, "", nil)
 	if errWs != nil {
 		log.Printf("Cannot broadcast message: client %s, error %s", wsPushca.GetInfo(), errWs)
 	}
@@ -586,28 +573,40 @@ func (wsPushca *PushcaWebSocket) executeWithRepeatOnFailure(id string, operation
 	return ""
 }
 
-func (wsPushca *PushcaWebSocket) wsConnectionWriteCommand(command util.Command,
-	metadata map[string]interface{}, waitForCallback bool, callbackId string) (string, error) {
+func (wsPushca *PushcaWebSocket) wsConnectionWriteShortCommand(command Command,
+	metadata map[string]interface{}) (string, error) {
+	return wsPushca.wsConnectionWriteCommand(command, metadata, false, "", nil)
+}
+
+func (wsPushca *PushcaWebSocket) wsConnectionWriteCommand(command Command,
+	metadata map[string]interface{}, waitForCallback bool, callbackId string,
+	inLogError func(err error)) (string, error) {
 	wsPushca.writeToSocketMutex.Lock()
 	defer wsPushca.writeToSocketMutex.Unlock()
 	id := callbackId
 	if len(id) == 0 {
 		id = uuid.New().String()
 	}
-	commandStr, err := util.PrepareCommand(command, metadata, id)
+	commandStr, err := PrepareCommand(command, metadata, id)
 	if err != nil {
 		return "", err
+	}
+	var logError func(err error)
+	if inLogError == nil {
+		logError = func(err error) {
+			log.Printf("Cannot send command %s: id %s, client %s, error %s",
+				command.String(), id, wsPushca.GetInfo(), err)
+		}
+	} else {
+		logError = inLogError
 	}
 	if waitForCallback {
 		response := wsPushca.executeWithRepeatOnFailure(
 			id,
 			func() error {
-				return wsPushca.wsConnectionWriteMessage(commandStr)
+				return wsPushca.webSocket.WriteMessage(commandStr)
 			},
-			func(err error) {
-				log.Printf("Cannot send command %s: client %s, error %s",
-					command.String(), wsPushca.GetInfo(), err)
-			},
+			logError,
 		)
 		return response, nil
 	} else {

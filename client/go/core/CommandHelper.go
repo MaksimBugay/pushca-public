@@ -1,8 +1,8 @@
-package util
+package core
 
 import (
 	"fmt"
-	"pushca-client/core"
+	"pushca-client/util"
 )
 
 type Command int
@@ -54,12 +54,18 @@ func (c Command) String() string {
 }
 
 func PrepareCommand(command Command, metadata map[string]interface{}, callbackId string) (string, error) {
-	metaJson, err := ToJson(metadata)
+	metaJson, err := util.ToJson(metadata)
 	if err != nil {
 		return "", err
 	}
-	commandStr := fmt.Sprintf("%s%s%s%s%s", callbackId, core.MessagePartsDelimiter,
-		command, core.MessagePartsDelimiter,
-		metaJson)
+	var commandStr string
+	if metadata == nil {
+		commandStr = fmt.Sprintf("%s%s%s", callbackId, MessagePartsDelimiter,
+			command)
+	} else {
+		commandStr = fmt.Sprintf("%s%s%s%s%s", callbackId, MessagePartsDelimiter,
+			command, MessagePartsDelimiter,
+			metaJson)
+	}
 	return commandStr, nil
 }
