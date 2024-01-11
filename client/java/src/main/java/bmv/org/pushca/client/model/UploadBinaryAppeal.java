@@ -11,4 +11,14 @@ public class UploadBinaryAppeal {
   public int chunkSize;
   public boolean withAcknowledge;
   public List<Integer> requestedChunks;
+
+  public UploadBinaryAppeal() {
+  }
+
+  public UploadBinaryAppeal(PClient owner, String binaryId, String binaryName, int chunkSize) {
+    this.owner = owner;
+    this.binaryId = binaryId;
+    this.binaryName = binaryName;
+    this.chunkSize = chunkSize;
+  }
 }

@@ -1,5 +1,6 @@
 package bmv.test.com;
 
+import static bmv.org.pushca.client.PushcaWebSocket.DEFAULT_CHUNK_SIZE;
 import static bmv.org.pushca.client.model.ClientFilter.fromClientWithoutDeviceId;
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.delay;
@@ -10,11 +11,12 @@ import bmv.org.pushca.client.PushcaWebSocketBuilder;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
-import bmv.org.pushca.client.tls.SslContextProvider;
+import bmv.org.pushca.client.model.UploadBinaryAppeal;
 import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
+import bmv.org.pushca.core.PushcaURI;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -172,6 +174,21 @@ public class App {
       pushcaWebSocket0.sendBinaryMessage(null, client1, binaryMsg, true);
       //============================================================================================
       //-----------------------------binary with acknowledge----------------------------------------
+      String binaryId = UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)).toString();
+      UploadBinaryAppeal appeal = new UploadBinaryAppeal(
+          client1, binaryId, "vlc-3.0.11-win64-copy.exe", DEFAULT_CHUNK_SIZE
+      );
+      PushcaURI uri = new PushcaURI(pushcaWebSocket1.getPusherInstanceId(), 39, appeal);
+      String uriStr = uri.toString();
+      System.out.println(uriStr);
+      PushcaURI uri1 = new PushcaURI(uriStr);
+      if (!"vlc-3.0.11-win64-copy.exe".equals(uri1.getUploadBinaryAppeal().binaryName)
+          ||
+          !pushcaWebSocket1.getPusherInstanceId().equals(uri1.getPusherInstanceId())
+          ||
+          !binaryId.equals(uri1.getUploadBinaryAppeal().binaryId)) {
+        throw new IllegalStateException("Broken Pushca URI");
+      }
       File file = new File(
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
       //file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
@@ -182,8 +199,8 @@ public class App {
           data,
           "vlc-3.0.11-win64-copy.exe",
           //"Reproducing_multiple_java_headless-copy.mov",
-          UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)).toString(),
-          PushcaWebSocket.DEFAULT_CHUNK_SIZE,
+          binaryId,
+          DEFAULT_CHUNK_SIZE,
           true, null
       );
       //============================================================================================

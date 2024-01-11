@@ -212,6 +212,10 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     return MessageFormat.format("{0}[{1}]", this.client.accountId, this.client.deviceId);
   }
 
+  public String getPusherInstanceId() {
+    return pusherId;
+  }
+
   public void processBinary(WebSocketApi ws, byte[] binary,
       BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
       BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer,

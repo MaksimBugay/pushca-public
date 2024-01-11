@@ -21,6 +21,8 @@ public interface PushcaWebSocketApi {
 
   String getClientInfo();
 
+  String getPusherInstanceId();
+
   /**
    * processes an incoming binary message from Pushca
    *
