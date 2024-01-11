@@ -12,6 +12,7 @@ import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
 import com.sun.istack.internal.NotNull;
+import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -173,6 +174,13 @@ public interface PushcaWebSocketApi {
   void sendBinaryMessage(@NotNull PClient dest, byte[] message);
 
   //====================================BINARY(FILE) API============================================
+  /**
+   * Load binary(file) from some persistent storage
+   *
+   * @param binaryId - binary identifier
+   * @return binary bytes
+   */
+  byte[] loadBinaryById(String binaryId) throws IOException;
 
   /**
    * Generate binary manifest and store it in memory cache
@@ -237,6 +245,31 @@ public interface PushcaWebSocketApi {
    */
   void sendBinary(UploadBinaryAppeal uploadBinaryAppeal);
 
+  /**
+   * Ask binary owner to send some binary
+   *
+   * @param owner           - binary owner
+   * @param binaryId        - binary identifier
+   * @param binaryName      - binary name
+   * @param chunkSize       - pushca client splits file into chunks before sending and sends it
+   *                        chunk by chunk
+   * @param withAcknowledge - wait for acknowledge of previous chunk delivery by receiver before
+   *                        send the next chunk
+   * @param requestedChunks - upload only chunks with provided identifiers, if empty - upload all
+   */
+  void sendUploadBinaryAppeal(PClient owner, String binaryId, String binaryName, int chunkSize,
+      boolean withAcknowledge, List<Integer> requestedChunks);
+
+  /**
+   * Ask binary owner to send some binary based on shared binary Pushca URI
+   *
+   * @param binaryPushcaURI - binary Pushca URI
+   * @param withAcknowledge - wait for acknowledge of previous chunk delivery by receiver before
+   *                        send the next chunk
+   * @param requestedChunks - upload only chunks with provided identifiers, if empty - upload all
+   */
+  void sendUploadBinaryAppeal(String binaryPushcaURI, boolean withAcknowledge,
+      List<Integer> requestedChunks);
   //====================================CHANNEL API=================================================
 
   /**

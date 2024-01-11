@@ -6,6 +6,7 @@ import static bmv.org.pushca.client.model.WebSocketState.PERMANENTLY_CLOSED;
 import static bmv.org.pushca.client.serialization.json.JsonUtility.fromJson;
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.calculateSha256;
+import static bmv.org.pushca.client.utils.BmvObjectUtils.createAsyncExecutor;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.createScheduler;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.deepClone;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.toBinary;
@@ -25,6 +26,7 @@ import static bmv.org.pushca.core.Command.SEND_BINARY_MANIFEST;
 import static bmv.org.pushca.core.Command.SEND_MESSAGE;
 import static bmv.org.pushca.core.Command.SEND_MESSAGE_TO_CHANNEL;
 import static bmv.org.pushca.core.Command.SEND_MESSAGE_WITH_ACKNOWLEDGE;
+import static bmv.org.pushca.core.Command.SEND_UPLOAD_BINARY_APPEAL;
 import static bmv.org.pushca.core.PushcaMessageFactory.DEFAULT_RESPONSE;
 import static bmv.org.pushca.core.PushcaMessageFactory.ID_GENERATOR;
 import static bmv.org.pushca.core.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
@@ -54,9 +56,11 @@ import bmv.org.pushca.core.PChannel;
 import bmv.org.pushca.core.PushcaMessageFactory;
 import bmv.org.pushca.core.PushcaMessageFactory.CommandWithId;
 import bmv.org.pushca.core.PushcaMessageFactory.MessageType;
+import bmv.org.pushca.core.PushcaURI;
 import com.sun.istack.internal.NotNull;
 import java.io.BufferedReader;
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -65,10 +69,13 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,6 +86,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -91,6 +99,8 @@ import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,6 +115,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
   public static final int MAX_REPEAT_ATTEMPT_NUMBER = 3;
   public static final int CALLBACK_TIMEOUT_SEC = 10;
+  public static final String INTERNAL_BINARY_FILE_NAME_PATTERN = "binaries//{0}.pushca";
   private final String pusherId;
 
   private final String baseWsUrl;
@@ -137,6 +148,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   private final ScheduledExecutorService acknowledgeTimeoutScheduler =
       Executors.newScheduledThreadPool(10);
+
+  private final Executor asyncExecutor;
 
   public static String buildAcknowledgeId(String binaryId, int order) {
     return MessageFormat.format("{0}-{1}", binaryId, String.valueOf(order));
@@ -206,6 +219,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       this.pusherId = pusherId;
       this.baseWsUrl = null;
     }
+    this.asyncExecutor = createAsyncExecutor(10);
   }
 
   public String getClientInfo() {
@@ -285,11 +299,45 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       sendAcknowledge(binaryId, order);
     }
     if (binaryData.isCompleted()) {
-      Optional.ofNullable(dataConsumer).ifPresent(c -> c.accept(this, toBinary(binaryData)));
+      Optional.ofNullable(dataConsumer).ifPresent(
+          c -> asyncExecutor.execute(
+              () -> c.accept(this, toBinary(binaryData, storeBinary(binaryData)))
+          )
+      );
       binaries.remove(binaryData.id);
       LOGGER.info("Binary was successfully received: id {}, name {}", binaryData.id,
           binaryData.name);
     }
+  }
+
+  private String storeBinary(BinaryObjectData binaryData) {
+    byte[] bytes =
+        binaryData.getDatagrams().stream().collect(Collectors.toMap(d -> d.order, d -> d.data))
+            .entrySet().stream()
+            .filter(e -> e.getValue() != null)
+            .sorted(Comparator.comparingInt(Entry::getKey))
+            .map(Entry::getValue)
+            .reduce(ArrayUtils::addAll)
+            .orElse(null);
+    String fileName = storeBinary(binaryData.id, bytes);
+
+    return fileName;
+  }
+
+  private static String storeBinary(String id, byte[] bytes) {
+    if (ArrayUtils.isEmpty(bytes)) {
+      return null;
+    }
+    String fileName = MessageFormat.format(INTERNAL_BINARY_FILE_NAME_PATTERN, id);
+    if (Files.exists(Paths.get(fileName))) {
+      return fileName;
+    }
+    try {
+      FileUtils.writeByteArrayToFile(new File(fileName), bytes);
+    } catch (IOException e) {
+      throw new IllegalStateException("Cannot store binary with id = " + id);
+    }
+    return fileName;
   }
 
   public void processMessage(WebSocketApi ws, String inMessage,
@@ -332,6 +380,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
               callback.complete(parts.length < 3 ? DEFAULT_RESPONSE : parts[2]);
               return callback;
             });
+            return;
+          case UPLOAD_BINARY_APPEAL:
+            UploadBinaryAppeal appeal = fromJson(parts[2], UploadBinaryAppeal.class);
+            asyncExecutor.execute(
+                () -> sendBinary(appeal)
+            );
             return;
         }
       }
@@ -447,6 +501,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendBinaryMessage(null, dest, message, false);
   }
 
+  public byte[] loadBinaryById(String binaryId) throws IOException {
+    String fileName = MessageFormat.format(INTERNAL_BINARY_FILE_NAME_PATTERN, binaryId);
+    File file = new File(fileName);
+    return Files.readAllBytes(file.toPath());
+  }
+
   public BinaryObjectData prepareBinaryManifest(byte[] data, String name, String id,
       int chunkSize) {
     String binaryId = id;
@@ -455,13 +515,26 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
           UUID.nameUUIDFromBytes(name.getBytes(StandardCharsets.UTF_8)).toString();
     }
     final String binaryIdFinal = binaryId;
-    return binaries.computeIfAbsent(binaryId, v -> toBinaryObjectData(
-        binaryIdFinal,
-        name,
-        client,
-        BmvObjectUtils.splitToChunks(data, chunkSize),
-        pusherId
-    ));
+    return binaries.computeIfAbsent(binaryId, v -> {
+      byte[] binaryBytes = data;
+      if (ArrayUtils.isEmpty(binaryBytes)) {
+        try {
+          binaryBytes = loadBinaryById(id);
+        } catch (IOException e) {
+          throw new IllegalArgumentException("Cannot load binary with id = " + id, e);
+        }
+        if (ArrayUtils.isEmpty(binaryBytes)) {
+          throw new IllegalArgumentException("Cannot load binary with id = " + id);
+        }
+      }
+      return toBinaryObjectData(
+          binaryIdFinal,
+          name,
+          client,
+          BmvObjectUtils.splitToChunks(binaryBytes, chunkSize),
+          pusherId
+      );
+    });
   }
 
   @Override
@@ -487,6 +560,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   public void sendBinary(PClient dest, byte[] data, String name, String id, int chunkSize,
       boolean withAcknowledge, List<Integer> requestedChunks) {
     BinaryObjectData manifest = prepareBinaryManifest(data, name, id, chunkSize);
+    asyncExecutor.execute(() -> storeBinary(manifest.id, data));
     sendBinaryManifest(new ClientFilter(dest),
         deepClone(manifest, BinaryObjectData.class).setRedOnly(false));
     sendBinary(dest, manifest, withAcknowledge, requestedChunks);
@@ -524,6 +598,48 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       }
     } else {
       datagrams.forEach(datagram -> webSocket.send(addAll(datagram.prefix, datagram.data)));
+    }
+  }
+
+  public void sendUploadBinaryAppeal(PClient owner, String binaryId, String binaryName,
+      int chunkSize, boolean withAcknowledge, List<Integer> requestedChunks) {
+    UploadBinaryAppeal appeal = new UploadBinaryAppeal();
+    appeal.owner = owner;
+    appeal.binaryId = binaryId;
+    appeal.binaryName = binaryName;
+    appeal.chunkSize = chunkSize;
+    appeal.withAcknowledge = withAcknowledge;
+    appeal.requestedChunks = requestedChunks;
+
+    sendUploadBinaryAppeal(appeal);
+  }
+
+  public void sendUploadBinaryAppeal(String binaryPushcaURI, boolean withAcknowledge,
+      List<Integer> requestedChunks) {
+    PushcaURI uri = new PushcaURI(binaryPushcaURI);
+    UploadBinaryAppeal appeal = new UploadBinaryAppeal();
+    appeal.owner = uri.getUploadBinaryAppeal().owner;
+    appeal.binaryId = uri.getUploadBinaryAppeal().binaryId;
+    appeal.binaryName = uri.getUploadBinaryAppeal().binaryName;
+    appeal.chunkSize = uri.getUploadBinaryAppeal().chunkSize;
+    appeal.withAcknowledge = withAcknowledge;
+    appeal.requestedChunks = requestedChunks;
+
+    sendUploadBinaryAppeal(appeal);
+  }
+
+  private void sendUploadBinaryAppeal(UploadBinaryAppeal appeal) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("owner", appeal.owner);
+    metaData.put("binaryId", appeal.binaryId);
+    metaData.put("binaryName", appeal.binaryName);
+    metaData.put("chunkSize", appeal.chunkSize);
+    metaData.put("withAcknowledge", appeal.withAcknowledge);
+    metaData.put("requestedChunks", appeal.requestedChunks);
+
+    String response = sendCommand(SEND_UPLOAD_BINARY_APPEAL, metaData);
+    if (!"SUCCESS".equals(response)) {
+      throw new IllegalStateException("Cannot send upload binary appeal: " + toJson(appeal));
     }
   }
 

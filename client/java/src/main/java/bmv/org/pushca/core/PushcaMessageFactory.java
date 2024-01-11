@@ -15,7 +15,9 @@ public class PushcaMessageFactory {
 
   public static final String DEFAULT_RESPONSE = "SUCCESS";
 
-  public enum MessageType {ACKNOWLEDGE, BINARY_MANIFEST, CHANNEL_MESSAGE, CHANNEL_EVENT, RESPONSE}
+  public enum MessageType {
+    ACKNOWLEDGE, BINARY_MANIFEST, CHANNEL_MESSAGE, CHANNEL_EVENT, RESPONSE, UPLOAD_BINARY_APPEAL
+  }
 
   public static final TimeBasedEpochGenerator ID_GENERATOR = Generators.timeBasedEpochGenerator();
 

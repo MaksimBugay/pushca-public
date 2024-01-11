@@ -20,16 +20,17 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.SplittableRandom;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.stream.Collectors;
-import org.apache.commons.lang3.ArrayUtils;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public final class BmvObjectUtils {
 
@@ -48,20 +49,13 @@ public final class BmvObjectUtils {
     return JsonUtility.fromJson(JsonUtility.toJson(prototype), tClass);
   }
 
-  public static Binary toBinary(BinaryObjectData data) {
+  public static Binary toBinary(BinaryObjectData data, String path) {
     Binary binary = new Binary();
     binary.id = data.id;
     binary.name = data.name;
     binary.sender = data.sender;
     binary.pusherInstanceId = data.pusherInstanceId;
-    binary.data =
-        data.getDatagrams().stream().collect(Collectors.toMap(d -> d.order, d -> d.data))
-            .entrySet().stream()
-            .filter(e -> e.getValue() != null)
-            .sorted(Comparator.comparingInt(Entry::getKey))
-            .map(Entry::getValue)
-            .reduce(ArrayUtils::addAll)
-            .orElse(null);
+    binary.path = path;
     return binary;
   }
 
@@ -95,6 +89,16 @@ public final class BmvObjectUtils {
         MILLISECONDS
     );
     return scheduler;
+  }
+
+  public static Executor createAsyncExecutor(int maxPoolSize) {
+    BlockingQueue<Runnable> workQueue = new LinkedBlockingQueue<>(100_000);
+    return new ThreadPoolExecutor(
+            maxPoolSize / 2,
+            maxPoolSize,
+            30, TimeUnit.SECONDS,
+            workQueue
+        );
   }
 
   public static byte[] booleanToBytes(boolean value) {

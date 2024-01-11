@@ -7,6 +7,5 @@ public class Binary {
   public String name;
   public PClient sender;
   public String pusherInstanceId;
-
-  public byte[] data;
+  public String path;
 }

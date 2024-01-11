@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.text.MessageFormat;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
@@ -32,7 +33,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-import org.apache.commons.io.FileUtils;
 
 public class App {
 
@@ -99,11 +99,6 @@ public class App {
     BiConsumer<PushcaWebSocketApi, Binary> dataConsumer = (ws, binary) -> {
       if (binary.id == null) {
         throw new IllegalStateException("Binary id is empty");
-      }
-      try {
-        FileUtils.writeByteArrayToFile(new File(binary.name), binary.data);
-      } catch (IOException e) {
-        throw new RuntimeException(e);
       }
       System.out.println("Binary data was received and stored");
     };
@@ -174,7 +169,9 @@ public class App {
       pushcaWebSocket0.sendBinaryMessage(null, client1, binaryMsg, true);
       //============================================================================================
       //-----------------------------binary with acknowledge----------------------------------------
-      String binaryId = UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)).toString();
+      String binaryId =
+          UUID.nameUUIDFromBytes("vlc-3.0.11-win64-copy.exe".getBytes(StandardCharsets.UTF_8))
+              .toString();
       UploadBinaryAppeal appeal = new UploadBinaryAppeal(
           client1, binaryId, "vlc-3.0.11-win64-copy.exe", DEFAULT_CHUNK_SIZE
       );
@@ -191,18 +188,31 @@ public class App {
       }
       File file = new File(
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
-      //file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
-      byte[] data = Files.readAllBytes(file.toPath());
       pushcaWebSocket1.sendBinary(
           client0,
           //client2,
-          data,
+          null,
           "vlc-3.0.11-win64-copy.exe",
-          //"Reproducing_multiple_java_headless-copy.mov",
           binaryId,
           DEFAULT_CHUNK_SIZE,
           true, null
       );
+      /*file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
+      binaryId = UUID.nameUUIDFromBytes(
+              "Reproducing_multiple_java_headless-copy.mov".getBytes(StandardCharsets.UTF_8))
+          .toString();
+      pushcaWebSocket1.sendBinary(
+          client0,
+          Files.readAllBytes(file.toPath()),
+          "Reproducing_multiple_java_headless-copy.mov",
+          binaryId,
+          DEFAULT_CHUNK_SIZE,
+          true, null
+      );*/
+
+      pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true,
+          Arrays.asList(30, 31, 32, 33, 34));
+      pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true, null);
       //============================================================================================
       //=================================Channels===================================================
       PChannel channel0 = pushcaWebSocket0.createChannel(null,
