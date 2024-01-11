@@ -7,6 +7,7 @@ import static bmv.org.pushca.client.serialization.json.JsonUtility.fromJson;
 import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.calculateSha256;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.createScheduler;
+import static bmv.org.pushca.client.utils.BmvObjectUtils.deepClone;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.toBinary;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectData;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toDatagramPrefix;
@@ -14,6 +15,7 @@ import static bmv.org.pushca.core.Command.ACKNOWLEDGE;
 import static bmv.org.pushca.core.Command.ADD_MEMBERS_TO_CHANNEL;
 import static bmv.org.pushca.core.Command.CREATE_CHANNEL;
 import static bmv.org.pushca.core.Command.GET_CHANNELS;
+import static bmv.org.pushca.core.Command.GET_CHANNEL_MEMBERS;
 import static bmv.org.pushca.core.Command.MARK_CHANNEL_AS_READ;
 import static bmv.org.pushca.core.Command.REFRESH_TOKEN;
 import static bmv.org.pushca.core.Command.REGISTER_FILTER;
@@ -39,12 +41,14 @@ import bmv.org.pushca.client.model.OpenConnectionResponse;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.RefreshTokenWsResponse;
 import bmv.org.pushca.client.model.UnknownDatagram;
+import bmv.org.pushca.client.model.UploadBinaryAppeal;
 import bmv.org.pushca.client.model.WebSocketState;
 import bmv.org.pushca.client.utils.BmvObjectUtils;
 import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.Command;
+import bmv.org.pushca.core.GetChannelMembersWsResponse;
 import bmv.org.pushca.core.GetChannelsWsResponse;
 import bmv.org.pushca.core.PChannel;
 import bmv.org.pushca.core.PushcaMessageFactory;
@@ -70,6 +74,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -277,8 +282,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
     if (binaryData.isCompleted()) {
       Optional.ofNullable(dataConsumer).ifPresent(c -> c.accept(this, toBinary(binaryData)));
-      binaries.remove(binaryData.getBinaryId());
-      LOGGER.info("Binary was successfully received: id {}, name {}", binaryData.getBinaryId(),
+      binaries.remove(binaryData.id);
+      LOGGER.info("Binary was successfully received: id {}, name {}", binaryData.id,
           binaryData.name);
     }
   }
@@ -338,7 +343,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer) {
     BinaryObjectData binaryObjectData = fromJson(json, BinaryObjectData.class);
     if (!binaryObjectData.redOnly) {
-      binaries.putIfAbsent(binaryObjectData.getBinaryId(), binaryObjectData);
+      binaries.putIfAbsent(binaryObjectData.id, binaryObjectData);
     }
     if (binaryManifestConsumer != null) {
       binaryManifestConsumer.accept(this, binaryObjectData);
@@ -438,13 +443,28 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendBinaryMessage(null, dest, message, false);
   }
 
-  @Override
-  public void sendBinaryManifest(ClientFilter dest, BinaryObjectData manifest) {
-    sendBinaryManifest(dest, manifest, true);
+  public BinaryObjectData prepareBinaryManifest(byte[] data, String name, String id,
+      int chunkSize) {
+    String binaryId = id;
+    if (StringUtils.isEmpty(binaryId)) {
+      binaryId = StringUtils.isEmpty(name) ? ID_GENERATOR.generate().toString() :
+          UUID.nameUUIDFromBytes(name.getBytes(StandardCharsets.UTF_8)).toString();
+    }
+    final String binaryIdFinal = binaryId;
+    return binaries.computeIfAbsent(binaryId, v -> toBinaryObjectData(
+        binaryIdFinal,
+        name,
+        client,
+        BmvObjectUtils.splitToChunks(data, chunkSize),
+        pusherId
+    ));
   }
 
-  private void sendBinaryManifest(ClientFilter dest, BinaryObjectData manifest, boolean readOnly) {
-    manifest.redOnly = readOnly;
+  @Override
+  public void sendBinaryManifest(ClientFilter dest, BinaryObjectData manifest) {
+    if (dest == null) {
+      return;
+    }
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("dest", dest);
     metaData.put("manifest", manifest);
@@ -457,52 +477,49 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void sendBinary(PClient dest, byte[] data, boolean withAcknowledge) {
-    sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, withAcknowledge);
+    sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, withAcknowledge, null);
   }
 
-  public BinaryObjectData sendBinary(PClient dest, byte[] data, String name, UUID id, int chunkSize,
-      boolean withAcknowledge) {
-    BinaryObjectData binaryObjectData = toBinaryObjectData(
-        dest,
-        id,
-        name,
-        client,
-        BmvObjectUtils.splitToChunks(data, chunkSize),
-        pusherId,
-        withAcknowledge
+  public void sendBinary(PClient dest, byte[] data, String name, String id, int chunkSize,
+      boolean withAcknowledge, List<Integer> requestedChunks) {
+    BinaryObjectData manifest = prepareBinaryManifest(data, name, id, chunkSize);
+    sendBinaryManifest(new ClientFilter(dest),
+        deepClone(manifest, BinaryObjectData.class).setRedOnly(false));
+    sendBinary(dest, manifest, withAcknowledge, requestedChunks);
+  }
+
+  public void sendBinary(UploadBinaryAppeal uploadBinaryAppeal) {
+    sendBinary(
+        uploadBinaryAppeal.sender,
+        null,
+        uploadBinaryAppeal.binaryName,
+        uploadBinaryAppeal.binaryId,
+        uploadBinaryAppeal.chunkSize,
+        uploadBinaryAppeal.withAcknowledge,
+        uploadBinaryAppeal.requestedChunks
     );
-    sendBinaryManifest(new ClientFilter(dest), binaryObjectData, false);
-    sendBinary(binaryObjectData, withAcknowledge, null);
-    return binaryObjectData;
   }
 
-  public void sendBinary(String binaryId, boolean withAcknowledge, List<String> requestedIds) {
-    BinaryObjectData binaryObjectData = binaries.get(binaryId);
-    if (binaryObjectData == null) {
-      LOGGER.error("Unknown binary with id = {}", binaryId);
-      return;
-    }
-    sendBinary(binaryObjectData, withAcknowledge, requestedIds);
-  }
-
-  private void sendBinary(BinaryObjectData binaryObjectData, boolean withAcknowledge,
-      List<String> requestedIds) {
+  private void sendBinary(PClient dest, BinaryObjectData binaryObjectData, boolean withAcknowledge,
+      List<Integer> requestedChunks) {
+    UUID binaryId = UUID.fromString(binaryObjectData.id);
     Predicate<Datagram> filter =
-        requestedIds == null ? dgm -> Boolean.TRUE : dgm -> requestedIds.contains(
-            buildAcknowledgeId(binaryObjectData.id, dgm.order)
-        );
+        requestedChunks == null ? dgm -> Boolean.TRUE : dgm -> requestedChunks.contains(dgm.order);
     List<Datagram> datagrams = binaryObjectData.getDatagrams().stream()
         .filter(filter)
+        .peek(datagram -> datagram.prefix =
+            toDatagramPrefix(binaryId, datagram.order, dest.hashCode(), withAcknowledge))
         .collect(Collectors.toList());
+
     if (withAcknowledge) {
       for (Datagram datagram : datagrams) {
         executeWithRepeatOnFailure(
             buildAcknowledgeId(binaryObjectData.id, datagram.order),
-            () -> webSocket.send(datagram.data)
+            () -> webSocket.send(addAll(datagram.prefix, datagram.data))
         );
       }
     } else {
-      datagrams.forEach(datagram -> webSocket.send(datagram.data));
+      datagrams.forEach(datagram -> webSocket.send(addAll(datagram.prefix, datagram.data)));
     }
   }
 
@@ -539,6 +556,19 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
     return response.body.channels;
   }
+
+  public Set<ClientFilter> getChannelMembers(@NotNull PChannel channel) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("channel", channel);
+    String responseJson = sendCommand(GET_CHANNEL_MEMBERS, metaData);
+    GetChannelMembersWsResponse response =
+        fromJson(responseJson, GetChannelMembersWsResponse.class);
+    if (StringUtils.isNotEmpty(response.error)) {
+      throw new IllegalStateException("Cannot list channel members: " + response.error);
+    }
+    return response.body;
+  }
+
 
   public void markChannelAsRead(@NotNull PChannel channel, ClientFilter filter) {
     Map<String, Object> metaData = new HashMap<>();

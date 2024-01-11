@@ -9,46 +9,36 @@ import static org.apache.commons.lang3.ArrayUtils.addAll;
 import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.Datagram;
 import bmv.org.pushca.client.model.PClient;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import org.apache.commons.lang3.StringUtils;
 
 public final class SendBinaryHelper {
 
   private SendBinaryHelper() {
   }
 
-  public static BinaryObjectData toBinaryObjectData(PClient dest, UUID id, String name,
-      PClient sender, List<byte[]> chunks, String pusherInstanceId, boolean withAcknowledge) {
-    UUID binaryId = id;
-    if (binaryId == null) {
-      binaryId =
-          StringUtils.isEmpty(name) ? UUID.randomUUID() : UUID.nameUUIDFromBytes(name.getBytes(
-              StandardCharsets.UTF_8));
-    }
+  public static BinaryObjectData toBinaryObjectData(String id, String name,
+      PClient sender, List<byte[]> chunks, String pusherInstanceId) {
     List<Datagram> datagrams = new ArrayList<>();
     for (int i = 0; i < chunks.size(); i++) {
-      datagrams.add(toDatagram(binaryId, i, chunks.get(i), dest, withAcknowledge));
+      datagrams.add(toDatagram(i, chunks.get(i)));
     }
 
-    return new BinaryObjectData(binaryId.toString(), name, datagrams, sender, pusherInstanceId);
+    return new BinaryObjectData(id, name, datagrams, sender, pusherInstanceId);
   }
 
-  public static Datagram toDatagram(UUID binaryId, int order, byte[] chunk, PClient dest,
-      boolean withAcknowledge) {
+  public static Datagram toDatagram(int order, byte[] chunk) {
     Datagram datagram = new Datagram();
     datagram.order = order;
     datagram.size = chunk.length;
     datagram.md5 = calculateSha256(chunk);
-    datagram.prefix = toDatagramPrefix(binaryId, order, dest.hashCode(), withAcknowledge);
-    datagram.data = addAll(datagram.prefix, chunk);
-
+    datagram.data = chunk;
     return datagram;
   }
 
-  public static byte[] toDatagramPrefix(UUID id, int order, int clientHashCode, boolean withAcknowledge) {
+  public static byte[] toDatagramPrefix(UUID id, int order, int clientHashCode,
+      boolean withAcknowledge) {
     byte[] prefix = addAll(intToBytes(clientHashCode), booleanToBytes(withAcknowledge));
     prefix = addAll(prefix, uuidToBytes(id));
     return addAll(prefix, intToBytes(order));

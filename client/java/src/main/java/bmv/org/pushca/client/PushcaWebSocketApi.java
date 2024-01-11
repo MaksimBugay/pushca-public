@@ -6,12 +6,14 @@ import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.UnknownDatagram;
+import bmv.org.pushca.client.model.UploadBinaryAppeal;
 import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
 import com.sun.istack.internal.NotNull;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 
@@ -171,6 +173,18 @@ public interface PushcaWebSocketApi {
   //====================================BINARY(FILE) API============================================
 
   /**
+   * Generate binary manifest and store it in memory cache
+   *
+   * @param data      - binary data
+   * @param name      - file name
+   * @param id        - binary id (if null then will be assigned by Pushca)
+   * @param chunkSize - pushca client splits file into chunks before sending and sends it chunk by
+   *                  chunk
+   * @return - binary manifest object
+   */
+  BinaryObjectData prepareBinaryManifest(byte[] data, String name, String id, int chunkSize);
+
+  /**
    * Send binary manifest object to all connected clients that met the filtering requirements
    *
    * @param dest     - filter of receivers
@@ -189,14 +203,14 @@ public interface PushcaWebSocketApi {
    *                        chunk by chunk
    * @param withAcknowledge - wait for acknowledge of previous chunk delivery by receiver before
    *                        send the next chunk
-   * @return - binary manifest (usually used for torrents like protocol implementation)
+   * @param requestedChunks - identifiers of requested chunks
    */
-  BinaryObjectData sendBinary(@NotNull PClient dest, byte[] data, String name, UUID id,
-      int chunkSize, boolean withAcknowledge);
+  void sendBinary(@NotNull PClient dest, byte[] data, String name, String id, int chunkSize,
+      boolean withAcknowledge, List<Integer> requestedChunks);
 
   /**
    * short version of sendBinary method, that uses defaults: name = null, id = null, chunkSize =
-   * 1Mb
+   * 1Mb, all chunks
    *
    * @param dest            - client (receiver)
    * @param data            - binary data
@@ -207,7 +221,7 @@ public interface PushcaWebSocketApi {
 
   /**
    * short version of sendBinary method, that uses defaults: name = null, id = null, chunkSize =
-   * 1Mb, withAcknowledge = false
+   * 1Mb, withAcknowledge = false, all chunks
    *
    * @param dest - client (receiver)
    * @param data - binary data
@@ -215,15 +229,11 @@ public interface PushcaWebSocketApi {
   void sendBinary(@NotNull PClient dest, byte[] data);
 
   /**
-   * Send only requested chunks of binary (file) that manifest was already shared between sender and
-   * receiver (usually used for torrents like protocol implementation)
+   * Send requested binary (file) or listed chunks
    *
-   * @param binaryId        - binary id
-   * @param withAcknowledge - wait for acknowledge of previous chunk delivery by receiver before
-   *                        send the next chunk
-   * @param requestedIds    - identifiers of requested chunks
+   * @param uploadBinaryAppeal - appeal object with all data for sending
    */
-  void sendBinary(String binaryId, boolean withAcknowledge, List<String> requestedIds);
+  void sendBinary(UploadBinaryAppeal uploadBinaryAppeal);
 
   //====================================CHANNEL API=================================================
 
@@ -258,6 +268,14 @@ public interface PushcaWebSocketApi {
    * status
    */
   List<ChannelWithInfo> getChannels(@NotNull ClientFilter filter);
+
+  /**
+   * Return all channel members
+   *
+   * @param channel - channel object
+   * @return - set of provided channel members
+   */
+  Set<ClientFilter> getChannelMembers(@NotNull PChannel channel);
 
   /**
    * Change read status of provided channel to true (already red)

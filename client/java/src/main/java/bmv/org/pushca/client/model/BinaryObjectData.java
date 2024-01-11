@@ -27,10 +27,6 @@ public class BinaryObjectData {
     this.pusherInstanceId = pusherInstanceId;
   }
 
-  public String getBinaryId() {
-    return id;
-  }
-
   @JsonIgnore
   public synchronized Datagram getDatagram(int order) {
     return datagrams.stream()
@@ -54,5 +50,10 @@ public class BinaryObjectData {
   @JsonIgnore
   public boolean isCompleted() {
     return getDatagrams().stream().allMatch(d -> d.data != null);
+  }
+
+  public BinaryObjectData setRedOnly(boolean redOnly) {
+    this.redOnly = redOnly;
+    return this;
   }
 }

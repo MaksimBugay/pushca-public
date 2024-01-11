@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -64,8 +65,8 @@ public class App {
     );
 
     PClient client2 = new PClient(
-        "workSpaceMain",
-        "clientGo10@test.ee",
+        "workSpaceGo",
+        "clientGo1@test.ee",
         "web-browser",
         "PUSHCA_CLIENT"
     );
@@ -76,10 +77,10 @@ public class App {
     );*/
 
     String pushcaApiUrl =
-           "http://localhost:8050";
-        //   "https://app-rc.multiloginapp.net/pushca-with-tls-support";
-        //"http://push-app-rc.multiloginapp.net:8050";
-        //"https://app-rc.multiloginapp.net/pushca";
+        "http://localhost:8050";
+    //  "https://app-rc.multiloginapp.net/pushca-with-tls-support";
+    //"http://push-app-rc.multiloginapp.net:8050";
+    //"https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
@@ -175,14 +176,16 @@ public class App {
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
       //file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
       byte[] data = Files.readAllBytes(file.toPath());
-      /*pushcaWebSocket1.sendBinary(client0,
+      pushcaWebSocket1.sendBinary(
+          client0,
+          //client2,
           data,
           "vlc-3.0.11-win64-copy.exe",
           //"Reproducing_multiple_java_headless-copy.mov",
-          UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)),
+          UUID.nameUUIDFromBytes("TEST".getBytes(StandardCharsets.UTF_8)).toString(),
           PushcaWebSocket.DEFAULT_CHUNK_SIZE,
-          true
-      );*/
+          true, null
+      );
       //============================================================================================
       //=================================Channels===================================================
       PChannel channel0 = pushcaWebSocket0.createChannel(null,
@@ -213,6 +216,10 @@ public class App {
       if (!channel00.read) {
         throw new IllegalStateException("Channel 0 was not not marked as read");
       }
+
+      Set<ClientFilter> members = pushcaWebSocket0.getChannelMembers(channel0);
+      System.out.println("Channel 0 members: " + toJson(members));
+
       pushcaWebSocket0.sendMessageToChannel(channel0, "Hello Guys");
       pushcaWebSocket1.sendBinaryMessageToChannel(channel0, binaryMsg1);
       delay(Duration.ofMillis(100));

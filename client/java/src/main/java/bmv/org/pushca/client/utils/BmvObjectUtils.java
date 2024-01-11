@@ -41,6 +41,13 @@ public final class BmvObjectUtils {
   private BmvObjectUtils() {
   }
 
+  public static <T> T deepClone(T prototype, Class<T> tClass) {
+    if (prototype == null) {
+      return null;
+    }
+    return JsonUtility.fromJson(JsonUtility.toJson(prototype), tClass);
+  }
+
   public static Binary toBinary(BinaryObjectData data) {
     Binary binary = new Binary();
     binary.id = data.id;
