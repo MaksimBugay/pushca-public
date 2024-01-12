@@ -103,6 +103,18 @@ func main() {
 		ApplicationId: "PUSHCA_CLIENT",
 	}
 
+	testExclude := make([]model.PClient, 0)
+	testExclude = append(testExclude, javaClient)
+	testFilter := model.ClientFilter{
+		WorkSpaceID:   "workSpaceMain",
+		ApplicationID: "PUSHCA_CLIENT",
+		Exclude:       testExclude,
+	}
+	if -960592396 != testFilter.HashCode() {
+		log.Fatalf("Wrong filter hash code")
+	}
+	log.Printf("Filter hash code: %v", testFilter.HashCode())
+
 	//httpPostUrl := "https://app-rc.multiloginapp.net/pushca-with-tls-support/open-connection"
 	httpPostUrl := "https://app-rc.multiloginapp.net/pushca/open-connection"
 	//httpPostUrl := "http://push-app-rc.multiloginapp.net:8050/open-connection"
