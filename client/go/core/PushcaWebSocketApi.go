@@ -26,6 +26,8 @@ type (
 		SendMessage2(dest model.PClient, message string)
 		SendBinaryMessage4(dest model.PClient, message []byte, id uuid.UUID, withAcknowledge bool)
 		SendBinaryMessage2(dest model.PClient, message []byte)
+		BroadcastBinaryMessage3(dest model.ClientFilter, message []byte, id uuid.UUID)
+		BroadcastBinaryMessage2(dest model.ClientFilter, message []byte)
 		SendBinaryManifest(dest model.ClientFilter, manifest model.BinaryObjectData)
 		SendBinary7(dest model.PClient, data []byte, name string, id uuid.UUID, chunkSize int, withAcknowledge bool) model.BinaryObjectData
 		SendBinary3(dest model.PClient, data []byte, withAcknowledge bool)

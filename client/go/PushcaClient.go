@@ -195,6 +195,7 @@ func main() {
 	}(pushcaWebSocket1)
 
 	//time.Sleep(2000 * time.Second)
+
 	newToken := pushcaWebSocket0.RefreshToken()
 	log.Printf("New Token: %v", newToken)
 
@@ -217,13 +218,20 @@ func main() {
 	pushcaWebSocket0.SendBinaryMessage4(pushcaWebSocket1.Client, []byte(bMessage), uuid.Nil, true)
 	pushcaWebSocket0.SendBinaryMessage2(javaClient, []byte(bMessage))
 
+	vbMessage := base64.StdEncoding.EncodeToString([]byte("Broadcast Binary message test"))
+	superBroadFilter := model.ClientFilter{
+		ApplicationID: "PUSHCA_CLIENT",
+	}
+	pushcaWebSocket0.BroadcastBinaryMessage2(superBroadFilter, []byte(vbMessage))
+
 	filePath := "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe"
 	//filePath := "C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov"
 	data, errFile := util.ReadFileToByteArray(filePath)
 	if errFile != nil {
 		log.Fatalf("Cannot read data from file: error %s", errFile)
 	}
-	pushcaWebSocket1.SendBinary7(pushcaWebSocket0.Client, data,
+	pushcaWebSocket1.SendBinary7(
+		pushcaWebSocket0.Client, data,
 		"vlc-3.0.11-win64-copy.exe",
 		//"Reproducing_multiple_java_headless-copy.mov",
 		uuid.Nil, util.DefaultChunkSize, true)

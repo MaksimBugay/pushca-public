@@ -276,13 +276,9 @@ func (wsPushca *PushcaWebSocket) SendMessage2(dest model.PClient, message string
 	wsPushca.SendMessage4("", dest, false, message)
 }
 func (wsPushca *PushcaWebSocket) processBinary(inBinary []byte) {
-	clientHash, errConversion := util.BytesToInt(inBinary[:4])
+	_, errConversion := util.BytesToInt(inBinary[:4])
 	if errConversion != nil {
 		log.Printf("cannot convert to int from byte[]: client %s, error %s", wsPushca.GetInfo(), errConversion)
-		return
-	}
-	if clientHash != wsPushca.Client.HashCode() { // Replace hash function with your PClient hashing logic
-		log.Printf("Data was intended for another client: client %s", wsPushca.GetInfo())
 		return
 	}
 	withAcknowledge, errConversion := util.BytesToBoolean(inBinary[4:5])
@@ -444,7 +440,25 @@ func (wsPushca *PushcaWebSocket) removeExpiredManifests() {
 	}
 }
 
+func (wsPushca *PushcaWebSocket) BroadcastBinaryMessage3(dest model.ClientFilter, message []byte, id uuid.UUID) {
+	err := wsPushca.registerFilter(dest)
+	if err != nil {
+		log.Printf("Cannot register filter: client %s, error %s",
+			wsPushca.GetInfo(), err)
+	}
+	wsPushca.sendBinaryMessage(dest.HashCode(), message, id, false)
+}
+
+func (wsPushca *PushcaWebSocket) BroadcastBinaryMessage2(dest model.ClientFilter, message []byte) {
+	wsPushca.BroadcastBinaryMessage3(dest, message, uuid.Nil)
+}
+
 func (wsPushca *PushcaWebSocket) SendBinaryMessage4(dest model.PClient, message []byte,
+	pId uuid.UUID, withAcknowledge bool) {
+	wsPushca.sendBinaryMessage(dest.HashCode(), message, pId, withAcknowledge)
+}
+
+func (wsPushca *PushcaWebSocket) sendBinaryMessage(destHashCode int32, message []byte,
 	pId uuid.UUID, withAcknowledge bool) {
 	id := pId
 	if id == uuid.Nil {
@@ -452,7 +466,7 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage4(dest model.PClient, message 
 	}
 	var order int32
 	order = MaxInteger
-	prefix := util.ToDatagramPrefix(id, order, dest.HashCode(), withAcknowledge)
+	prefix := util.ToDatagramPrefix(id, order, destHashCode, withAcknowledge)
 
 	if withAcknowledge {
 		wsPushca.executeWithRepeatOnFailure(
@@ -476,6 +490,27 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage2(dest model.PClient, message 
 	wsPushca.SendBinaryMessage4(dest, message, uuid.Nil, false)
 }
 
+func (wsPushca *PushcaWebSocket) registerFilter(dest model.ClientFilter) error {
+	metaData := make(map[string]interface{})
+	metaData["filter"] = dest
+
+	_, errWs := wsPushca.wsConnectionWriteCommand(RegisterFilter, metaData,
+		true, "", nil)
+	return errWs
+}
+
+func (wsPushca *PushcaWebSocket) removeFilter(dest model.ClientFilter) {
+	metaData := make(map[string]interface{})
+	metaData["filter"] = dest
+
+	_, errWs := wsPushca.wsConnectionWriteCommand(RemoveFilter, metaData,
+		true, "", nil)
+	if errWs != nil {
+		log.Printf("Cannot remove filter: client %s, error %s",
+			wsPushca.GetInfo(), errWs)
+	}
+}
+
 func (wsPushca *PushcaWebSocket) sendBinaryManifest(dest model.ClientFilter,
 	manifest model.BinaryObjectData, readOnly bool) {
 	manifest.ReadOnly = readOnly
@@ -487,7 +522,8 @@ func (wsPushca *PushcaWebSocket) sendBinaryManifest(dest model.ClientFilter,
 	_, errWs := wsPushca.wsConnectionWriteCommand(SendBinaryManifest, metaData,
 		true, manifest.ID, nil)
 	if errWs != nil {
-		log.Printf("Cannot send binary manifest: client %s, error %s", wsPushca.GetInfo(), errWs)
+		log.Printf("Cannot send binary manifest: client %s, error %s",
+			wsPushca.GetInfo(), errWs)
 	}
 }
 
