@@ -132,6 +132,7 @@ func (wsPushca *PushcaWebSocket) Open(done chan struct{}) error {
 					wsPushca.PingServer()
 				}
 				wsPushca.removeExpiredManifests()
+				wsPushca.removeUnusedFilters()
 			}
 		}
 	}()
@@ -413,6 +414,27 @@ func (wsPushca *PushcaWebSocket) processBinaryManifest(manifestJSON string) {
 	}
 }
 
+func (wsPushca *PushcaWebSocket) removeUnusedFilters() {
+	toRemove := make([]int32, 0)
+	now := time.Now().UnixMilli()
+
+	wsPushca.FilterRegistry.Range(func(key, value interface{}) bool {
+		if castedKey, ok := key.(int32); ok {
+			if castedValue := value.(int64); ok {
+				if now-castedValue > (1 * time.Second).Milliseconds() {
+					toRemove = append(toRemove, castedKey)
+				}
+			}
+		}
+		return true // Continue iterating
+	})
+
+	// Remove identified keys
+	for _, key := range toRemove {
+		wsPushca.Binaries.Delete(key)
+	}
+}
+
 func (wsPushca *PushcaWebSocket) removeExpiredManifests() {
 	toRemove := make([]uuid.UUID, 0)
 	now := time.Now().UnixMilli()
@@ -494,6 +516,7 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage2(dest model.PClient, message 
 func (wsPushca *PushcaWebSocket) registerFilter(filter model.ClientFilter) error {
 	_, loaded := wsPushca.FilterRegistry.Load(filter.HashCode())
 	if loaded {
+		wsPushca.FilterRegistry.Store(filter.HashCode(), time.Now().UnixMilli())
 		return nil
 	}
 
@@ -506,8 +529,7 @@ func (wsPushca *PushcaWebSocket) registerFilter(filter model.ClientFilter) error
 		true, "", nil)
 
 	if errWs == nil {
-		timestamp := time.Now().UnixMilli()
-		wsPushca.FilterRegistry.Store(filter.HashCode(), timestamp)
+		wsPushca.FilterRegistry.Store(filter.HashCode(), time.Now().UnixMilli())
 	}
 	return errWs
 }
