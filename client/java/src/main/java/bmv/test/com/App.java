@@ -79,10 +79,10 @@ public class App {
     );*/
 
     String pushcaApiUrl =
-        "http://localhost:8050";
-    //  "https://app-rc.multiloginapp.net/pushca-with-tls-support";
-    //"http://push-app-rc.multiloginapp.net:8050";
-    //"https://app-rc.multiloginapp.net/pushca";
+        // "http://localhost:8050";
+        //  "https://app-rc.multiloginapp.net/pushca-with-tls-support";
+        //"http://push-app-rc.multiloginapp.net:8050";
+        "https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
@@ -191,7 +191,7 @@ public class App {
       pushcaWebSocket1.sendBinary(
           client0,
           //client2,
-          null,
+          Files.readAllBytes(file.toPath()),
           "vlc-3.0.11-win64-copy.exe",
           binaryId,
           DEFAULT_CHUNK_SIZE,
@@ -209,7 +209,7 @@ public class App {
           DEFAULT_CHUNK_SIZE,
           true, null
       );*/
-
+      //=================================Upload binary appeal=======================================
       pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true,
           Arrays.asList(30, 31, 32, 33, 34));
       pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true, null);

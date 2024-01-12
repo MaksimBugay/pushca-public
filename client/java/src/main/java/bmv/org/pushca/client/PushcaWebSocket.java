@@ -319,9 +319,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
             .map(Entry::getValue)
             .reduce(ArrayUtils::addAll)
             .orElse(null);
-    String fileName = storeBinary(binaryData.id, bytes);
 
-    return fileName;
+    return storeBinary(binaryData.id, bytes);
   }
 
   private static String storeBinary(String id, byte[] bytes) {
@@ -557,7 +556,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, withAcknowledge, null);
   }
 
-  public void sendBinary(PClient dest, byte[] data, String name, String id, int chunkSize,
+  public synchronized void sendBinary(PClient dest, byte[] data, String name, String id, int chunkSize,
       boolean withAcknowledge, List<Integer> requestedChunks) {
     BinaryObjectData manifest = prepareBinaryManifest(data, name, id, chunkSize);
     asyncExecutor.execute(() -> storeBinary(manifest.id, data));
