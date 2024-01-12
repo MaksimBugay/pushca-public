@@ -43,6 +43,7 @@ type PushcaWebSocket struct {
 	TlsConfig               *tls.Config
 	Binaries                *sync.Map
 	AcknowledgeCallbacks    *sync.Map
+	FilterRegistry          *sync.Map
 	webSocket               WebSocketApi
 	mutex                   sync.Mutex
 	writeToSocketMutex      sync.Mutex
@@ -490,12 +491,24 @@ func (wsPushca *PushcaWebSocket) SendBinaryMessage2(dest model.PClient, message 
 	wsPushca.SendBinaryMessage4(dest, message, uuid.Nil, false)
 }
 
-func (wsPushca *PushcaWebSocket) registerFilter(dest model.ClientFilter) error {
+func (wsPushca *PushcaWebSocket) registerFilter(filter model.ClientFilter) error {
+	_, loaded := wsPushca.FilterRegistry.Load(filter.HashCode())
+	if loaded {
+		return nil
+	}
+
+	//log.Printf("filter registry: client %s, size %v", wsPushca.GetInfo(), util.GetSyncMapSize(wsPushca.FilterRegistry))
+
 	metaData := make(map[string]interface{})
-	metaData["filter"] = dest
+	metaData["filter"] = filter
 
 	_, errWs := wsPushca.wsConnectionWriteCommand(RegisterFilter, metaData,
 		true, "", nil)
+
+	if errWs == nil {
+		timestamp := time.Now().UnixMilli()
+		wsPushca.FilterRegistry.Store(filter.HashCode(), timestamp)
+	}
 	return errWs
 }
 

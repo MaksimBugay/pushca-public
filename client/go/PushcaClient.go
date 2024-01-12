@@ -138,6 +138,7 @@ func main() {
 		TlsConfig:              tlsConfig,
 		Binaries:               new(sync.Map),
 		AcknowledgeCallbacks:   new(sync.Map),
+		FilterRegistry:         new(sync.Map),
 	}
 	log.Printf("Pusher instance id: %v", pushcaWebSocket0.PusherId)
 	log.Printf("Token: %v", pushcaWebSocket0.Token)
@@ -168,6 +169,7 @@ func main() {
 		TlsConfig:              tlsConfig,
 		Binaries:               new(sync.Map),
 		AcknowledgeCallbacks:   new(sync.Map),
+		FilterRegistry:         new(sync.Map),
 	}
 	//================================================================================
 	flag.Parse()
@@ -223,6 +225,7 @@ func main() {
 		ApplicationID: "PUSHCA_CLIENT",
 	}
 	pushcaWebSocket0.BroadcastBinaryMessage2(superBroadFilter, []byte(vbMessage))
+	pushcaWebSocket0.BroadcastBinaryMessage3(superBroadFilter, []byte(vbMessage), deviceId)
 
 	filePath := "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe"
 	//filePath := "C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov"

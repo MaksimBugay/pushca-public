@@ -9,9 +9,19 @@ import (
 	"github.com/google/uuid"
 	"io"
 	"os"
+	"sync"
 )
 
 const DefaultChunkSize = 1024 * 1024
+
+func GetSyncMapSize(m *sync.Map) int {
+	size := 0
+	m.Range(func(_, _ interface{}) bool {
+		size++
+		return true
+	})
+	return size
+}
 
 func ToJson(args interface{}) (string, error) {
 	jsonBytes, err := json.Marshal(args)
