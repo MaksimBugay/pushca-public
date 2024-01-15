@@ -96,7 +96,7 @@ public final class BmvObjectUtils {
     return new ThreadPoolExecutor(
             maxPoolSize / 2,
             maxPoolSize,
-            30, TimeUnit.SECONDS,
+            15, TimeUnit.MINUTES,
             workQueue
         );
   }

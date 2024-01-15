@@ -143,6 +143,9 @@ public class App {
       delay(Duration.ofMillis(500));
       lastMessage.set(null);
       delay(Duration.ofSeconds(3));
+
+      //delay(Duration.ofHours(1));
+
       //---------------------simple message---------------------------------------------------------
       pushcaWebSocket0.sendMessage(client1, testMessage0);
       while (lastMessage.get() == null) {
