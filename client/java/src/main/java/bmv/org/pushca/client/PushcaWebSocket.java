@@ -57,7 +57,6 @@ import bmv.org.pushca.core.PushcaMessageFactory;
 import bmv.org.pushca.core.PushcaMessageFactory.CommandWithId;
 import bmv.org.pushca.core.PushcaMessageFactory.MessageType;
 import bmv.org.pushca.core.PushcaURI;
-import com.sun.istack.internal.NotNull;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.File;
@@ -102,6 +101,7 @@ import javax.net.ssl.SSLContext;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -11,12 +11,12 @@ import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
-import com.sun.istack.internal.NotNull;
 import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import org.jetbrains.annotations.NotNull;
 
 public interface PushcaWebSocketApi {
 
