@@ -34,7 +34,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
-public class App {
+public class PApplication {
 
   public static void main(String[] args) throws IOException {
     String message = "Please provide connection pool size ";
@@ -115,7 +115,7 @@ public class App {
         (ws, channelMessage) -> System.out.println(
             MessageFormat.format("{0}: channel message was received: {1}", ws.getClientInfo(),
                 toJson(channelMessage)));
-
+    System.out.println("Web socket test was started");
     try (PushcaWebSocket pushcaWebSocket0 = new PushcaWebSocketBuilder(pushcaApiUrl,
         client0)
         .withMessageConsumer(messageConsumer)

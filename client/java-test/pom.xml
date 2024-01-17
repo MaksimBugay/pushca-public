@@ -55,7 +55,7 @@
         <configuration>
           <archive>
             <manifest>
-              <mainClass>bmv.org.pushca.App</mainClass>
+              <mainClass>bmv.org.pushca.PApplication</mainClass>
             </manifest>
           </archive>
           <descriptorRefs>
