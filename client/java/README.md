@@ -1,8 +1,8 @@
-# kn-challenge
+# Pushca simple client (without connection pool support)
 Simple Pushca client implementation
 
 To build executable jar: mvn clean compile assembly:single
 
-To run tests: mvn test
-
-To run application: start.bat
+Deploy to maven central: 
+mvn versions:set -DnewVersion=1.0.1
+mvn clean -s C:\maven\conf\settings.xml  deploy -P release -DskipTests
