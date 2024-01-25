@@ -189,34 +189,6 @@ public class PApplication {
           !binaryId.equals(uri1.getUploadBinaryAppeal().binaryId)) {
         throw new IllegalStateException("Broken Pushca URI");
       }
-      File file = new File(
-          "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
-      pushcaWebSocket1.sendBinary(
-          client0,
-          //client2,
-          Files.readAllBytes(file.toPath()),
-          "vlc-3.0.11-win64-copy.exe",
-          binaryId,
-          DEFAULT_CHUNK_SIZE,
-          true, null
-      );
-      /*file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
-      binaryId = UUID.nameUUIDFromBytes(
-              "Reproducing_multiple_java_headless-copy.mov".getBytes(StandardCharsets.UTF_8))
-          .toString();
-      pushcaWebSocket1.sendBinary(
-          client0,
-          Files.readAllBytes(file.toPath()),
-          "Reproducing_multiple_java_headless-copy.mov",
-          binaryId,
-          DEFAULT_CHUNK_SIZE,
-          true, null
-      );*/
-      //=================================Upload binary appeal=======================================
-      pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true,
-          Arrays.asList(30, 31, 32, 33, 34));
-      pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true, null);
-      //============================================================================================
       //=================================Channels===================================================
       PChannel channel0 = pushcaWebSocket0.createChannel(null,
           "happy-pushca-channel-0",
@@ -269,6 +241,37 @@ public class PApplication {
 
       pushcaWebSocket0.broadcastBinaryMessage(fromClientWithoutDeviceId(client1a), binaryMsg);
       pushcaWebSocket0.removeUnusedFilters();
+
+      //=============================send binary====================================================
+      File file = new File(
+          "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
+      pushcaWebSocket1.sendBinary(
+          client0,
+          //client2,
+          Files.readAllBytes(file.toPath()),
+          "vlc-3.0.11-win64-copy.exe",
+          binaryId,
+          DEFAULT_CHUNK_SIZE,
+          true, null
+      );
+      /*file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
+      binaryId = UUID.nameUUIDFromBytes(
+              "Reproducing_multiple_java_headless-copy.mov".getBytes(StandardCharsets.UTF_8))
+          .toString();
+      pushcaWebSocket1.sendBinary(
+          client0,
+          Files.readAllBytes(file.toPath()),
+          "Reproducing_multiple_java_headless-copy.mov",
+          binaryId,
+          DEFAULT_CHUNK_SIZE,
+          true, null
+      );*/
+      //=================================Upload binary appeal=======================================
+      pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true,
+          Arrays.asList(30, 31, 32, 33, 34));
+      pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true, null);
+      //============================================================================================
+
       System.out.println("ALL GOOD");
       delay(Duration.ofHours(1));
     }
