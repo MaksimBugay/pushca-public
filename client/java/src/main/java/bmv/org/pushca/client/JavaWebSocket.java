@@ -2,6 +2,7 @@ package bmv.org.pushca.client;
 
 import bmv.org.pushca.client.model.WebSocketState;
 import java.net.URI;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Optional;
@@ -55,7 +56,7 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
       byte[] binary = data.array();
       Optional.ofNullable(dataConsumer).ifPresent(dc -> dc.accept(this, binary));
     } finally {
-      data.clear();
+      ((Buffer) data).clear();
     }
   }
 

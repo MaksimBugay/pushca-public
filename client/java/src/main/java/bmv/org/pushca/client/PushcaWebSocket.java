@@ -407,7 +407,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public void sendAcknowledge(String id) {
+  public synchronized void sendAcknowledge(String id) {
     if (!webSocket.isOpen()) {
       throw new IllegalStateException("Web socket connection is broken");
     }
@@ -422,7 +422,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendAcknowledge(id);
   }
 
-  public void sendMessageWithAcknowledge(String msgId, PClient dest, boolean preserveOrder,
+  public synchronized void sendMessageWithAcknowledge(String msgId, PClient dest, boolean preserveOrder,
       String message) {
     String id = StringUtils.isEmpty(msgId) ? ID_GENERATOR.generate().toString() : msgId;
     Map<String, Object> metaData = new HashMap<>();
@@ -439,7 +439,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendMessageWithAcknowledge(id, dest, false, message);
   }
 
-  public void broadcastMessage(String id, ClientFilter dest, boolean preserveOrder,
+  public synchronized void broadcastMessage(String id, @NotNull ClientFilter dest, boolean preserveOrder,
       String message) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("id", id);
@@ -451,11 +451,11 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendCommand(SEND_MESSAGE, metaData);
   }
 
-  public void broadcastMessage(ClientFilter dest, String message) {
+  public void broadcastMessage(@NotNull ClientFilter dest, String message) {
     broadcastMessage(null, dest, false, message);
   }
 
-  public void sendMessage(String id, PClient dest, boolean preserveOrder, String message) {
+  public void sendMessage(String id, @NotNull PClient dest, boolean preserveOrder, String message) {
     broadcastMessage(id, new ClientFilter(dest), preserveOrder, message);
   }
 
@@ -463,7 +463,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendMessage(null, dest, false, message);
   }
 
-  public void broadcastBinaryMessage(ClientFilter dest, byte[] message, UUID id) {
+  public void broadcastBinaryMessage(@NotNull ClientFilter dest, byte[] message, UUID id) {
     filterRegistry.computeIfAbsent(dest, filter -> {
       registerFilter(filter);
       return Instant.now().toEpochMilli();
@@ -472,15 +472,15 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendBinaryMessage(dest.hashCode(), message, id, false);
   }
 
-  public void broadcastBinaryMessage(ClientFilter dest, byte[] message) {
+  public void broadcastBinaryMessage(@NotNull ClientFilter dest, byte[] message) {
     broadcastBinaryMessage(dest, message, null);
   }
 
-  public void sendBinaryMessage(UUID id, PClient dest, byte[] message, boolean withAcknowledge) {
+  public void sendBinaryMessage(UUID id, @NotNull PClient dest, byte[] message, boolean withAcknowledge) {
     sendBinaryMessage(dest.hashCode(), message, id, withAcknowledge);
   }
 
-  public void sendBinaryMessage(int destHashCode, byte[] message, UUID id,
+  public synchronized void sendBinaryMessage(int destHashCode, byte[] message, UUID id,
       boolean withAcknowledge) {
     UUID binaryMsgId = (id == null) ? ID_GENERATOR.generate() : id;
     int order = Integer.MAX_VALUE;
@@ -496,7 +496,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public void sendBinaryMessage(PClient dest, byte[] message) {
+  public void sendBinaryMessage(@NotNull PClient dest, byte[] message) {
     sendBinaryMessage(null, dest, message, false);
   }
 
@@ -537,10 +537,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   @Override
-  public void sendBinaryManifest(ClientFilter dest, BinaryObjectData manifest) {
-    if (dest == null) {
-      return;
-    }
+  public synchronized void sendBinaryManifest(@NotNull ClientFilter dest, BinaryObjectData manifest) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("dest", dest);
     metaData.put("manifest", manifest);
@@ -548,15 +545,15 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendCommand(manifest.id, SEND_BINARY_MANIFEST, metaData);
   }
 
-  public void sendBinary(PClient dest, byte[] data) {
+  public void sendBinary(@NotNull PClient dest, byte[] data) {
     sendBinary(dest, data, false);
   }
 
-  public void sendBinary(PClient dest, byte[] data, boolean withAcknowledge) {
+  public void sendBinary(@NotNull PClient dest, byte[] data, boolean withAcknowledge) {
     sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, withAcknowledge, null);
   }
 
-  public synchronized void sendBinary(PClient dest, byte[] data, String name, String id, int chunkSize,
+  public synchronized void sendBinary(@NotNull PClient dest, byte[] data, String name, String id, int chunkSize,
       boolean withAcknowledge, List<Integer> requestedChunks) {
     BinaryObjectData manifest = prepareBinaryManifest(data, name, id, chunkSize);
     asyncExecutor.execute(() -> storeBinary(manifest.id, data));
@@ -627,7 +624,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendUploadBinaryAppeal(appeal);
   }
 
-  private void sendUploadBinaryAppeal(UploadBinaryAppeal appeal) {
+  private synchronized void sendUploadBinaryAppeal(UploadBinaryAppeal appeal) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("owner", appeal.owner);
     metaData.put("binaryId", appeal.binaryId);
@@ -642,7 +639,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public PChannel createChannel(String id, @NotNull String name, ClientFilter... filters) {
+  public synchronized PChannel createChannel(String id, @NotNull String name, ClientFilter... filters) {
     String channelId = StringUtils.isEmpty(id) ? ID_GENERATOR.generate().toString() : id;
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("id", channelId);
@@ -655,7 +652,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     return new PChannel(channelId, name);
   }
 
-  public void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters) {
+  public synchronized void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("channel", channel);
     metaData.put("filters", filters);
@@ -665,7 +662,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public List<ChannelWithInfo> getChannels(ClientFilter filter) {
+  public synchronized List<ChannelWithInfo> getChannels(@NotNull ClientFilter filter) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("filter", filter);
     String responseJson = sendCommand(GET_CHANNELS, metaData);
@@ -676,7 +673,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     return response.body.channels;
   }
 
-  public Set<ClientFilter> getChannelMembers(@NotNull PChannel channel) {
+  public synchronized Set<ClientFilter> getChannelMembers(@NotNull PChannel channel) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("channel", channel);
     String responseJson = sendCommand(GET_CHANNEL_MEMBERS, metaData);
@@ -689,7 +686,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
 
-  public void markChannelAsRead(@NotNull PChannel channel, ClientFilter filter) {
+  public synchronized void markChannelAsRead(@NotNull PChannel channel, ClientFilter filter) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("channel", channel);
     metaData.put("filter", filter);
@@ -699,7 +696,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public void sendMessageToChannel(@NotNull PChannel channel, String message) {
+  public synchronized void sendMessageToChannel(@NotNull PChannel channel, String message) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("channel", channel);
     metaData.put("message", message);
@@ -713,7 +710,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendBinaryMessage(channel.hashCode(), message, null, false);
   }
 
-  public void removeMeFromChannel(@NotNull PChannel channel) {
+  public synchronized void removeMeFromChannel(@NotNull PChannel channel) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("channel", channel);
     String response = sendCommand(REMOVE_ME_FROM_CHANNEL, metaData);
