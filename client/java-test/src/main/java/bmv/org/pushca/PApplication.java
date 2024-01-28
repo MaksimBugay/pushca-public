@@ -16,13 +16,15 @@ import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
+import bmv.org.pushca.core.PImpression;
 import bmv.org.pushca.core.PushcaURI;
+import bmv.org.pushca.core.ResourceImpressionCounters;
+import bmv.org.pushca.core.ResourceType;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.Arrays;
@@ -79,17 +81,15 @@ public class PApplication {
     );*/
 
     String pushcaApiUrl =
-        // "http://localhost:8050";
-        //  "https://app-rc.multiloginapp.net/pushca-with-tls-support";
-        //"http://push-app-rc.multiloginapp.net:8050";
-        "https://app-rc.multiloginapp.net/pushca";
+        "http://localhost:8050";
+    //  "https://app-rc.multiloginapp.net/pushca-with-tls-support";
+    //"http://push-app-rc.multiloginapp.net:8050";
+    //"https://app-rc.multiloginapp.net/pushca";
     final String testMessage0 = "test-message-0";
     final String testMessage1 = "test-message-1";
     final String messageId = "1000";
-    final byte[] binaryMsg =
-        Base64.getEncoder().encode("Binary message test".getBytes(StandardCharsets.UTF_8));
-    final byte[] binaryMsg1 =
-        Base64.getEncoder().encode("Binary message test1".getBytes(StandardCharsets.UTF_8));
+    final String binaryMsg = "Binary message test";
+    final String binaryMsg1 = "Binary message test1";
     final AtomicReference<String> lastMessage = new AtomicReference<>();
     BiConsumer<PushcaWebSocketApi, String> messageConsumer = (ws, msg) -> {
       System.out.println(
@@ -127,14 +127,12 @@ public class PApplication {
         .build();
         PushcaWebSocket pushcaWebSocket1 = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1).withMessageConsumer(messageConsumer)
-            .withBinaryMessageConsumer(binaryMessageConsumer)
             .withChannelEventConsumer(channelEventConsumer)
             .withChannelMessageConsumer(channelMessageConsumer)
             //.withSslContext(sslContextProvider.getSslContext())
             .build();
         PushcaWebSocket pushcaWebSocket1a = new PushcaWebSocketBuilder(pushcaApiUrl,
             client1a).withMessageConsumer(messageConsumer)
-            .withBinaryMessageConsumer(binaryMessageConsumer)
             .withChannelEventConsumer(channelEventConsumer)
             .withChannelMessageConsumer(channelMessageConsumer)
             //.withSslContext(sslContextProvider.getSslContext())
@@ -169,7 +167,7 @@ public class PApplication {
       System.out.println("Message was delivered with acknowledge");
       //============================================================================================
       //-----------------------------binary message-------------------------------------------------
-      pushcaWebSocket0.sendBinaryMessage(null, client1, binaryMsg, true);
+      pushcaWebSocket0.sendAsBinaryMessage(null, client1, binaryMsg, true);
       //============================================================================================
       //-----------------------------binary with acknowledge----------------------------------------
       String binaryId =
@@ -222,8 +220,8 @@ public class PApplication {
       Set<ClientFilter> members = pushcaWebSocket0.getChannelMembers(channel0);
       System.out.println("Channel 0 members: " + toJson(members));
 
-      pushcaWebSocket0.sendMessageToChannel(channel0, "Hello Guys");
-      pushcaWebSocket1.sendBinaryMessageToChannel(channel0, binaryMsg1);
+      pushcaWebSocket0.sendMessageToChannel(channel0, null, "Hello Guys");
+      pushcaWebSocket1.sendAsBinaryMessageToChannel(channel0, null, binaryMsg1);
       delay(Duration.ofMillis(100));
 
       channels = pushcaWebSocket1a.getChannels(fromClientWithoutDeviceId(client1a));
@@ -237,15 +235,45 @@ public class PApplication {
         throw new IllegalStateException("wrong channel message counter");
       }
 
-      pushcaWebSocket1.removeMeFromChannel(channel0);
-
-      pushcaWebSocket0.broadcastBinaryMessage(fromClientWithoutDeviceId(client1a), binaryMsg);
+      pushcaWebSocket0.broadcastAsBinaryMessage(fromClientWithoutDeviceId(client1a), binaryMsg);
       pushcaWebSocket0.removeUnusedFilters();
+      //================mentioned and impressions===================================================
+      pushcaWebSocket0.sendMessageToChannel(channel0,
+          Collections.singletonList(new ClientFilter(client2)), "Hello @clientGo1@test.ee");
+      pushcaWebSocket1.addImpression(channel0,
+          new PImpression(channel0.id, ResourceType.CHANNEL, 1));
+      List<ResourceImpressionCounters> stat = pushcaWebSocket0.getImpressionStat(
+          Collections.singletonList(channel0.id));
+      if (stat.get(0).getCounter(1) != 1) {
+        throw new IllegalStateException("wrong impressions counter: code 1");
+      }
+      pushcaWebSocket0.addImpression(channel0,
+          new PImpression(channel0.id, ResourceType.CHANNEL, 2));
+      pushcaWebSocket1.addImpression(channel0,
+          new PImpression(channel0.id, ResourceType.CHANNEL, 2));
+      stat = pushcaWebSocket0.getImpressionStat(Collections.singletonList(channel0.id));
+      if (stat.get(0).getCounter(2) != 2) {
+        throw new IllegalStateException("wrong impressions counter: code 2");
+      }
+      pushcaWebSocket0.removeImpression(channel0,
+          new PImpression(channel0.id, ResourceType.CHANNEL, 2));
+      stat = pushcaWebSocket0.getImpressionStat(Collections.singletonList(channel0.id));
+      if (stat.get(0).getCounter(2) != 1) {
+        throw new IllegalStateException("wrong impressions counter: code 2");
+      }
 
+      channels = pushcaWebSocket0.getChannels(Arrays.asList(channel0.id, UUID.randomUUID().toString()));
+      if (channels.size() != 1) {
+        throw new IllegalStateException("wrong channels public info: size != 1");
+      }
+      if (channels.get(0).counter != 3){
+        throw new IllegalStateException("wrong channels public info: message counter != 3");
+      }
+      pushcaWebSocket0.removeMeFromChannel(channel0);
       //=============================send binary====================================================
       File file = new File(
           "C:\\mbugai\\work\\mlx\\pushca-public\\client\\java\\src\\test\\resources\\vlc-3.0.11-win64.exe");
-      pushcaWebSocket1.sendBinary(
+      /*pushcaWebSocket1.sendBinary(
           client0,
           //client2,
           Files.readAllBytes(file.toPath()),
@@ -253,25 +281,24 @@ public class PApplication {
           binaryId,
           DEFAULT_CHUNK_SIZE,
           true, null
-      );
-      /*file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
+      );*/
+      file = new File("C:\\mbugai\\work\\mlx\\pushca\\Reproducing_multiple_java_headless.mov");
       binaryId = UUID.nameUUIDFromBytes(
               "Reproducing_multiple_java_headless-copy.mov".getBytes(StandardCharsets.UTF_8))
           .toString();
-      pushcaWebSocket1.sendBinary(
+      /*pushcaWebSocket1.sendBinary(
           client0,
           Files.readAllBytes(file.toPath()),
           "Reproducing_multiple_java_headless-copy.mov",
           binaryId,
           DEFAULT_CHUNK_SIZE,
-          true, null
+          false, null
       );*/
       //=================================Upload binary appeal=======================================
-      pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true,
+      /*pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true,
           Arrays.asList(30, 31, 32, 33, 34));
-      pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true, null);
+      pushcaWebSocket0.sendUploadBinaryAppeal(uri1.toString(), true, null);*/
       //============================================================================================
-
       System.out.println("ALL GOOD");
       delay(Duration.ofHours(1));
     }
