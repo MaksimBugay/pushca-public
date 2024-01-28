@@ -309,6 +309,16 @@ public interface PushcaWebSocketApi {
    */
   List<ChannelWithInfo> getChannels(@NotNull ClientFilter filter);
 
+    /**
+   * Return list of records with channel public info for provided identifiers
+   *
+   * @param ids - list of channel identifiers
+   * @return list of channels with information about message counter, last update time and read
+   * status
+   */
+    List<ChannelWithInfo> getChannels(@NotNull List<String> ids);
+
+
   /**
    * Return all channel members
    *
@@ -362,7 +372,15 @@ public interface PushcaWebSocketApi {
    * @param channel    - channel object
    * @param impression - impression object
    */
-  void addImpression(@NotNull PChannel channel, PImpression impression);
+  void addImpression(@NotNull PChannel channel, @NotNull PImpression impression);
+
+    /**
+   * Remove previously added impression
+   *
+   * @param channel    - channel object
+   * @param impression - impression object
+   */
+  void removeImpression(@NotNull PChannel channel, @NotNull PImpression impression);
 
   /**
    * Get impression counters for provided resources

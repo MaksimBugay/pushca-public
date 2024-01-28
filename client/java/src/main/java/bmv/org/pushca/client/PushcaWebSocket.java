@@ -18,6 +18,7 @@ import static bmv.org.pushca.core.Command.ADD_IMPRESSION;
 import static bmv.org.pushca.core.Command.ADD_MEMBERS_TO_CHANNEL;
 import static bmv.org.pushca.core.Command.CREATE_CHANNEL;
 import static bmv.org.pushca.core.Command.GET_CHANNELS;
+import static bmv.org.pushca.core.Command.GET_CHANNELS_PUBLIC_INFO;
 import static bmv.org.pushca.core.Command.GET_CHANNEL_MEMBERS;
 import static bmv.org.pushca.core.Command.GET_IMPRESSION_STAT;
 import static bmv.org.pushca.core.Command.MARK_CHANNEL_AS_READ;
@@ -699,6 +700,17 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     return response.body.channels;
   }
 
+  public synchronized List<ChannelWithInfo> getChannels(@NotNull List<String> ids) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("ids", ids);
+    String responseJson = sendCommand(GET_CHANNELS_PUBLIC_INFO, metaData);
+    GetChannelsWsResponse response = fromJson(responseJson, GetChannelsWsResponse.class);
+    if (StringUtils.isNotEmpty(response.error)) {
+      throw new IllegalStateException("Cannot retrieve list of channels: " + response.error);
+    }
+    return response.body.channels;
+  }
+
   public synchronized Set<ClientFilter> getChannelMembers(@NotNull PChannel channel) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("channel", channel);
@@ -757,13 +769,25 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public synchronized void addImpression(@NotNull PChannel channel, PImpression impression) {
+  public synchronized void addImpression(@NotNull PChannel channel,
+      @NotNull PImpression impression) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("channel", channel);
     metaData.put("impression", impression);
     String response = sendCommand(ADD_IMPRESSION, metaData);
     if (!"SUCCESS".equals(response)) {
       throw new IllegalStateException("Cannot add impression for channel " + channel.name);
+    }
+  }
+
+  public synchronized void removeImpression(@NotNull PChannel channel,
+      @NotNull PImpression impression) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("channel", channel);
+    metaData.put("impression", impression);
+    String response = sendCommand(Command.REMOVE_IMPRESSION, metaData);
+    if (!"SUCCESS".equals(response)) {
+      throw new IllegalStateException("Cannot remove impression in channel " + channel.name);
     }
   }
 
