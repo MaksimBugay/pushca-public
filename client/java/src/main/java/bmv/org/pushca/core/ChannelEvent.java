@@ -6,7 +6,7 @@ import java.util.List;
 
 public class ChannelEvent {
 
-  public enum EventType {CREATE, ADD_MEMBERS, MARK_AS_READ, REMOVE_MEMBERS, REMOVE}
+  public enum EventType {CREATE, ADD_MEMBERS, MARK_AS_READ, REMOVE_MEMBERS, REMOVE, ADD_IMPRESSION, REMOVE_IMPRESSION}
 
   public EventType type;
 
