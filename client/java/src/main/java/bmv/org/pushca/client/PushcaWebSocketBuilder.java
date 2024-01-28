@@ -4,6 +4,8 @@ import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.UnknownDatagram;
+import bmv.org.pushca.client.transformation.BinaryPayloadTransformer;
+import bmv.org.pushca.client.transformation.base64.Base64PayloadTransformer;
 import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
 import java.util.function.BiConsumer;
@@ -16,13 +18,13 @@ public class PushcaWebSocketBuilder {
   private final PClient client;
   private int connectTimeoutMs = 0;
   private BiConsumer<PushcaWebSocketApi, String> messageConsumer;
-  private BiConsumer<PushcaWebSocketApi, byte[]> binaryMessageConsumer;
   private BiConsumer<PushcaWebSocketApi, Binary> dataConsumer;
   private BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer;
   private BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer;
   private BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer;
   private BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer;
   private BiConsumer<Integer, String> onCloseListener;
+  private BinaryPayloadTransformer binaryPayloadTransformer = new Base64PayloadTransformer();
   private SSLContext sslContext;
   private WsConnectionFactory wsConnectionFactory = new WsConnectionWithJavaWebSocketFactory();
 
@@ -44,12 +46,6 @@ public class PushcaWebSocketBuilder {
   public PushcaWebSocketBuilder withMessageConsumer(
       BiConsumer<PushcaWebSocketApi, String> messageConsumer) {
     this.messageConsumer = messageConsumer;
-    return this;
-  }
-
-  public PushcaWebSocketBuilder withBinaryMessageConsumer(
-      BiConsumer<PushcaWebSocketApi, byte[]> binaryMessageConsumer) {
-    this.binaryMessageConsumer = binaryMessageConsumer;
     return this;
   }
 
@@ -83,6 +79,12 @@ public class PushcaWebSocketBuilder {
     return this;
   }
 
+  public PushcaWebSocketBuilder withBinaryPayloadTransformer(
+      BinaryPayloadTransformer binaryPayloadTransformer) {
+    this.binaryPayloadTransformer = binaryPayloadTransformer;
+    return this;
+  }
+
   public PushcaWebSocketBuilder withOnCloseListener(
       BiConsumer<Integer, String> onCloseListener) {
     this.onCloseListener = onCloseListener;
@@ -101,8 +103,8 @@ public class PushcaWebSocketBuilder {
 
   public PushcaWebSocket build() {
     return new PushcaWebSocket(pushcaApiUrl, pusherId, client, connectTimeoutMs, messageConsumer,
-        binaryMessageConsumer, dataConsumer, unknownDatagramConsumer, binaryManifestConsumer,
-        channelEventConsumer, channelMessageConsumer, onCloseListener, sslContext,
-        wsConnectionFactory);
+        dataConsumer, unknownDatagramConsumer, binaryManifestConsumer,
+        channelEventConsumer, channelMessageConsumer, binaryPayloadTransformer, onCloseListener,
+        sslContext, wsConnectionFactory);
   }
 }

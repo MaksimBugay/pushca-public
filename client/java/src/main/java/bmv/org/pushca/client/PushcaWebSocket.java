@@ -9,6 +9,7 @@ import static bmv.org.pushca.client.utils.BmvObjectUtils.calculateSha256;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.createAsyncExecutor;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.createScheduler;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.deepClone;
+import static bmv.org.pushca.client.utils.BmvObjectUtils.isEmpty;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.toBinary;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectData;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toDatagramPrefix;
@@ -45,6 +46,8 @@ import bmv.org.pushca.client.model.RefreshTokenWsResponse;
 import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.client.model.UploadBinaryAppeal;
 import bmv.org.pushca.client.model.WebSocketState;
+import bmv.org.pushca.client.serialization.json.JsonUtility;
+import bmv.org.pushca.client.transformation.BinaryPayloadTransformer;
 import bmv.org.pushca.client.utils.BmvObjectUtils;
 import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
@@ -140,6 +143,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   private final Map<ClientFilter, Long> filterRegistry = new ConcurrentHashMap<>();
   private final BiConsumer<WebSocketApi, String> wsMessageConsumer;
   private final BiConsumer<WebSocketApi, byte[]> wsDataConsumer;
+  private final BinaryPayloadTransformer binaryPayloadTransformer;
   private final BiConsumer<Integer, String> wsOnCloseListener;
   private final SSLContext wsSslContext;
   private final int wsConnectTimeoutMs;
@@ -157,12 +161,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
       BiConsumer<PushcaWebSocketApi, String> messageConsumer,
-      BiConsumer<PushcaWebSocketApi, byte[]> binaryMessageConsumer,
       BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
       BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer,
       BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer,
+      BinaryPayloadTransformer binaryPayloadTransformer,
       BiConsumer<Integer, String> onCloseListener,
       SSLContext sslContext,
       WsConnectionFactory wsConnectionFactory) {
@@ -173,7 +177,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
             channelMessageConsumer, binaryManifestConsumer);
     this.wsDataConsumer =
         (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer, unknownDatagramConsumer,
-            binaryMessageConsumer);
+            messageConsumer, channelMessageConsumer);
+    this.binaryPayloadTransformer = binaryPayloadTransformer;
     this.wsOnCloseListener = onCloseListener;
     this.wsSslContext = sslContext;
     this.wsConnectTimeoutMs = connectTimeoutMs;
@@ -233,7 +238,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   public void processBinary(WebSocketApi ws, byte[] binary,
       BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
       BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer,
-      BiConsumer<PushcaWebSocketApi, byte[]> binaryMessageConsumer) {
+      BiConsumer<PushcaWebSocketApi, String> messageConsumer,
+      BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer) {
     final int clientHash = BmvObjectUtils.bytesToInt(
         Arrays.copyOfRange(binary, 0, 4)
     );
@@ -250,8 +256,21 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 */
     //binary message was received
     if (Integer.MAX_VALUE == order) {
-      Optional.ofNullable(binaryMessageConsumer)
-          .ifPresent(c -> c.accept(this, Arrays.copyOfRange(binary, 25, binary.length)));
+      final String decodedMessage = binaryPayloadTransformer.getDecoder().apply(
+          Arrays.copyOfRange(binary, 25, binary.length)
+      );
+      ChannelMessage channelMessage;
+      try {
+        channelMessage = JsonUtility.fromJson(decodedMessage, ChannelMessage.class);
+      } catch (Exception ex) {
+        channelMessage = null;
+      }
+      if (channelMessage != null) {
+        final ChannelMessage chm = channelMessage;
+        Optional.ofNullable(channelMessageConsumer).ifPresent(c -> c.accept(this, chm));
+      } else {
+        Optional.ofNullable(messageConsumer).ifPresent(c -> c.accept(this, decodedMessage));
+      }
       if (withAcknowledge) {
         sendAcknowledge(binaryId.toString());
       }
@@ -424,7 +443,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendAcknowledge(id);
   }
 
-  public synchronized void sendMessageWithAcknowledge(String msgId, PClient dest,
+  public synchronized void sendMessageWithAcknowledge(String msgId, @NotNull PClient dest,
       boolean preserveOrder, String message) {
     String id = StringUtils.isEmpty(msgId) ? ID_GENERATOR.generate().toString() : msgId;
     Map<String, Object> metaData = new HashMap<>();
@@ -465,26 +484,27 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     sendMessage(null, dest, false, message);
   }
 
-  public void broadcastBinaryMessage(@NotNull ClientFilter dest, byte[] message, UUID id) {
+  public void broadcastAsBinaryMessage(@NotNull ClientFilter dest, String message, UUID id) {
     filterRegistry.computeIfAbsent(dest, filter -> {
       registerFilter(filter);
       return Instant.now().toEpochMilli();
     });
     filterRegistry.computeIfPresent(dest, (filter, time) -> Instant.now().toEpochMilli());
-    sendBinaryMessage(dest.hashCode(), message, id, false);
+    sendAsBinaryMessage(dest.hashCode(), message, id, false);
   }
 
-  public void broadcastBinaryMessage(@NotNull ClientFilter dest, byte[] message) {
-    broadcastBinaryMessage(dest, message, null);
+  public void broadcastAsBinaryMessage(@NotNull ClientFilter dest, String message) {
+    broadcastAsBinaryMessage(dest, message, null);
   }
 
-  public void sendBinaryMessage(UUID id, @NotNull PClient dest, byte[] message,
+  public void sendAsBinaryMessage(UUID id, @NotNull PClient dest, String message,
       boolean withAcknowledge) {
-    sendBinaryMessage(dest.hashCode(), message, id, withAcknowledge);
+    sendAsBinaryMessage(dest.hashCode(), message, id, withAcknowledge);
   }
 
-  public synchronized void sendBinaryMessage(int destHashCode, byte[] message, UUID id,
+  public synchronized void sendAsBinaryMessage(int destHashCode, String strMessage, UUID id,
       boolean withAcknowledge) {
+    byte[] message = binaryPayloadTransformer.getEncoder().apply(strMessage);
     UUID binaryMsgId = (id == null) ? ID_GENERATOR.generate() : id;
     int order = Integer.MAX_VALUE;
     byte[] prefix = toDatagramPrefix(binaryMsgId, order, destHashCode, withAcknowledge);
@@ -497,8 +517,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     );
   }
 
-  public void sendBinaryMessage(@NotNull PClient dest, byte[] message) {
-    sendBinaryMessage(null, dest, message, false);
+  public void sendAsBinaryMessage(@NotNull PClient dest, String message) {
+    sendAsBinaryMessage(null, dest, message, false);
   }
 
   public byte[] loadBinaryById(String binaryId) throws IOException {
@@ -697,9 +717,13 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public synchronized void sendMessageToChannel(@NotNull PChannel channel, String message) {
+  public synchronized void sendMessageToChannel(@NotNull PChannel channel,
+      List<ClientFilter> mentioned, String message) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("channel", channel);
+    if (!isEmpty(mentioned)) {
+      metaData.put("mentioned", mentioned);
+    }
     metaData.put("message", message);
     String response = sendCommand(SEND_MESSAGE_TO_CHANNEL, metaData);
     if (!"SUCCESS".equals(response)) {
@@ -707,8 +731,16 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public void sendBinaryMessageToChannel(@NotNull PChannel channel, byte[] message) {
-    sendBinaryMessage(channel.hashCode(), message, null, false);
+  public void sendAsBinaryMessageToChannel(@NotNull PChannel channel,
+      List<ClientFilter> mentioned, String message) {
+    ChannelMessage channelMessage = new ChannelMessage();
+    channelMessage.messageId = ID_GENERATOR.generate().toString();
+    channelMessage.channelId = channel.id;
+    channelMessage.mentioned = mentioned;
+    channelMessage.sendTime = Instant.now().toEpochMilli();
+    channelMessage.sender = this.client;
+    channelMessage.body = message;
+    sendAsBinaryMessage(channel.hashCode(), toJson(channelMessage), null, false);
   }
 
   public synchronized void removeMeFromChannel(@NotNull PChannel channel) {

@@ -32,12 +32,15 @@ public interface PushcaWebSocketApi {
    * @param dataConsumer            - external handler of completed binaries
    * @param unknownDatagramConsumer - external handler of datagrams without manifest (usually used
    *                                for torrents like protocol implementation)
-   * @param binaryMessageConsumer   - external handler of binary messages
+   * @param messageConsumer         - external handler of text messages
+   * @param channelMessageConsumer  - dedicated external handler of channel messages (object with
+   *                                additional info about channel, sender etc.)
    */
   void processBinary(WebSocketApi ws, byte[] binary,
       BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
       BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer,
-      BiConsumer<PushcaWebSocketApi, byte[]> binaryMessageConsumer);
+      BiConsumer<PushcaWebSocketApi, String> messageConsumer,
+      BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer);
 
   /**
    * processes an incoming text message from Pushca
@@ -142,36 +145,36 @@ public interface PushcaWebSocketApi {
    *
    * @param id      - message id (if null then will be assigned by Pushca)
    * @param dest    - filter of receivers
-   * @param message - binary data
+   * @param message - message body
    */
-  void broadcastBinaryMessage(@NotNull ClientFilter dest, byte[] message, UUID id);
+  void broadcastAsBinaryMessage(@NotNull ClientFilter dest, String message, UUID id);
 
   /**
    * short version of broadcastBinaryMessage method, that uses defaults: id = null
    *
    * @param dest    - filter of receivers
-   * @param message - binary data
+   * @param message - message body
    */
-  void broadcastBinaryMessage(@NotNull ClientFilter dest, byte[] message);
+  void broadcastAsBinaryMessage(@NotNull ClientFilter dest, String message);
 
   /**
    * Send binary message to provided client
    *
    * @param id              - message id (if null then will be assigned by Pushca)
    * @param dest            - client
-   * @param message         - binary data
+   * @param message         - message body
    * @param withAcknowledge - wait for acknowledge from receiver
    */
-  void sendBinaryMessage(UUID id, @NotNull PClient dest, byte[] message, boolean withAcknowledge);
+  void sendAsBinaryMessage(UUID id, @NotNull PClient dest, String message, boolean withAcknowledge);
 
   /**
    * short version of sendBinaryMessage method, that uses defaults: id = null, withAcknowledge =
    * false
    *
    * @param dest    - client
-   * @param message - binary data
+   * @param message - message body
    */
-  void sendBinaryMessage(@NotNull PClient dest, byte[] message);
+  void sendAsBinaryMessage(@NotNull PClient dest, String message);
 
   //====================================BINARY(FILE) API============================================
   /**
@@ -324,20 +327,24 @@ public interface PushcaWebSocketApi {
   /**
    * Send text message to channel, all members will receive a notification
    *
-   * @param channel - channel object
-   * @param message - message text
+   * @param channel   - channel object
+   * @param mentioned - channel members that were directly mentioned in message
+   * @param message   - message text
    */
-  void sendMessageToChannel(@NotNull PChannel channel, String message);
+  void sendMessageToChannel(@NotNull PChannel channel, List<ClientFilter> mentioned,
+      String message);
 
   /**
    * Send binary message to channel, all members will receive a notification. Binary message is used
    * to support some custom protocol, that protocol should contain information about sender and
    * destination channel
    *
-   * @param channel - channel object
-   * @param message - binary data
+   * @param channel   - channel object
+   * @param mentioned - channel members that were directly mentioned in message
+   * @param message   - binary data
    */
-  void sendBinaryMessageToChannel(@NotNull PChannel channel, byte[] message);
+  void sendAsBinaryMessageToChannel(@NotNull PChannel channel, List<ClientFilter> mentioned,
+      String message);
 
   /**
    * Remove connected client from some channel, client will stop receive events/messages from

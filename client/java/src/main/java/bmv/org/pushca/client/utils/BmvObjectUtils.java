@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,10 @@ public final class BmvObjectUtils {
           Object.class);
 
   private BmvObjectUtils() {
+  }
+
+  public static boolean isEmpty(Collection<?> collection) {
+    return collection == null || collection.isEmpty();
   }
 
   public static <T> T deepClone(T prototype, Class<T> tClass) {
@@ -94,11 +99,11 @@ public final class BmvObjectUtils {
   public static Executor createAsyncExecutor(int maxPoolSize) {
     BlockingQueue<Runnable> workQueue = new LinkedBlockingQueue<>(100_000);
     return new ThreadPoolExecutor(
-            maxPoolSize / 2,
-            maxPoolSize,
-            15, TimeUnit.MINUTES,
-            workQueue
-        );
+        maxPoolSize / 2,
+        maxPoolSize,
+        15, TimeUnit.MINUTES,
+        workQueue
+    );
   }
 
   public static byte[] booleanToBytes(boolean value) {
