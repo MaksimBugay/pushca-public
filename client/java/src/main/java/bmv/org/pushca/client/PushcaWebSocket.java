@@ -14,10 +14,12 @@ import static bmv.org.pushca.client.utils.BmvObjectUtils.toBinary;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectData;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toDatagramPrefix;
 import static bmv.org.pushca.core.Command.ACKNOWLEDGE;
+import static bmv.org.pushca.core.Command.ADD_IMPRESSION;
 import static bmv.org.pushca.core.Command.ADD_MEMBERS_TO_CHANNEL;
 import static bmv.org.pushca.core.Command.CREATE_CHANNEL;
 import static bmv.org.pushca.core.Command.GET_CHANNELS;
 import static bmv.org.pushca.core.Command.GET_CHANNEL_MEMBERS;
+import static bmv.org.pushca.core.Command.GET_IMPRESSION_STAT;
 import static bmv.org.pushca.core.Command.MARK_CHANNEL_AS_READ;
 import static bmv.org.pushca.core.Command.REFRESH_TOKEN;
 import static bmv.org.pushca.core.Command.REGISTER_FILTER;
@@ -55,11 +57,14 @@ import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.Command;
 import bmv.org.pushca.core.GetChannelMembersWsResponse;
 import bmv.org.pushca.core.GetChannelsWsResponse;
+import bmv.org.pushca.core.GetImpressionStatWsResponse;
 import bmv.org.pushca.core.PChannel;
+import bmv.org.pushca.core.PImpression;
 import bmv.org.pushca.core.PushcaMessageFactory;
 import bmv.org.pushca.core.PushcaMessageFactory.CommandWithId;
 import bmv.org.pushca.core.PushcaMessageFactory.MessageType;
 import bmv.org.pushca.core.PushcaURI;
+import bmv.org.pushca.core.ResourceImpressionCounters;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.File;
@@ -750,6 +755,29 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     if (!"SUCCESS".equals(response)) {
       throw new IllegalStateException("Cannot remove myself from channel " + channel.name);
     }
+  }
+
+  public synchronized void addImpression(@NotNull PChannel channel, PImpression impression) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("channel", channel);
+    metaData.put("impression", impression);
+    String response = sendCommand(ADD_IMPRESSION, metaData);
+    if (!"SUCCESS".equals(response)) {
+      throw new IllegalStateException("Cannot add impression for channel " + channel.name);
+    }
+  }
+
+  public synchronized List<ResourceImpressionCounters> getImpressionStat(
+      @NotNull List<String> ids) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("ids", ids);
+    String responseJson = sendCommand(GET_IMPRESSION_STAT, metaData);
+    GetImpressionStatWsResponse response =
+        fromJson(responseJson, GetImpressionStatWsResponse.class);
+    if (StringUtils.isNotEmpty(response.error)) {
+      throw new IllegalStateException("Cannot load impression statistic: " + response.error);
+    }
+    return response.body;
   }
 
   public void removeUnusedFilters() {

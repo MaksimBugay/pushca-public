@@ -11,6 +11,8 @@ import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
+import bmv.org.pushca.core.PImpression;
+import bmv.org.pushca.core.ResourceImpressionCounters;
 import java.io.IOException;
 import java.util.List;
 import java.util.Set;
@@ -353,4 +355,20 @@ public interface PushcaWebSocketApi {
    * @param channel - channel object
    */
   void removeMeFromChannel(@NotNull PChannel channel);
+
+  /**
+   * Add impression to channel itself or to some message in channel
+   *
+   * @param channel    - channel object
+   * @param impression - impression object
+   */
+  void addImpression(@NotNull PChannel channel, PImpression impression);
+
+  /**
+   * Get impression counters for provided resources
+   *
+   * @param ids - list of resource id
+   * @return - list of records with impression statistic
+   */
+  List<ResourceImpressionCounters> getImpressionStat(@NotNull List<String> ids);
 }
