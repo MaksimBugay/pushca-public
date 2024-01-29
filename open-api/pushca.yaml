@@ -36,12 +36,12 @@ paths:
               $ref: '#/components/schemas/SendNotificationWithDeliveryGuaranteeRequest'
         required: true
       responses:
-        "503":
-          description: Unexpected error
-        "200":
-          description: Success
         "404":
           description: Client is not connected
+        "200":
+          description: Success
+        "503":
+          description: Unexpected error
   /send-notification-with-acknowledge:
     post:
       tags:
@@ -55,10 +55,10 @@ paths:
               $ref: '#/components/schemas/SendNotificationWithAcknowledgeRequest'
         required: true
       responses:
-        "408":
-          description: Acknowledge time out
         "200":
           description: Success
+        "408":
+          description: Acknowledge time out
   /send-message-to-channel:
     post:
       tags:
@@ -72,10 +72,10 @@ paths:
               $ref: '#/components/schemas/SendMessageToChannelRequest'
         required: true
       responses:
-        "400":
-          description: empty channel id or name
         "200":
           description: successfully sent
+        "400":
+          description: empty channel id or name
   /send-binary:
     post:
       tags:
@@ -127,14 +127,57 @@ paths:
               $ref: '#/components/schemas/OpenConnectionPoolRequest'
         required: true
       responses:
-        "429":
-          description: Too many requests
         "200":
           description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpenConnectionPoolResponse'
+        "429":
+          description: Too many requests
+  /impressions:
+    post:
+      tags:
+      - public-channel-api-controller
+      summary: Get all impressions for resource id from request sorted by time with
+        reversed order
+      operationId: getImpressions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdRequest'
+        required: true
+      responses:
+        "400":
+          description: empty id list
+        "200":
+          description: returns list of sorted impressions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetImpressionsResponse'
+  /impression-stat:
+    post:
+      tags:
+      - public-channel-api-controller
+      summary: Get impression statistic for every resource id from request
+      operationId: getImpressionStat
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdListRequest'
+        required: true
+      responses:
+        "400":
+          description: empty id list
+        "200":
+          description: returns list of records with statistic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetImpressionStatResponse'
   /history/register-owner:
     post:
       tags:
@@ -148,10 +191,10 @@ paths:
               $ref: '#/components/schemas/RegisterHistoryOwnerRequest'
         required: true
       responses:
-        "500":
-          description: Unexpected error
         "200":
           description: Success
+        "500":
+          description: Unexpected error
   /history/list:
     post:
       tags:
@@ -165,14 +208,14 @@ paths:
               $ref: '#/components/schemas/GetHistoryRequest'
         required: true
       responses:
+        "429":
+          description: Too many requests
         "200":
           description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HistoryPageResponse'
-        "429":
-          description: Too many requests
   /create-channel:
     post:
       tags:
@@ -186,12 +229,34 @@ paths:
               $ref: '#/components/schemas/CreateChannelRequest'
         required: true
       responses:
-        "200":
-          description: successfully created
         "409":
           description: already exists
         "400":
           description: empty name
+        "200":
+          description: successfully created
+  /channels-public-info:
+    post:
+      tags:
+      - public-channel-api-controller
+      summary: Get record with public info for every existing channel id from request
+      operationId: getChannelsPublicInfo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdListRequest'
+        required: true
+      responses:
+        "400":
+          description: empty id list
+        "200":
+          description: returns list of records (one record per channel) with channel
+            public info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetChannelsResponse'
   /channels-for-filter:
     post:
       tags:
@@ -247,14 +312,14 @@ paths:
               $ref: '#/components/schemas/GetChannelHistoryRequest'
         required: true
       responses:
+        "400":
+          description: empty channel id or name
         "200":
           description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HistoryPageResponse'
-        "400":
-          description: empty channel id or name
   /add-members-to-channel:
     post:
       tags:
@@ -319,10 +384,10 @@ paths:
               $ref: '#/components/schemas/RemoveHistoryOwnerRequest'
         required: true
       responses:
-        "500":
-          description: Unexpected error
         "200":
           description: Success
+        "500":
+          description: Unexpected error
 components:
   schemas:
     ClientSearchData:
@@ -411,6 +476,10 @@ components:
           $ref: '#/components/schemas/PClient'
         channel:
           $ref: '#/components/schemas/PChannel'
+        mentioned:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientSearchData'
         message:
           type: string
     BinaryChunk:
@@ -485,6 +554,77 @@ components:
           type: string
         browserAdvertisedUrl:
           type: string
+    IdRequest:
+      required:
+      - id
+      type: object
+      properties:
+        id:
+          type: string
+    GetImpressionsResponse:
+      type: object
+      properties:
+        impressions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PImpressionWithTime'
+    PImpression:
+      type: object
+      properties:
+        resourceId:
+          type: string
+        resourceType:
+          type: string
+          enum:
+          - CHANNEL
+          - CHANNEL_MESSAGE
+        code:
+          type: integer
+          format: int32
+        originator:
+          $ref: '#/components/schemas/PClient'
+    PImpressionWithTime:
+      type: object
+      properties:
+        impression:
+          $ref: '#/components/schemas/PImpression'
+        time:
+          type: integer
+          format: int64
+    IdListRequest:
+      required:
+      - ids
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+    GetImpressionStatResponse:
+      type: object
+      properties:
+        stat:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceImpressionCounters'
+    ImpressionCounter:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        counter:
+          type: integer
+          format: int64
+    ResourceImpressionCounters:
+      type: object
+      properties:
+        resourceId:
+          type: string
+        counters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImpressionCounter'
     RegisterHistoryOwnerRequest:
       type: object
       properties:
@@ -537,6 +677,10 @@ components:
         sendTime:
           type: integer
           format: int64
+        mentioned:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientSearchData'
     CreateChannelRequest:
       required:
       - actor
@@ -553,13 +697,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ClientSearchData'
-    FilterRequest:
-      required:
-      - filter
-      type: object
-      properties:
-        filter:
-          $ref: '#/components/schemas/ClientSearchData'
     ChannelWithInfo:
       type: object
       properties:
@@ -585,6 +722,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ChannelWithInfo'
+    FilterRequest:
+      required:
+      - filter
+      type: object
+      properties:
+        filter:
+          $ref: '#/components/schemas/ClientSearchData'
     GetChannelMembersRequest:
       required:
       - channel
