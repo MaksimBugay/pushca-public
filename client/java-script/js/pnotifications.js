@@ -1,5 +1,39 @@
+const Command = Object.freeze({
+    PING: "PING",
+    SEND_MESSAGE: "SEND_MESSAGE",
+    SEND_MESSAGE_WITH_ACKNOWLEDGE: "SEND_MESSAGE_WITH_ACKNOWLEDGE"
+});
+
+const MESSAGE_PARTS_DELIMITER = "@@";
+
+class CommandWithId {
+    constructor(id, message) {
+        this.id = id;
+        this.message = message;
+    }
+}
+
 let PushcaClient = {};
+PushcaClient.waitingHall = new Map();
 PushcaClient.serverBaseUrl = 'http://localhost:8050'
+
+PushcaClient.buildCommandMessage = function (command, args) {
+    let id = crypto.randomUUID();
+    let message = `${id}${MESSAGE_PARTS_DELIMITER}${command}${MESSAGE_PARTS_DELIMITER}${JSON.stringify(args)}`;
+    return new CommandWithId(id, message);
+}
+
+PushcaClient.broadcastMessage = function (id, dest, preserveOrder, message) {
+    let metaData = {};
+    metaData["id"] = id;
+    metaData["filter"] = dest;
+    metaData["sender"] = PushcaClient.client;
+    metaData["message"] = message;
+    metaData["preserveOrder"] = preserveOrder;
+
+    let commandWithId = PushcaClient.buildCommandMessage(Command.SEND_MESSAGE, metaData);
+    PushcaClient.ws.send(commandWithId.message);
+}
 
 PushcaClient.openConnection = function (onOpenHandler, onCloseHandler, onMessageHandler) {
     let requestObj = {};
@@ -59,28 +93,15 @@ PushcaClient.openConnection = function (onOpenHandler, onCloseHandler, onMessage
 $(document).ready(function () {
     $('#p-message').val("test message" + Date.now());
     $("#p-send").click(function () {
-        let sendRequestObj = {};
         let filterObj = {};
         filterObj["workSpaceId"] = "workSpaceMain";
         filterObj["applicationId"] = "MLA_JAVA_HEADLESS";
-        sendRequestObj["filter"] = filterObj;
-        sendRequestObj["message"] = $('#p-message').val();
-        $.ajax({
-            contentType: 'application/json',
-            data: JSON.stringify(sendRequestObj),
-            dataType: 'json',
-            success: function (data) {
-                console.log("Attempt to send push notification succeeded");
-            },
-            error: function (xhr, textStatus, errorThrown) {
-                console.log(
-                    "Attempt to send push notification failed " + xhr.responseText);
-                console.log(textStatus);
-                console.log(errorThrown);
-            },
-            type: 'POST',
-            url: PushcaClient.serverBaseUrl + '/send-notification'
-        });
+        PushcaClient.broadcastMessage(
+            crypto.randomUUID(),
+            filterObj,
+            true,
+            $('#p-message').val()
+        );
     });
 
     PushcaClient.openConnection(
