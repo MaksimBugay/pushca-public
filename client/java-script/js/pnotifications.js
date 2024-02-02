@@ -106,21 +106,6 @@ PushcaClient.buildCommandMessage = function (command, args) {
     return new CommandWithId(id, message);
 }
 
-PushcaClient.broadcastMessage = async function (id, dest, preserveOrder, message) {
-    let metaData = {};
-    metaData["id"] = id;
-    metaData["filter"] = dest;
-    metaData["sender"] = PushcaClient.client;
-    metaData["message"] = message;
-    metaData["preserveOrder"] = preserveOrder;
-
-    let commandWithId = PushcaClient.buildCommandMessage(Command.SEND_MESSAGE, metaData);
-    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
-    if (ResponseType.ERROR === result.type) {
-        console.log("Failed broadcast message attempt: " + result.body.message);
-    }
-}
-
 PushcaClient.openConnection = function (onOpenHandler, onCloseHandler, onMessageHandler) {
     let requestObj = {};
     PushcaClient.ClientObj = {};
@@ -184,3 +169,26 @@ PushcaClient.openConnection = function (onOpenHandler, onCloseHandler, onMessage
         url: PushcaClient.serverBaseUrl + '/open-connection'
     });
 };
+
+/**
+ * Send message to all connected clients that met the filtering requirements
+ *
+ * @param id            - message id (if null then will be assigned by Pushca)
+ * @param dest          - filter of receivers
+ * @param preserveOrder - keep sending order during delivery
+ * @param message       - message text
+ */
+PushcaClient.broadcastMessage = async function (id, dest, preserveOrder, message) {
+    let metaData = {};
+    metaData["id"] = id;
+    metaData["filter"] = dest;
+    metaData["sender"] = PushcaClient.client;
+    metaData["message"] = message;
+    metaData["preserveOrder"] = preserveOrder;
+
+    let commandWithId = PushcaClient.buildCommandMessage(Command.SEND_MESSAGE, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed broadcast message attempt: " + result.body.message);
+    }
+}
