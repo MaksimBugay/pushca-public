@@ -66,8 +66,16 @@ PushcaClient.releaseWaterIfExists = function (id, response) {
         PushcaClient.waitingHall.delete(id);
     }
 }
-PushcaClient.executeWithRepeatOnFailure = async function (id, commandWithId, inTimeoutMs) {
-    return PushcaClient.execute(id, commandWithId, inTimeoutMs);
+PushcaClient.executeWithRepeatOnFailure = async function (id, commandWithId, inTimeoutMs, numberOfRepeatAttempts) {
+    let n = numberOfRepeatAttempts || 3
+    let result;
+    for (let i = 0; i < n; i++) {
+        result = await PushcaClient.execute(id, commandWithId, inTimeoutMs);
+        if (ResponseType.SUCCESS === result.type) {
+            break;
+        }
+    }
+    return result;
 }
 PushcaClient.execute = async function (id, commandWithId, inTimeoutMs) {
     let timeoutMs = inTimeoutMs || 5000;
@@ -98,7 +106,7 @@ PushcaClient.buildCommandMessage = function (command, args) {
     return new CommandWithId(id, message);
 }
 
-PushcaClient.broadcastMessage = function (id, dest, preserveOrder, message) {
+PushcaClient.broadcastMessage = async function (id, dest, preserveOrder, message) {
     let metaData = {};
     metaData["id"] = id;
     metaData["filter"] = dest;
@@ -107,7 +115,10 @@ PushcaClient.broadcastMessage = function (id, dest, preserveOrder, message) {
     metaData["preserveOrder"] = preserveOrder;
 
     let commandWithId = PushcaClient.buildCommandMessage(Command.SEND_MESSAGE, metaData);
-    PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed broadcast message attempt: " + result.body.message);
+    }
 }
 
 PushcaClient.openConnection = function (onOpenHandler, onCloseHandler, onMessageHandler) {
