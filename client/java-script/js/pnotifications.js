@@ -1,14 +1,14 @@
 let PushcaClient = {};
 PushcaClient.serverBaseUrl = 'http://localhost:8050'
 
-PushcaClient.openConnection = function (initWsCallback) {
+PushcaClient.openConnection = function (onOpenHandler, onCloseHandler, onMessageHandler) {
     let requestObj = {};
-    let clientObj = {};
-    clientObj["workSpaceId"] = "workSpaceMain";
-    clientObj["accountId"] = "clientWeb1@test.ee";
-    clientObj["deviceId"] = "D" + Date.now();
-    clientObj["applicationId"] = "MLA_JAVA_HEADLESS";
-    requestObj["client"] = clientObj;
+    PushcaClient.ClientObj = {};
+    PushcaClient.ClientObj["workSpaceId"] = "workSpaceMain";
+    PushcaClient.ClientObj["accountId"] = "clientWeb1@test.ee";
+    PushcaClient.ClientObj["deviceId"] = crypto.randomUUID();
+    PushcaClient.ClientObj["applicationId"] = "MLA_JAVA_HEADLESS";
+    requestObj["client"] = PushcaClient.ClientObj;
     $.ajax({
         contentType: 'application/json',
         data: JSON.stringify(requestObj),
@@ -23,7 +23,29 @@ PushcaClient.openConnection = function (initWsCallback) {
             console.log("Ws connection url was acquired: " + wsUrl);
 
             PushcaClient.ws = new WebSocket(wsUrl);
-            initWsCallback(PushcaClient.ws)
+            if (PushcaClient.ws) {
+                PushcaClient.ws.onopen = function () {
+                    console.log('open');
+                    onOpenHandler(PushcaClient.ws);
+                };
+
+                PushcaClient.ws.onmessage = function (event) {
+                    console.log('message', event.data);
+                    onMessageHandler(PushcaClient.ws, event)
+                };
+
+                PushcaClient.ws.onerror = function (error) {
+                    console.log("There was an error with your websocket!");
+                };
+
+                PushcaClient.ws.onclose = function (event) {
+                    if (event.wasClean) {
+                        console.log(
+                            `[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+                    }
+                    onCloseHandler(PushcaClient.ws, event)
+                };
+            }
         },
         error: function () {
             console.log("Attempt to acquire ws connection url failed");
@@ -61,40 +83,23 @@ $(document).ready(function () {
         });
     });
 
-    PushcaClient.openConnection(function (ws){
-        if (ws) {
-            let intervalId = window.setInterval(function () {
+    PushcaClient.openConnection(
+        function (ws) {
+            PushcaClient.PingIntervalId = window.setInterval(function () {
                 PushcaClient.ws.send(JSON.stringify({"command": "PING"}));
             }, 20000);
-            ws.onopen = function () {
-                console.log('open');
-            };
-
-            ws.onmessage = function (e) {
-                console.log('message', e.data);
-                if (e.data !== "PONG") {
-                    //alert(e.data);
-                    let history = $("textarea#p-history");
-                    history.val(history.val() + e.data + "\n");
-                }
-            };
-
-            ws.onerror = function (error) {
-                console.log("There was an error with your websocket!");
-            };
-
-            ws.onclose = function (event) {
-                window.clearInterval(intervalId);
-                if (event.wasClean) {
-                    console.log(
-                        `[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
-                } else {
-                    // e.g. server process killed or network down
-                    // event.code is usually 1006 in this case
-                    //alert('[close] Connection died');
-                    $("#l-message").text("Your connection died, refresh the page please");
-                }
-            };
+        },
+        function (ws, event) {
+            window.clearInterval(PushcaClient.PingIntervalId);
+            if (!event.wasClean) {
+                $("#l-message").text("Your connection died, refresh the page please");
+            }
+        },
+        function (ws, event) {
+            if (event.data !== "PONG") {
+                let history = $("textarea#p-history");
+                history.val(history.val() + event.data + "\n");
+            }
         }
-    });
+    );
 });
