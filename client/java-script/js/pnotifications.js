@@ -4,7 +4,43 @@ const Command = Object.freeze({
     SEND_MESSAGE_WITH_ACKNOWLEDGE: "SEND_MESSAGE_WITH_ACKNOWLEDGE"
 });
 
-const MESSAGE_PARTS_DELIMITER = "@@";
+const ResponseType = Object.freeze({
+    SUCCESS: "SUCCESS",
+    ERROR: "ERROR"
+});
+
+const MessageType = Object.freeze({
+    ACKNOWLEDGE: "ACKNOWLEDGE",
+    RESPONSE: "RESPONSE",
+    CHANNEL_MESSAGE: "CHANNEL_MESSAGE",
+    CHANNEL_EVENT: "CHANNEL_EVENT"
+});
+
+const MessagePartsDelimiter = "@@";
+
+class WaterResponse {
+    constructor(type, body) {
+        this.type = type;
+        this.body = body;
+    }
+}
+
+class Water {
+    constructor() {
+        this.promise = new Promise((resolve, reject) => {
+            this.resolve = resolve; // Assign resolve function to the outer scope variable
+            this.reject = reject; // Assign reject function to the outer scope variable
+        });
+    }
+}
+
+function releaseWaterWithSuccess(water, response) {
+    water.resolve(new WaterResponse(ResponseType.SUCCESS, response))
+}
+
+function releaseWaterWithError(water, error) {
+    water.reject(new WaterResponse(ResponseType.ERROR, error));
+}
 
 class CommandWithId {
     constructor(id, message) {
@@ -17,9 +53,48 @@ let PushcaClient = {};
 PushcaClient.waitingHall = new Map();
 PushcaClient.serverBaseUrl = 'http://localhost:8050'
 
+PushcaClient.addToWaitingHall = function (id) {
+    let water = new Water();
+    PushcaClient.waitingHall.set(id, water);
+    return water.promise;
+}
+
+PushcaClient.releaseWaterIfExists = function (id, response) {
+    let water = PushcaClient.waitingHall.get(id);
+    if (water) {
+        releaseWaterWithSuccess(water, response)
+        PushcaClient.waitingHall.delete(id);
+    }
+}
+PushcaClient.executeWithRepeatOnFailure = async function (id, commandWithId, inTimeoutMs) {
+    return PushcaClient.execute(id, commandWithId, inTimeoutMs);
+}
+PushcaClient.execute = async function (id, commandWithId, inTimeoutMs) {
+    let timeoutMs = inTimeoutMs || 5000;
+    let ackId = id || commandWithId.id;
+
+    let timeout = (ms) => new Promise((resolve, reject) => {
+        setTimeout(() => reject(new Error('Timeout after ' + ms + ' ms')), ms);
+    });
+
+    PushcaClient.ws.send(commandWithId.message);
+    let result;
+    try {
+        result = await Promise.race([
+            PushcaClient.addToWaitingHall(ackId),
+            timeout(timeoutMs)
+        ]);
+    } catch (error) {
+        PushcaClient.waitingHall.delete(ackId);
+        result = new WaterResponse(ResponseType.ERROR, error)
+    }
+    console.log(result);
+    return result;
+}
+
 PushcaClient.buildCommandMessage = function (command, args) {
     let id = crypto.randomUUID();
-    let message = `${id}${MESSAGE_PARTS_DELIMITER}${command}${MESSAGE_PARTS_DELIMITER}${JSON.stringify(args)}`;
+    let message = `${id}${MessagePartsDelimiter}${command}${MessagePartsDelimiter}${JSON.stringify(args)}`;
     return new CommandWithId(id, message);
 }
 
@@ -32,7 +107,7 @@ PushcaClient.broadcastMessage = function (id, dest, preserveOrder, message) {
     metaData["preserveOrder"] = preserveOrder;
 
     let commandWithId = PushcaClient.buildCommandMessage(Command.SEND_MESSAGE, metaData);
-    PushcaClient.ws.send(commandWithId.message);
+    PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
 }
 
 PushcaClient.openConnection = function (onOpenHandler, onCloseHandler, onMessageHandler) {
@@ -65,6 +140,15 @@ PushcaClient.openConnection = function (onOpenHandler, onCloseHandler, onMessage
 
                 PushcaClient.ws.onmessage = function (event) {
                     console.log('message', event.data);
+                    let parts = event.data.split(MessagePartsDelimiter);
+                    if (parts[1] === MessageType.RESPONSE) {
+                        let body;
+                        if (parts.length > 2) {
+                            body = parts[2];
+                        }
+                        PushcaClient.releaseWaterIfExists(parts[0], body)
+                        return
+                    }
                     onMessageHandler(PushcaClient.ws, event)
                 };
 
