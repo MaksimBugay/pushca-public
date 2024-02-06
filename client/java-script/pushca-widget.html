@@ -30,12 +30,16 @@
 <body>
 <h1>Push notifications demo</h1>
 <div id="bmv">
+  <label id="l-client" for="p-message"></label>
   <label id="l-message" for="p-message">push notification message</label>
   <input type="text" id="p-message" name="push-message" required minlength="10" maxlength="180"
          size="12" class="inputText"/>
   <br><br>
   <div class="vertical-center">
     <button id="p-send">Send</button>
+  </div>
+  <div class="vertical-center">
+    <button id="p-send-with-acknowledge">Send with acknowledge</button>
   </div>
   <br>
   <label for="p-history">Message history</label>

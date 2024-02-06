@@ -1,5 +1,8 @@
+const requiredClientFields = ['workSpaceId', 'accountId', 'deviceId', 'applicationId'];
+
 const Command = Object.freeze({
     PING: "PING",
+    ACKNOWLEDGE: "ACKNOWLEDGE",
     SEND_MESSAGE: "SEND_MESSAGE",
     SEND_MESSAGE_WITH_ACKNOWLEDGE: "SEND_MESSAGE_WITH_ACKNOWLEDGE"
 });
@@ -34,12 +37,38 @@ class Waiter {
     }
 }
 
+function getBrowserName() {
+    const userAgent = navigator.userAgent;
+
+    if (userAgent.match(/edg/i)) {
+        return "Chrome";
+    } else if (userAgent.match(/firefox|fxios/i)) {
+        return "Firefox";
+    } else if (userAgent.match(/safari/i)) {
+        return "Safari";
+    } else if (userAgent.match(/opr\//i)) {
+        return "Opera";
+    } else if (userAgent.match(/chrome|chromium|crios/i)) {
+        return "Edge";
+    } else if (userAgent.match(/msie|trident/i)) {
+        return "Internet Explorer";
+    } else {
+        return "Unknown";
+    }
+}
+
 function releaseWaiterWithSuccess(waiter, response) {
     waiter.resolve(new WaiterResponse(ResponseType.SUCCESS, response))
 }
 
 function releaseWaiterWithError(waiter, error) {
     waiter.reject(new WaiterResponse(ResponseType.ERROR, error));
+}
+
+function allClientFieldsAreNotEmpty(obj) {
+    return requiredClientFields.every(field => {
+        return obj.hasOwnProperty(field) && obj[field] !== null && obj[field] !== undefined && obj[field] !== '';
+    });
 }
 
 class CommandWithId {
@@ -133,15 +162,24 @@ PushcaClient.openConnection = function (clientObj, onOpenHandler, onCloseHandler
                 PushcaClient.ws.onmessage = function (event) {
                     console.log('message', event.data);
                     let parts = event.data.split(MessagePartsDelimiter);
+                    if (parts[1] === MessageType.ACKNOWLEDGE) {
+                        PushcaClient.releaseWaiterIfExists(parts[0], null);
+                        return;
+                    }
                     if (parts[1] === MessageType.RESPONSE) {
                         let body;
                         if (parts.length > 2) {
                             body = parts[2];
                         }
-                        PushcaClient.releaseWaiterIfExists(parts[0], body)
-                        return
+                        PushcaClient.releaseWaiterIfExists(parts[0], body);
+                        return;
                     }
-                    onMessageHandler(PushcaClient.ws, event)
+                    if (parts.length === 2) {
+                        PushcaClient.sendAcknowledge(parts[0]);
+                        onMessageHandler(PushcaClient.ws, parts[1]);
+                        return;
+                    }
+                    onMessageHandler(PushcaClient.ws, event.data);
                 };
 
                 PushcaClient.ws.onerror = function (error) {
@@ -166,6 +204,13 @@ PushcaClient.openConnection = function (clientObj, onOpenHandler, onCloseHandler
     });
 };
 
+PushcaClient.sendAcknowledge = function (id) {
+    let metaData = {};
+    metaData["messageId"] = id;
+    let commandWithId = PushcaClient.buildCommandMessage(Command.ACKNOWLEDGE, metaData);
+    PushcaClient.ws.send(commandWithId.message);
+}
+
 /**
  * Send message to all connected clients that met the filtering requirements
  *
@@ -186,5 +231,24 @@ PushcaClient.broadcastMessage = async function (id, dest, preserveOrder, message
     let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
     if (ResponseType.ERROR === result.type) {
         console.log("Failed broadcast message attempt: " + result.body.message);
+    }
+}
+
+PushcaClient.sendMessageWithAcknowledge = async function (id, dest, preserveOrder, message) {
+    if (!allClientFieldsAreNotEmpty(dest)) {
+        console.log("Cannot broadcast with acknowledge: " + JSON.stringify(dest));
+        return;
+    }
+    let metaData = {};
+    metaData["id"] = id;
+    metaData["client"] = dest;
+    metaData["sender"] = PushcaClient.client;
+    metaData["message"] = message;
+    metaData["preserveOrder"] = preserveOrder;
+
+    let commandWithId = PushcaClient.buildCommandMessage(Command.SEND_MESSAGE_WITH_ACKNOWLEDGE, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(id, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed send message with acknowledge attempt: " + result.body.message);
     }
 }
