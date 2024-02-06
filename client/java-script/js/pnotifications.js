@@ -18,14 +18,14 @@ const MessageType = Object.freeze({
 
 const MessagePartsDelimiter = "@@";
 
-class WaterResponse {
+class WaiterResponse {
     constructor(type, body) {
         this.type = type;
         this.body = body;
     }
 }
 
-class Water {
+class Waiter {
     constructor() {
         this.promise = new Promise((resolve, reject) => {
             this.resolve = resolve; // Assign resolve function to the outer scope variable
@@ -34,12 +34,12 @@ class Water {
     }
 }
 
-function releaseWaterWithSuccess(water, response) {
-    water.resolve(new WaterResponse(ResponseType.SUCCESS, response))
+function releaseWaiterWithSuccess(waiter, response) {
+    waiter.resolve(new WaiterResponse(ResponseType.SUCCESS, response))
 }
 
-function releaseWaterWithError(water, error) {
-    water.reject(new WaterResponse(ResponseType.ERROR, error));
+function releaseWaiterWithError(waiter, error) {
+    waiter.reject(new WaiterResponse(ResponseType.ERROR, error));
 }
 
 class CommandWithId {
@@ -54,15 +54,15 @@ PushcaClient.waitingHall = new Map();
 PushcaClient.serverBaseUrl = 'http://localhost:8050'
 
 PushcaClient.addToWaitingHall = function (id) {
-    let water = new Water();
-    PushcaClient.waitingHall.set(id, water);
-    return water.promise;
+    let waiter = new Waiter();
+    PushcaClient.waitingHall.set(id, waiter);
+    return waiter.promise;
 }
 
-PushcaClient.releaseWaterIfExists = function (id, response) {
-    let water = PushcaClient.waitingHall.get(id);
-    if (water) {
-        releaseWaterWithSuccess(water, response)
+PushcaClient.releaseWaiterIfExists = function (id, response) {
+    let waiter = PushcaClient.waitingHall.get(id);
+    if (waiter) {
+        releaseWaiterWithSuccess(waiter, response)
         PushcaClient.waitingHall.delete(id);
     }
 }
@@ -94,7 +94,7 @@ PushcaClient.execute = async function (id, commandWithId, inTimeoutMs) {
         ]);
     } catch (error) {
         PushcaClient.waitingHall.delete(ackId);
-        result = new WaterResponse(ResponseType.ERROR, error)
+        result = new WaiterResponse(ResponseType.ERROR, error)
     }
     console.log(result);
     return result;
@@ -106,13 +106,9 @@ PushcaClient.buildCommandMessage = function (command, args) {
     return new CommandWithId(id, message);
 }
 
-PushcaClient.openConnection = function (onOpenHandler, onCloseHandler, onMessageHandler) {
+PushcaClient.openConnection = function (clientObj, onOpenHandler, onCloseHandler, onMessageHandler) {
     let requestObj = {};
-    PushcaClient.ClientObj = {};
-    PushcaClient.ClientObj["workSpaceId"] = "workSpaceMain";
-    PushcaClient.ClientObj["accountId"] = "clientWeb1@test.ee";
-    PushcaClient.ClientObj["deviceId"] = crypto.randomUUID();
-    PushcaClient.ClientObj["applicationId"] = "MLA_JAVA_HEADLESS";
+    PushcaClient.ClientObj = clientObj;
     requestObj["client"] = PushcaClient.ClientObj;
     $.ajax({
         contentType: 'application/json',
@@ -142,7 +138,7 @@ PushcaClient.openConnection = function (onOpenHandler, onCloseHandler, onMessage
                         if (parts.length > 2) {
                             body = parts[2];
                         }
-                        PushcaClient.releaseWaterIfExists(parts[0], body)
+                        PushcaClient.releaseWaiterIfExists(parts[0], body)
                         return
                     }
                     onMessageHandler(PushcaClient.ws, event)

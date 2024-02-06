@@ -12,7 +12,14 @@ $(document).ready(function () {
         );
     });
 
-    PushcaClient.openConnection(
+    let clientObj = {};
+    clientObj["workSpaceId"] = "workSpaceMain";
+    clientObj["accountId"] = "clientWeb1@test.ee";
+    clientObj["deviceId"] = "chrome1";
+    //clientObj["deviceId"] = crypto.randomUUID();
+    clientObj["applicationId"] = "MLA_JAVA_HEADLESS";
+
+    PushcaClient.openConnection(clientObj,
         function (ws) {
             PushcaClient.PingIntervalId = window.setInterval(function () {
                 PushcaClient.ws.send(JSON.stringify({"command": "PING"}));
