@@ -204,6 +204,11 @@ PushcaClient.openConnection = function (clientObj, onOpenHandler, onCloseHandler
     });
 };
 
+/**
+ * acknowledge Pushca about received message (Pushca forwards acknowledge to sender)
+ *
+ * @param id - message id
+ */
 PushcaClient.sendAcknowledge = function (id) {
     let metaData = {};
     metaData["messageId"] = id;
@@ -234,6 +239,15 @@ PushcaClient.broadcastMessage = async function (id, dest, preserveOrder, message
     }
 }
 
+/**
+ * send message to some client and wait for acknowledge, if no acknowledge after defined number of
+ * send attempts then throw exception
+ *
+ * @param id            - message id (if null then will be assigned by Pushca)
+ * @param dest          - client who should receive a message
+ * @param preserveOrder - keep sending order during delivery
+ * @param message       - message text
+ */
 PushcaClient.sendMessageWithAcknowledge = async function (id, dest, preserveOrder, message) {
     if (!allClientFieldsAreNotEmpty(dest)) {
         console.log("Cannot broadcast with acknowledge: " + JSON.stringify(dest));
