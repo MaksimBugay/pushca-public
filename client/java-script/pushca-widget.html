@@ -1,50 +1,67 @@
 <!DOCTYPE html>
 <html lang="eng">
 <head>
-  <title>Welcome to nginx!</title>
-  <style>
-      html {
-          color-scheme: light dark;
-      }
+    <title>Welcome to nginx!</title>
+    <style>
+        html {
+            color-scheme: light dark;
+        }
 
-      body {
-          width: 35em;
-          margin: 0 auto;
-          font-family: Tahoma, Verdana, Arial, sans-serif;
-      }
+        body {
+            width: 35em;
+            margin: 0 auto;
+            font-family: Tahoma, Verdana, Arial, sans-serif;
+        }
 
-      .textMemo {
-          width: 300pt;
-          height: 100pt;
-          background-color: bisque;
-      }
+        .textMemo {
+            width: 300pt;
+            height: 100pt;
+            background-color: bisque;
+        }
 
-      .inputText {
-          width: 220pt;
-      }
-  </style>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
-  <script type="text/javascript" src="/js/pnotifications.js"></script>
-  <script type="text/javascript" src="/js/pushcaWidget.js"></script>
+        .inputText {
+            width: 220pt;
+        }
+
+        .buttons-container {
+            display: flex; /* This makes it a flex container and aligns child elements in a row */
+            justify-content: center; /* This centers the buttons in the line */
+            align-items: center; /* This aligns the buttons vertically */
+            gap: 10px; /* Optional: adds space between buttons */
+        }
+    </style>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+    <script type="text/javascript" src="/js/pnotifications.js"></script>
+    <script type="text/javascript" src="/js/pushcaWidget.js"></script>
 </head>
 <body>
 <h1>Push notifications demo</h1>
 <div id="bmv">
-  <label id="l-client" for="p-message"></label>
-  <label id="l-message" for="p-message">push notification message</label>
-  <input type="text" id="p-message" name="push-message" required minlength="10" maxlength="180"
-         size="12" class="inputText"/>
-  <br><br>
-  <div class="vertical-center">
-    <button id="p-send">Send</button>
-  </div>
-  <div class="vertical-center">
-    <button id="p-send-with-acknowledge">Send with acknowledge</button>
-  </div>
-  <br>
-  <label for="p-history">Message history</label>
-  <br>
-  <textarea id="p-history" class="textMemo"></textarea>
+    <label id="l-client" for="p-message"></label>
+    <label id="l-message" for="p-message">push notification message</label>
+    <input type="text" id="p-message" name="push-message" required minlength="10" maxlength="180"
+           size="12" class="inputText"/>
+    <br><br>
+    <div class="buttons-container">
+        <div>
+            <button id="p-send">Send</button>
+        </div>
+        <div>
+            <button id="p-send-with-acknowledge">Send with acknowledge</button>
+        </div>
+        <div>
+            <button id="p-add-members-to-channel">Add members to channel</button>
+        </div>
+    </div>
+    <br>
+    <label for="p-history">Message history</label>
+    <br>
+    <textarea id="p-history" class="textMemo"></textarea>
+    <br>
+    <label for="p-channel-events">Channel events</label>
+    <br>
+    <textarea id="p-channel-events" class="textMemo"></textarea>
+
 </div>
 </body>
 </html>

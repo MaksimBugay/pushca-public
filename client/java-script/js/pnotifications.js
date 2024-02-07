@@ -4,7 +4,8 @@ const Command = Object.freeze({
     PING: "PING",
     ACKNOWLEDGE: "ACKNOWLEDGE",
     SEND_MESSAGE: "SEND_MESSAGE",
-    SEND_MESSAGE_WITH_ACKNOWLEDGE: "SEND_MESSAGE_WITH_ACKNOWLEDGE"
+    SEND_MESSAGE_WITH_ACKNOWLEDGE: "SEND_MESSAGE_WITH_ACKNOWLEDGE",
+    ADD_MEMBERS_TO_CHANNEL: "ADD_MEMBERS_TO_CHANNEL"
 });
 
 const ResponseType = Object.freeze({
@@ -20,6 +21,68 @@ const MessageType = Object.freeze({
 });
 
 const MessagePartsDelimiter = "@@";
+
+class PChannel {
+    constructor(id, name) {
+        this.id = id;
+        this.name = name;
+    }
+}
+
+class ClientFilter {
+    constructor(workSpaceId, accountId, deviceId, applicationId) {
+        this.workSpaceId = workSpaceId;
+        this.accountId = accountId;
+        this.deviceId = deviceId;
+        this.applicationId = applicationId;
+    }
+}
+
+class ChannelEvent {
+
+    constructor(type, actor, channelId, filters) {
+        this.type = type;
+        this.actor = actor;
+        this.channelId = channelId;
+        this.filters = filters;
+    }
+
+    static fromJSON(jsonString) {
+        const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+        const actor = new ClientFilter(
+            jsonObject.actor.workSpaceId,
+            jsonObject.actor.accountId,
+            jsonObject.actor.deviceId,
+            jsonObject.actor.applicationId
+        );
+        const filters = jsonObject.filters.map(obj => new ClientFilter(
+                obj.workSpaceId,
+                obj.accountId,
+                obj.deviceId,
+                obj.applicationId
+            )
+        );
+        return new ChannelEvent(jsonObject.type, actor, jsonObject.channelId, filters);
+    }
+}
+
+class Person {
+    constructor(name, age, address) {
+        this.name = name;
+        this.age = age;
+        this.address = address; // Address is expected to be an instance of Address
+    }
+
+    greet() {
+        console.log(`Hello, my name is ${this.name} and I am ${this.age} years old.`);
+    }
+
+    static fromJSON(jsonString) {
+        const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+        const address = new Address(jsonObject.address.street, jsonObject.address.city, jsonObject.address.zipCode);
+        return new Person(jsonObject.name, jsonObject.age, address);
+    }
+}
 
 class WaiterResponse {
     constructor(type, body) {
@@ -135,7 +198,7 @@ PushcaClient.buildCommandMessage = function (command, args) {
     return new CommandWithId(id, message);
 }
 
-PushcaClient.openConnection = function (clientObj, onOpenHandler, onCloseHandler, onMessageHandler) {
+PushcaClient.openConnection = function (clientObj, onOpenHandler, onCloseHandler, onMessageHandler, onChannelEventHandler) {
     let requestObj = {};
     PushcaClient.ClientObj = clientObj;
     requestObj["client"] = PushcaClient.ClientObj;
@@ -172,6 +235,10 @@ PushcaClient.openConnection = function (clientObj, onOpenHandler, onCloseHandler
                             body = parts[2];
                         }
                         PushcaClient.releaseWaiterIfExists(parts[0], body);
+                        return;
+                    }
+                    if (parts[1] === MessageType.CHANNEL_EVENT) {
+                        onChannelEventHandler(ChannelEvent.fromJSON(parts[2]))
                         return;
                     }
                     if (parts.length === 2) {
@@ -264,5 +331,22 @@ PushcaClient.sendMessageWithAcknowledge = async function (id, dest, preserveOrde
     let result = await PushcaClient.executeWithRepeatOnFailure(id, commandWithId)
     if (ResponseType.ERROR === result.type) {
         console.log("Failed send message with acknowledge attempt: " + result.body.message);
+    }
+}
+
+/**
+ * Add new members into create if not exists channel
+ *
+ * @param channel - channel object
+ * @param filters - new members
+ */
+PushcaClient.addMembersToChannel = async function (channel, filters) {
+    let metaData = {};
+    metaData["channel"] = channel;
+    metaData["filters"] = filters;
+    let commandWithId = PushcaClient.buildCommandMessage(Command.ADD_MEMBERS_TO_CHANNEL, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed add members to channel attempt: " + result.body.message);
     }
 }

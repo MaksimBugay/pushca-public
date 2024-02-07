@@ -1,9 +1,12 @@
 $(document).ready(function () {
     $('#p-message').val("test message" + Date.now());
     $("#p-send").click(function () {
-        let filterObj = {};
-        filterObj["workSpaceId"] = "workSpaceMain";
-        filterObj["applicationId"] = "MLA_JAVA_HEADLESS";
+        let filterObj = new ClientFilter(
+            "workSpaceMain",
+            null,
+            null,
+            "MLA_JAVA_HEADLESS"
+        );
         PushcaClient.broadcastMessage(
             crypto.randomUUID(),
             filterObj,
@@ -12,11 +15,12 @@ $(document).ready(function () {
         );
     });
     $("#p-send-with-acknowledge").click(function () {
-        let filterObj = {};
-        filterObj["workSpaceId"] = "workSpaceMain";
-        filterObj["accountId"] = "clientWeb1@test.ee";
-        filterObj["deviceId"] = "Chrome";
-        filterObj["applicationId"] = "MLA_JAVA_HEADLESS";
+        let filterObj = new ClientFilter(
+            "workSpaceMain",
+            "clientWeb1@test.ee",
+            "Chrome",
+            "MLA_JAVA_HEADLESS"
+        );
         PushcaClient.sendMessageWithAcknowledge(
             crypto.randomUUID(),
             filterObj,
@@ -24,13 +28,29 @@ $(document).ready(function () {
             $('#p-message').val()
         );
     });
+    $("#p-add-members-to-channel").click(function () {
+        let channel = new PChannel("12345", "test-channel");
+        let filterObj1 = new ClientFilter(
+            "workSpaceMain",
+            "clientWeb1@test.ee",
+            null,
+            "MLA_JAVA_HEADLESS"
+        );
+        let filterObj2 = new ClientFilter(
+            "workSpaceMain",
+            "clientWeb2@test.ee",
+            null,
+            "MLA_JAVA_HEADLESS"
+        );
+        PushcaClient.addMembersToChannel(channel, [filterObj1, filterObj2]);
+    });
 
-    let clientObj = {};
-    clientObj["workSpaceId"] = "workSpaceMain";
-    clientObj["accountId"] = "clientWeb1@test.ee";
-    clientObj["deviceId"] = getBrowserName();
-    //clientObj["deviceId"] = crypto.randomUUID();
-    clientObj["applicationId"] = "MLA_JAVA_HEADLESS";
+    let clientObj = new ClientFilter(
+        "workSpaceMain",
+        "clientWeb1@test.ee",
+        getBrowserName(),
+        "MLA_JAVA_HEADLESS"
+    );
 
     $("#l-client").text(JSON.stringify(clientObj));
 
@@ -51,6 +71,14 @@ $(document).ready(function () {
                 let history = $("textarea#p-history");
                 history.val(history.val() + messageText + "\n");
             }
+        },
+        function (channelEvent) {
+            let channelEvents = $("textarea#p-channel-events");
+            channelEvents.val(channelEvents.val() + channelEvent.type + "\n");
+            channelEvents.val(channelEvents.val() + channelEvent.channelId + "\n");
+            channelEvents.val(channelEvents.val() + channelEvent.actor.deviceId + "\n");
+            channelEvents.val(channelEvents.val() + channelEvent.filters.map(filter => filter.accountId).join(";") + "\n");
+            channelEvents.val(channelEvents.val() + "------------------------" + "\n");
         }
     );
 });
