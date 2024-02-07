@@ -159,6 +159,12 @@ PushcaClient.releaseWaiterIfExists = function (id, response) {
     }
 }
 PushcaClient.executeWithRepeatOnFailure = async function (id, commandWithId, inTimeoutMs, numberOfRepeatAttempts) {
+    if (PushcaClient.ws.readyState === WebSocket.OPEN) {
+        console.log('WebSocket is open. All good');
+    } else {
+        console.log('WebSocket is not open. State:', PushcaClient.ws.readyState);
+        return;
+    }
     let n = numberOfRepeatAttempts || 3
     let result;
     for (let i = 0; i < n; i++) {
