@@ -121,7 +121,7 @@ function getBrowserName() {
 }
 
 function releaseWaiterWithSuccess(waiter, response) {
-    waiter.resolve(new WaiterResponse(ResponseType.SUCCESS, response))
+    waiter.resolve(new WaiterResponse(ResponseType.SUCCESS, response));
 }
 
 function releaseWaiterWithError(waiter, error) {
@@ -143,7 +143,7 @@ class CommandWithId {
 
 let PushcaClient = {};
 PushcaClient.waitingHall = new Map();
-PushcaClient.serverBaseUrl = 'http://localhost:8050'
+PushcaClient.serverBaseUrl = 'http://localhost:8080'
 
 PushcaClient.addToWaitingHall = function (id) {
     let waiter = new Waiter();
@@ -204,7 +204,8 @@ PushcaClient.buildCommandMessage = function (command, args) {
     return new CommandWithId(id, message);
 }
 
-PushcaClient.openConnection = function (clientObj, onOpenHandler, onCloseHandler, onMessageHandler, onChannelEventHandler) {
+PushcaClient.openConnection = function (baseUrl, clientObj, onOpenHandler, onCloseHandler, onMessageHandler, onChannelEventHandler) {
+    PushcaClient.serverBaseUrl = baseUrl;
     let requestObj = {};
     PushcaClient.ClientObj = clientObj;
     requestObj["client"] = PushcaClient.ClientObj;

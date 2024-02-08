@@ -1,3 +1,7 @@
+function filtersToAccountList(filters) {
+    return filters.map(filter => filter.accountId).join(";");
+}
+
 $(document).ready(function () {
     $('#p-message').val("test message" + Date.now());
     $("#p-send").click(function () {
@@ -54,7 +58,7 @@ $(document).ready(function () {
 
     $("#l-client").text(JSON.stringify(clientObj));
 
-    PushcaClient.openConnection(clientObj,
+    PushcaClient.openConnection('http://localhost:8050', clientObj,
         function (ws) {
             PushcaClient.PingIntervalId = window.setInterval(function () {
                 PushcaClient.ws.send(JSON.stringify({"command": "PING"}));
@@ -77,7 +81,7 @@ $(document).ready(function () {
             channelEvents.val(channelEvents.val() + channelEvent.type + "\n");
             channelEvents.val(channelEvents.val() + channelEvent.channelId + "\n");
             channelEvents.val(channelEvents.val() + channelEvent.actor.deviceId + "\n");
-            channelEvents.val(channelEvents.val() + channelEvent.filters.map(filter => filter.accountId).join(";") + "\n");
+            channelEvents.val(channelEvents.val() + filtersToAccountList(channelEvent.filters) + "\n");
             channelEvents.val(channelEvents.val() + "------------------------" + "\n");
         }
     );
