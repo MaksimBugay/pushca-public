@@ -5,7 +5,8 @@ const Command = Object.freeze({
     ACKNOWLEDGE: "ACKNOWLEDGE",
     SEND_MESSAGE: "SEND_MESSAGE",
     SEND_MESSAGE_WITH_ACKNOWLEDGE: "SEND_MESSAGE_WITH_ACKNOWLEDGE",
-    ADD_MEMBERS_TO_CHANNEL: "ADD_MEMBERS_TO_CHANNEL"
+    ADD_MEMBERS_TO_CHANNEL: "ADD_MEMBERS_TO_CHANNEL",
+    SEND_MESSAGE_TO_CHANNEL: "SEND_MESSAGE_TO_CHANNEL"
 });
 
 const ResponseType = Object.freeze({
@@ -17,7 +18,8 @@ const MessageType = Object.freeze({
     ACKNOWLEDGE: "ACKNOWLEDGE",
     RESPONSE: "RESPONSE",
     CHANNEL_MESSAGE: "CHANNEL_MESSAGE",
-    CHANNEL_EVENT: "CHANNEL_EVENT"
+    CHANNEL_EVENT: "CHANNEL_EVENT",
+    CHANNEL_MESSAGE: "CHANNEL_MESSAGE"
 });
 
 const MessagePartsDelimiter = "@@";
@@ -66,21 +68,42 @@ class ChannelEvent {
     }
 }
 
-class Person {
-    constructor(name, age, address) {
-        this.name = name;
-        this.age = age;
-        this.address = address; // Address is expected to be an instance of Address
-    }
+class ChannelMessage {
 
-    greet() {
-        console.log(`Hello, my name is ${this.name} and I am ${this.age} years old.`);
+    constructor(sender, channelId, messageId, sendTime, body, mentioned) {
+        this.sender = sender;
+        this.channelId = channelId;
+        if (messageId) {
+            this.messageId = messageId;
+        } else {
+            this.messageId = crypto.randomUUID().toString();
+        }
+        if (sendTime) {
+            this.sendTime = sendTime;
+        } else {
+            this.sendTime = Date.now();
+        }
+        this.body = body;
+        this.mentioned = mentioned;
     }
 
     static fromJSON(jsonString) {
         const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
-        const address = new Address(jsonObject.address.street, jsonObject.address.city, jsonObject.address.zipCode);
-        return new Person(jsonObject.name, jsonObject.age, address);
+        const sender = new ClientFilter(
+            jsonObject.sender.workSpaceId,
+            jsonObject.sender.accountId,
+            jsonObject.sender.deviceId,
+            jsonObject.sender.applicationId
+        );
+        const mentioned = jsonObject.mentioned.map(obj => new ClientFilter(
+                obj.workSpaceId,
+                obj.accountId,
+                obj.deviceId,
+                obj.applicationId
+            )
+        );
+        return new ChannelMessage(sender, jsonObject.channelId, jsonObject.messageId, jsonObject.sendTime,
+            jsonObject.body, mentioned);
     }
 }
 
@@ -100,24 +123,14 @@ class Waiter {
     }
 }
 
-function getBrowserName() {
-    const userAgent = navigator.userAgent;
+function printObject(obj) {
+    return Object.values(obj)
+        .filter(value => value !== undefined && value !== null)
+        .join('/');
+}
 
-    if (userAgent.match(/edg/i)) {
-        return "Chrome";
-    } else if (userAgent.match(/firefox|fxios/i)) {
-        return "Firefox";
-    } else if (userAgent.match(/safari/i)) {
-        return "Safari";
-    } else if (userAgent.match(/opr\//i)) {
-        return "Opera";
-    } else if (userAgent.match(/chrome|chromium|crios/i)) {
-        return "Edge";
-    } else if (userAgent.match(/msie|trident/i)) {
-        return "Internet Explorer";
-    } else {
-        return "Unknown";
-    }
+function isArrayNotEmpty(arr) {
+    return arr !== null && arr !== undefined && Array.isArray(arr) && arr.length > 0;
 }
 
 function releaseWaiterWithSuccess(waiter, response) {
@@ -204,7 +217,8 @@ PushcaClient.buildCommandMessage = function (command, args) {
     return new CommandWithId(id, message);
 }
 
-PushcaClient.openConnection = function (baseUrl, clientObj, onOpenHandler, onCloseHandler, onMessageHandler, onChannelEventHandler) {
+PushcaClient.openConnection = function (baseUrl, clientObj, onOpenHandler, onCloseHandler, onMessageHandler,
+                                        onChannelEventHandler, onChannelMessageHandler) {
     PushcaClient.serverBaseUrl = baseUrl;
     let requestObj = {};
     PushcaClient.ClientObj = clientObj;
@@ -226,7 +240,9 @@ PushcaClient.openConnection = function (baseUrl, clientObj, onOpenHandler, onClo
             if (PushcaClient.ws) {
                 PushcaClient.ws.onopen = function () {
                     console.log('open');
-                    onOpenHandler(PushcaClient.ws);
+                    if (typeof onOpenHandler === 'function') {
+                        onOpenHandler(PushcaClient.ws);
+                    }
                 };
 
                 PushcaClient.ws.onmessage = function (event) {
@@ -245,15 +261,27 @@ PushcaClient.openConnection = function (baseUrl, clientObj, onOpenHandler, onClo
                         return;
                     }
                     if (parts[1] === MessageType.CHANNEL_EVENT) {
-                        onChannelEventHandler(ChannelEvent.fromJSON(parts[2]))
+                        if (typeof onChannelEventHandler === 'function') {
+                            onChannelEventHandler(ChannelEvent.fromJSON(parts[2]))
+                        }
+                        return;
+                    }
+                    if (parts[1] === MessageType.CHANNEL_MESSAGE) {
+                        if (typeof onChannelMessageHandler === 'function') {
+                            onChannelMessageHandler(ChannelMessage.fromJSON(parts[2]))
+                        }
                         return;
                     }
                     if (parts.length === 2) {
                         PushcaClient.sendAcknowledge(parts[0]);
-                        onMessageHandler(PushcaClient.ws, parts[1]);
+                        if (typeof onMessageHandler === 'function') {
+                            onMessageHandler(PushcaClient.ws, parts[1]);
+                        }
                         return;
                     }
-                    onMessageHandler(PushcaClient.ws, event.data);
+                    if (typeof onMessageHandler === 'function') {
+                        onMessageHandler(PushcaClient.ws, event.data);
+                    }
                 };
 
                 PushcaClient.ws.onerror = function (error) {
@@ -265,7 +293,9 @@ PushcaClient.openConnection = function (baseUrl, clientObj, onOpenHandler, onClo
                         console.log(
                             `[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
                     }
-                    onCloseHandler(PushcaClient.ws, event)
+                    if (typeof onCloseHandler === 'function') {
+                        onCloseHandler(PushcaClient.ws, event)
+                    }
                 };
             }
         },
@@ -355,5 +385,19 @@ PushcaClient.addMembersToChannel = async function (channel, filters) {
     let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
     if (ResponseType.ERROR === result.type) {
         console.log("Failed add members to channel attempt: " + result.body.message);
+    }
+}
+
+PushcaClient.sendMessageToChannel = async function (channel, mentioned, message) {
+    let metaData = {};
+    metaData["channel"] = channel;
+    if (isArrayNotEmpty(mentioned)) {
+        metaData["mentioned"] = mentioned;
+    }
+    metaData["message"] = message;
+    let commandWithId = PushcaClient.buildCommandMessage(Command.SEND_MESSAGE_TO_CHANNEL, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed send message to channel attempt: " + result.body.message);
     }
 }

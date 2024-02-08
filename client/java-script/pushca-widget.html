@@ -14,7 +14,9 @@
         }
 
         .textMemo {
-            width: 300pt;
+            width: 90%;
+            resize: both;
+            max-width: 100%;
             height: 100pt;
             background-color: bisque;
         }
@@ -38,6 +40,8 @@
 <h1>Push notifications demo</h1>
 <div id="bmv">
     <label id="l-client" for="p-message"></label>
+    <br>
+    <br>
     <label id="l-message" for="p-message">push notification message</label>
     <input type="text" id="p-message" name="push-message" required minlength="10" maxlength="180"
            size="12" class="inputText"/>
@@ -52,7 +56,11 @@
         <div>
             <button id="p-add-members-to-channel">Add members to channel</button>
         </div>
+        <div>
+            <button id="p-send-message-to-channel">send message to channel</button>
+        </div>
     </div>
+
     <br>
     <label for="p-history">Message history</label>
     <br>
@@ -61,6 +69,10 @@
     <label for="p-channel-events">Channel events</label>
     <br>
     <textarea id="p-channel-events" class="textMemo"></textarea>
+    <br>
+    <label for="p-channel-messages">Channel messages</label>
+    <br>
+    <textarea id="p-channel-messages" class="textMemo"></textarea>
 
 </div>
 </body>
