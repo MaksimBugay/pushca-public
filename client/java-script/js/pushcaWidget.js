@@ -16,6 +16,25 @@ function getQueryParam(paramName) {
 }
 
 $(document).ready(function () {
+    function printChannelMessage(channelMessage) {
+        let channelMessages = $("textarea#p-channel-messages");
+        channelMessages.val(channelMessages.val() + "sender: " + printObject(channelMessage.sender) + "\n");
+        channelMessages.val(channelMessages.val() + "time: " + channelMessage.sendTime + "\n");
+        channelMessages.val(channelMessages.val() + "id: " + channelMessage.messageId + "\n");
+        channelMessages.val(channelMessages.val() + "body: " + channelMessage.body + "\n");
+        channelMessages.val(channelMessages.val() + "mentioned" + filtersToAccountList(channelMessage.mentioned) + "\n");
+        channelMessages.val(channelMessages.val() + "------------------------" + "\n");
+    }
+
+    function printChannelEvent(channelEvent) {
+        let channelEvents = $("textarea#p-channel-events");
+        channelEvents.val(channelEvents.val() + channelEvent.type + "\n");
+        channelEvents.val(channelEvents.val() + channelEvent.channelId + "\n");
+        channelEvents.val(channelEvents.val() + "actor: " + printObject(channelEvent.actor) + "\n");
+        channelEvents.val(channelEvents.val() + "members: " + filtersToAccountList(channelEvent.filters) + "\n");
+        channelEvents.val(channelEvents.val() + "------------------------" + "\n");
+    }
+
     $('#p-message').val("test message" + Date.now());
     $("#p-send").click(function () {
         let filterObj = new ClientFilter(
@@ -113,22 +132,10 @@ $(document).ready(function () {
             }
         },
         function (channelEvent) {
-            let channelEvents = $("textarea#p-channel-events");
-            channelEvents.val(channelEvents.val() + channelEvent.type + "\n");
-            channelEvents.val(channelEvents.val() + channelEvent.channelId + "\n");
-            channelEvents.val(channelEvents.val() + "actor: " + printObject(channelEvent.actor) + "\n");
-            channelEvents.val(channelEvents.val() + "members: " + filtersToAccountList(channelEvent.filters) + "\n");
-            channelEvents.val(channelEvents.val() + "------------------------" + "\n");
+            printChannelEvent(channelEvent);
         },
         function (channelMessage) {
-            console.log(JSON.stringify(channelMessage));
-            let channelMessages = $("textarea#p-channel-messages");
-            channelMessages.val(channelMessages.val() + "sender: " + printObject(channelMessage.sender) + "\n");
-            channelMessages.val(channelMessages.val() + "time: " + channelMessage.sendTime + "\n");
-            channelMessages.val(channelMessages.val() + "id: " + channelMessage.messageId + "\n");
-            channelMessages.val(channelMessages.val() + "body: " + channelMessage.body + "\n");
-            channelMessages.val(channelMessages.val() + "mentioned" + filtersToAccountList(channelMessage.mentioned) + "\n");
-            channelMessages.val(channelMessages.val() + "------------------------" + "\n");
+            printChannelMessage(channelMessage);
         }
     );
 });
