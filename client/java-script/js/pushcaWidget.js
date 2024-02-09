@@ -19,11 +19,13 @@ $(document).ready(function () {
     function printChannelMessage(channelMessage) {
         let channelMessages = $("textarea#p-channel-messages");
         channelMessages.val(channelMessages.val() + "sender: " + printObject(channelMessage.sender) + "\n");
-        channelMessages.val(channelMessages.val() + "time: " + channelMessage.sendTime + "\n");
+        channelMessages.val(channelMessages.val() + "time: " + printDateTime(channelMessage.sendTime) + "\n");
         channelMessages.val(channelMessages.val() + "id: " + channelMessage.messageId + "\n");
         channelMessages.val(channelMessages.val() + "body: " + channelMessage.body + "\n");
         channelMessages.val(channelMessages.val() + "mentioned" + filtersToAccountList(channelMessage.mentioned) + "\n");
         channelMessages.val(channelMessages.val() + "------------------------" + "\n");
+        const textArea = document.getElementById("p-channel-messages");
+        textArea.scrollTop = textArea.scrollHeight;
     }
 
     function printChannelEvent(channelEvent) {
@@ -34,6 +36,17 @@ $(document).ready(function () {
         channelEvents.val(channelEvents.val() + "members: " + filtersToAccountList(channelEvent.filters) + "\n");
         channelEvents.val(channelEvents.val() + "------------------------" + "\n");
     }
+
+    async function reloadMessagesFromHistory() {
+        let historyPage = await PushcaClient.getChannelHistory(channel);
+        if (isArrayNotEmpty(historyPage.messages)) {
+            historyPage.messages.forEach(channelMessage => {
+                printChannelMessage(channelMessage);
+            });
+        }
+    }
+
+    let channel = new PChannel("CH12345", "test-channel");
 
     $('#p-message').val("test message" + Date.now());
     $("#p-send").click(function () {
@@ -65,7 +78,6 @@ $(document).ready(function () {
         );
     });
     $("#p-add-members-to-channel").click(function () {
-        let channel = new PChannel("CH12345", "test-channel");
         let filterObj1 = new ClientFilter(
             "workSpaceMain",
             "clientWeb1",
@@ -87,8 +99,11 @@ $(document).ready(function () {
         PushcaClient.addMembersToChannel(channel, [filterObj1, filterObj2, filterObj3]);
     });
 
+    $("#p-reload-from-history").click(async function () {
+        await reloadMessagesFromHistory();
+    });
+
     $("#p-send-message-to-channel").click(async function () {
-        let channel = new PChannel("CH12345", "test-channel");
         let filterObj2 = new ClientFilter(
             "workSpaceMain",
             "clientWeb2",
@@ -124,6 +139,7 @@ $(document).ready(function () {
             PushcaClient.PingIntervalId = window.setInterval(function () {
                 PushcaClient.ws.send(JSON.stringify({"command": "PING"}));
             }, 20000);
+            reloadMessagesFromHistory();
         },
         function (ws, event) {
             window.clearInterval(PushcaClient.PingIntervalId);

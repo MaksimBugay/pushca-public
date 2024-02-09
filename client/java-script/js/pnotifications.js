@@ -6,7 +6,8 @@ const Command = Object.freeze({
     SEND_MESSAGE: "SEND_MESSAGE",
     SEND_MESSAGE_WITH_ACKNOWLEDGE: "SEND_MESSAGE_WITH_ACKNOWLEDGE",
     ADD_MEMBERS_TO_CHANNEL: "ADD_MEMBERS_TO_CHANNEL",
-    SEND_MESSAGE_TO_CHANNEL: "SEND_MESSAGE_TO_CHANNEL"
+    SEND_MESSAGE_TO_CHANNEL: "SEND_MESSAGE_TO_CHANNEL",
+    GET_CHANNEL_HISTORY: "GET_CHANNEL_HISTORY"
 });
 
 const ResponseType = Object.freeze({
@@ -36,6 +37,21 @@ class ClientFilter {
         this.accountId = accountId;
         this.deviceId = deviceId;
         this.applicationId = applicationId;
+    }
+}
+
+class HistoryPage {
+    constructor(messages, offset, latest, more) {
+        this.messages = messages;
+        this.offset = offset;
+        this.latest = latest;
+        this.more = more;
+    }
+
+    static fromWsResponse(jsonString) {
+        const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+        const messages = jsonObject.body.messages.map(obj => ChannelMessage.fromObject(obj));
+        return new HistoryPage(messages, jsonObject.body.offset, jsonObject.body.latest, jsonObject.body.more);
     }
 }
 
@@ -98,23 +114,30 @@ class ChannelMessage {
         this.mentioned = mentioned;
     }
 
-    static fromJSON(jsonString) {
-        const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+    static fromObject(jsonObject) {
         const sender = new ClientFilter(
             jsonObject.sender.workSpaceId,
             jsonObject.sender.accountId,
             jsonObject.sender.deviceId,
             jsonObject.sender.applicationId
         );
-        const mentioned = jsonObject.mentioned.map(obj => new ClientFilter(
-                obj.workSpaceId,
-                obj.accountId,
-                obj.deviceId,
-                obj.applicationId
-            )
-        );
+        let mentioned = [];
+        if (isArrayNotEmpty(jsonObject.mentioned)) {
+            mentioned = jsonObject.mentioned.map(obj => new ClientFilter(
+                    obj.workSpaceId,
+                    obj.accountId,
+                    obj.deviceId,
+                    obj.applicationId
+                )
+            );
+        }
         return new ChannelMessage(sender, jsonObject.channelId, jsonObject.messageId, jsonObject.sendTime,
             jsonObject.body, mentioned);
+    }
+
+    static fromJSON(jsonString) {
+        const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+        return this.fromObject(jsonObject);
     }
 }
 
@@ -134,6 +157,17 @@ class Waiter {
     }
 }
 
+function printDateTime(dt) {
+    const dateTime = new Date(dt);
+    const year = dateTime.getFullYear();
+    const month = String(dateTime.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed, add 1 to get the correct month
+    const day = String(dateTime.getDate()).padStart(2, '0');
+    const hours = String(dateTime.getHours()).padStart(2, '0');
+    const minutes = String(dateTime.getMinutes()).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+}
+
 function printObject(obj) {
     return Object.values(obj)
         .filter(value => value !== undefined && value !== null)
@@ -142,6 +176,10 @@ function printObject(obj) {
 
 function isArrayNotEmpty(arr) {
     return arr !== null && arr !== undefined && Array.isArray(arr) && arr.length > 0;
+}
+
+function isNotEmpty(x) {
+    return x !== null && x !== undefined && x !== ''
 }
 
 function releaseWaiterWithSuccess(waiter, response) {
@@ -412,4 +450,18 @@ PushcaClient.sendMessageToChannel = async function (channel, mentioned, message)
         console.log("Failed send message to channel attempt: " + result.body.message);
     }
     return MessageDetails.fromWsResponse(result.body);
+}
+
+PushcaClient.getChannelHistory = async function (channel, offset) {
+    let metaData = {};
+    metaData["channel"] = channel;
+    if (offset) {
+        metaData["offset"] = offset;
+    }
+    let commandWithId = PushcaClient.buildCommandMessage(Command.GET_CHANNEL_HISTORY, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed get channel history attempt: " + result.body.message);
+    }
+    return HistoryPage.fromWsResponse(result.body);
 }
