@@ -87,7 +87,7 @@ $(document).ready(function () {
         PushcaClient.addMembersToChannel(channel, [filterObj1, filterObj2, filterObj3]);
     });
 
-    $("#p-send-message-to-channel").click(function () {
+    $("#p-send-message-to-channel").click(async function () {
         let channel = new PChannel("CH12345", "test-channel");
         let filterObj2 = new ClientFilter(
             "workSpaceMain",
@@ -101,7 +101,13 @@ $(document).ready(function () {
             null,
             "MLA_JAVA_HEADLESS"
         );
-        PushcaClient.sendMessageToChannel(channel, [filterObj2, filterObj3], $('#p-message').val());
+        let messageBody = $('#p-message').val();
+        const messageDetails = await PushcaClient.sendMessageToChannel(channel, [filterObj2, filterObj3], messageBody);
+        if (messageDetails.id) {
+            let channelMessage = new ChannelMessage(PushcaClient.ClientObj, channel.id, messageDetails.id, null,
+                messageBody, [filterObj2, filterObj3]);
+            printChannelMessage(channelMessage);
+        }
     });
 
     let clientObj = new ClientFilter(

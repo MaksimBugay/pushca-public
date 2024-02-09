@@ -18,8 +18,7 @@ const MessageType = Object.freeze({
     ACKNOWLEDGE: "ACKNOWLEDGE",
     RESPONSE: "RESPONSE",
     CHANNEL_MESSAGE: "CHANNEL_MESSAGE",
-    CHANNEL_EVENT: "CHANNEL_EVENT",
-    CHANNEL_MESSAGE: "CHANNEL_MESSAGE"
+    CHANNEL_EVENT: "CHANNEL_EVENT"
 });
 
 const MessagePartsDelimiter = "@@";
@@ -37,6 +36,18 @@ class ClientFilter {
         this.accountId = accountId;
         this.deviceId = deviceId;
         this.applicationId = applicationId;
+    }
+}
+
+class MessageDetails {
+    constructor(id) {
+        this.id = id;
+    }
+
+    static fromWsResponse(jsonString) {
+        const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+        const messageId = jsonObject.body.messageId;
+        return new MessageDetails(messageId);
     }
 }
 
@@ -400,4 +411,5 @@ PushcaClient.sendMessageToChannel = async function (channel, mentioned, message)
     if (ResponseType.ERROR === result.type) {
         console.log("Failed send message to channel attempt: " + result.body.message);
     }
+    return MessageDetails.fromWsResponse(result.body);
 }
