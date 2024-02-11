@@ -125,6 +125,23 @@ $(document).ready(function () {
         }
     });
 
+    $("#p-remove-me-from-channel").click(async function () {
+        await PushcaClient.removeMeFromChannel(channel);
+    });
+
+    $("#p-get-my-channels").click(async function () {
+        let filterObj = new ClientFilter(
+            PushcaClient.ClientObj.workSpaceId,
+            PushcaClient.ClientObj.accountId,
+            null,
+            PushcaClient.ClientObj.applicationId
+        );
+        const channels = await PushcaClient.getChannels(filterObj);
+        if (isArrayNotEmpty(channels)) {
+            console.log(JSON.stringify(channels));
+        }
+    });
+
     let clientObj = new ClientFilter(
         "workSpaceMain",
         getQueryParam("account-id"),

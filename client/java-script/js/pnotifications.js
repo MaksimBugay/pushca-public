@@ -7,7 +7,9 @@ const Command = Object.freeze({
     SEND_MESSAGE_WITH_ACKNOWLEDGE: "SEND_MESSAGE_WITH_ACKNOWLEDGE",
     ADD_MEMBERS_TO_CHANNEL: "ADD_MEMBERS_TO_CHANNEL",
     SEND_MESSAGE_TO_CHANNEL: "SEND_MESSAGE_TO_CHANNEL",
-    GET_CHANNEL_HISTORY: "GET_CHANNEL_HISTORY"
+    GET_CHANNEL_HISTORY: "GET_CHANNEL_HISTORY",
+    REMOVE_ME_FROM_CHANNEL: "REMOVE_ME_FROM_CHANNEL",
+    GET_CHANNELS: "GET_CHANNELS"
 });
 
 const ResponseType = Object.freeze({
@@ -37,6 +39,33 @@ class ClientFilter {
         this.accountId = accountId;
         this.deviceId = deviceId;
         this.applicationId = applicationId;
+    }
+}
+
+class ChannelWithInfo {
+    constructor(channel, members, counter, time, read) {
+        this.channel = channel;
+        this.members = members;
+        this.counter = counter;
+        this.time = time;
+        this.read = read;
+    }
+
+    static fromObject(channelObj) {
+        const channel = new PChannel(channelObj.channel.id, channelObj.channel.name);
+        const members = channelObj.members.map(obj => new ClientFilter(
+                obj.workSpaceId,
+                obj.accountId,
+                obj.deviceId,
+                obj.applicationId
+            )
+        );
+        return new ChannelWithInfo(channel, members, channelObj.counter, channelObj.time, channelObj.read);
+    }
+
+    static fromWsResponseToList(jsonString) {
+        const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+        return jsonObject.body.channels.map(obj => ChannelWithInfo.fromObject(obj));
     }
 }
 
@@ -464,4 +493,25 @@ PushcaClient.getChannelHistory = async function (channel, offset) {
         console.log("Failed get channel history attempt: " + result.body.message);
     }
     return HistoryPage.fromWsResponse(result.body);
+}
+
+PushcaClient.removeMeFromChannel = async function (channel) {
+    let metaData = {};
+    metaData["channel"] = channel;
+    let commandWithId = PushcaClient.buildCommandMessage(Command.REMOVE_ME_FROM_CHANNEL, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed remove me from channel attempt: " + result.body.message);
+    }
+}
+
+PushcaClient.getChannels = async function (filter) {
+    let metaData = {};
+    metaData["filter"] = filter;
+    let commandWithId = PushcaClient.buildCommandMessage(Command.GET_CHANNELS, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed get channels attempt: " + result.body.message);
+    }
+    return ChannelWithInfo.fromWsResponseToList(result.body);
 }
