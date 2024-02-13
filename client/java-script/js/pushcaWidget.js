@@ -1,3 +1,7 @@
+function filtersToAccountWithActiveFlagList(filters) {
+    return filters.map(filter => filter.shortPrint()).join(";");
+}
+
 function filtersToAccountList(filters) {
     return filters.map(filter => filter.accountId).join(";");
 }
@@ -16,32 +20,76 @@ function getQueryParam(paramName) {
 }
 
 $(document).ready(function () {
+    let channelEvents = $("textarea#p-channel-events");
+    channelEvents.val("");
+    let channelMessages = $("textarea#p-channel-messages");
+    let history = $("textarea#p-history");
+    history.val("");
+    let myChannels = $("textarea#p-channels-with-info");
+
     function printChannelMessage(channelMessage) {
-        let channelMessages = $("textarea#p-channel-messages");
         channelMessages.val(channelMessages.val() + "sender: " + printObject(channelMessage.sender) + "\n");
         channelMessages.val(channelMessages.val() + "time: " + printDateTime(channelMessage.sendTime) + "\n");
         channelMessages.val(channelMessages.val() + "id: " + channelMessage.messageId + "\n");
+        channelMessages.val(channelMessages.val() + "parent-id: " + channelMessage.parentId + "\n");
         channelMessages.val(channelMessages.val() + "body: " + channelMessage.body + "\n");
-        channelMessages.val(channelMessages.val() + "mentioned" + filtersToAccountList(channelMessage.mentioned) + "\n");
+        if (isArrayNotEmpty(channelMessage.mentioned)) {
+            channelMessages.val(channelMessages.val() + "mentioned" + filtersToAccountList(channelMessage.mentioned) + "\n");
+        }
         channelMessages.val(channelMessages.val() + "------------------------" + "\n");
         const textArea = document.getElementById("p-channel-messages");
         textArea.scrollTop = textArea.scrollHeight;
     }
 
     function printChannelEvent(channelEvent) {
-        let channelEvents = $("textarea#p-channel-events");
         channelEvents.val(channelEvents.val() + channelEvent.type + "\n");
         channelEvents.val(channelEvents.val() + channelEvent.channelId + "\n");
+        channelEvents.val(channelEvents.val() + "time: " + printDateTime(channelEvent.time) + "\n");
         channelEvents.val(channelEvents.val() + "actor: " + printObject(channelEvent.actor) + "\n");
-        channelEvents.val(channelEvents.val() + "members: " + filtersToAccountList(channelEvent.filters) + "\n");
+        if (isArrayNotEmpty(channelEvent.filters)) {
+            channelEvents.val(channelEvents.val() + "members: " + filtersToAccountList(channelEvent.filters) + "\n");
+        }
         channelEvents.val(channelEvents.val() + "------------------------" + "\n");
+        const textArea = document.getElementById("p-channel-events");
+        textArea.scrollTop = textArea.scrollHeight;
+    }
+
+    function printChannelWithInfo(channelWithInfo) {
+        myChannels.val(myChannels.val() + printObject(channelWithInfo.channel) + "\n");
+        if (isArrayNotEmpty(channelWithInfo.members)) {
+            myChannels.val(myChannels.val() + "members: " + filtersToAccountWithActiveFlagList(channelWithInfo.members) + "\n");
+        }
+        myChannels.val(myChannels.val() + "counter: " + channelWithInfo.counter + "\n");
+        myChannels.val(myChannels.val() + "last updated: " + printDateTime(channelWithInfo.time) + "\n");
+        myChannels.val(myChannels.val() + "read: " + channelWithInfo.read + "\n");
+        myChannels.val(myChannels.val() + "------------------------" + "\n");
+        const textArea = document.getElementById("p-channels-with-info");
+        textArea.scrollTop = textArea.scrollHeight;
     }
 
     async function reloadMessagesFromHistory() {
+        channelMessages.val("");
         let historyPage = await PushcaClient.getChannelHistory(channel);
         if (isArrayNotEmpty(historyPage.messages)) {
             historyPage.messages.forEach(channelMessage => {
                 printChannelMessage(channelMessage);
+            });
+        }
+    }
+
+    async function reloadMyChannels() {
+        let filterObj = new ClientFilter(
+            PushcaClient.ClientObj.workSpaceId,
+            PushcaClient.ClientObj.accountId,
+            null,
+            PushcaClient.ClientObj.applicationId
+        );
+        const channelsResponse = await PushcaClient.getChannels(filterObj);
+        myChannels.val("");
+        if (isArrayNotEmpty(channelsResponse.channels)) {
+            console.log(JSON.stringify(channelsResponse));
+            channelsResponse.channels.forEach(channelWithInfo => {
+                printChannelWithInfo(channelWithInfo);
             });
         }
     }
@@ -119,7 +167,8 @@ $(document).ready(function () {
         let messageBody = $('#p-message').val();
         const messageDetails = await PushcaClient.sendMessageToChannel(channel, [filterObj2, filterObj3], messageBody);
         if (messageDetails.id) {
-            let channelMessage = new ChannelMessage(PushcaClient.ClientObj, channel.id, messageDetails.id, null,
+            let channelMessage = new ChannelMessage(
+                PushcaClient.ClientObj, channel.id, messageDetails.id, null, null,
                 messageBody, [filterObj2, filterObj3]);
             printChannelMessage(channelMessage);
         }
@@ -130,16 +179,7 @@ $(document).ready(function () {
     });
 
     $("#p-get-my-channels").click(async function () {
-        let filterObj = new ClientFilter(
-            PushcaClient.ClientObj.workSpaceId,
-            PushcaClient.ClientObj.accountId,
-            null,
-            PushcaClient.ClientObj.applicationId
-        );
-        const channels = await PushcaClient.getChannels(filterObj);
-        if (isArrayNotEmpty(channels)) {
-            console.log(JSON.stringify(channels));
-        }
+        await reloadMyChannels();
     });
 
     let clientObj = new ClientFilter(
@@ -157,6 +197,7 @@ $(document).ready(function () {
                 PushcaClient.ws.send(JSON.stringify({"command": "PING"}));
             }, 20000);
             reloadMessagesFromHistory();
+            reloadMyChannels();
         },
         function (ws, event) {
             window.clearInterval(PushcaClient.PingIntervalId);
@@ -166,7 +207,6 @@ $(document).ready(function () {
         },
         function (ws, messageText) {
             if (messageText !== "PONG") {
-                let history = $("textarea#p-history");
                 history.val(history.val() + messageText + "\n");
             }
         },

@@ -3,14 +3,41 @@
 <head>
     <title>Welcome to nginx!</title>
     <style>
-        html {
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
             color-scheme: light dark;
+            font-family: Tahoma, Verdana, Arial, sans-serif;
         }
 
-        body {
-            width: 35em;
-            margin: 0 auto;
-            font-family: Tahoma, Verdana, Arial, sans-serif;
+        .full-page-div {
+            width: 100%;
+            height: 100%;
+            background-color: #f0f0f0;
+            /*display: flex;*/
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .container {
+            display: flex; /* Use flexbox to layout children horizontally */
+            height: 100vh; /* Full height of the viewport */
+            margin: 0;
+        }
+
+        .column {
+            flex: 1; /* Each column will take up equal space */
+            padding: 20px; /* Just for some internal spacing */
+        }
+
+        .left-column {
+            background-color: #f0f0f0; /* Light grey */
+        }
+
+        .right-column {
+            background-color: #ddd; /* Slightly darker grey */
         }
 
         .textMemo {
@@ -38,51 +65,59 @@
 </head>
 <body>
 <h1>Push notifications demo</h1>
-<div id="bmv">
-    <label id="l-client" for="p-message"></label>
-    <br>
-    <br>
-    <label id="l-message" for="p-message">push notification message</label>
-    <input type="text" id="p-message" name="push-message" required minlength="10" maxlength="180"
-           size="12" class="inputText"/>
-    <br><br>
-    <div class="buttons-container">
-        <div>
-            <button id="p-send">Send</button>
+<div id="bmv" class="container full-page-div">
+    <div class="column right-column">
+        <div class="buttons-container">
+            <div>
+                <button id="p-add-members-to-channel">Add members to channel</button>
+            </div>
+            <div>
+                <button id="p-remove-me-from-channel">remove me from channel</button>
+            </div>
+            <div>
+                <button id="p-get-my-channels">get my channels</button>
+            </div>
         </div>
-        <div>
-            <button id="p-send-with-acknowledge">Send with acknowledge</button>
-        </div>
-        <div>
-            <button id="p-add-members-to-channel">Add members to channel</button>
-        </div>
-        <div>
-            <button id="p-send-message-to-channel">send message to channel</button>
-        </div>
-        <div>
-            <button id="p-reload-from-history">reload from history</button>
-        </div>
-        <div>
-            <button id="p-remove-me-from-channel">remove me from channel</button>
-        </div>
-        <div>
-            <button id="p-get-my-channels">get my channels</button>
-        </div>
+        <label for="p-channels-with-info">My channels</label>
+        <br>
+        <textarea id="p-channels-with-info" class="textMemo"></textarea>
     </div>
+    <div class="column left-column">
+        <label id="l-client" for="p-message"></label>
+        <br>
+        <br>
+        <label id="l-message" for="p-message">push notification message</label>
+        <input type="text" id="p-message" name="push-message" required minlength="10" maxlength="180"
+               size="12" class="inputText"/>
+        <br><br>
+        <div class="buttons-container">
+            <div>
+                <button id="p-send">Send</button>
+            </div>
+            <div>
+                <button id="p-send-with-acknowledge">Send with acknowledge</button>
+            </div>
+            <div>
+                <button id="p-send-message-to-channel">send message to channel</button>
+            </div>
+            <div>
+                <button id="p-reload-from-history">reload from history</button>
+            </div>
+        </div>
 
-    <label for="p-channel-messages">Channel messages</label>
-    <br>
-    <textarea id="p-channel-messages" class="textMemo"></textarea>
-    <br>
-    <label for="p-channel-events">Channel events</label>
-    <br>
-    <textarea id="p-channel-events" class="textMemo"></textarea>
-    <br>
-    <label for="p-history">Message history</label>
-    <br>
-    <textarea id="p-history" class="textMemo"></textarea>
-    <br>
-
+        <label for="p-channel-messages">Channel messages</label>
+        <br>
+        <textarea id="p-channel-messages" class="textMemo"></textarea>
+        <br>
+        <label for="p-channel-events">Channel events</label>
+        <br>
+        <textarea id="p-channel-events" class="textMemo"></textarea>
+        <br>
+        <label for="p-history">Message history</label>
+        <br>
+        <textarea id="p-history" class="textMemo"></textarea>
+        <br>
+    </div>
 </div>
 </body>
 </html>

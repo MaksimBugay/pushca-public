@@ -34,11 +34,22 @@ class PChannel {
 }
 
 class ClientFilter {
-    constructor(workSpaceId, accountId, deviceId, applicationId) {
+    constructor(workSpaceId, accountId, deviceId, applicationId, active) {
         this.workSpaceId = workSpaceId;
         this.accountId = accountId;
         this.deviceId = deviceId;
         this.applicationId = applicationId;
+        if (active) {
+            this.active = active;
+        }
+    }
+
+    shortPrint() {
+        if (isNotEmpty(this.active)) {
+            return this.accountId + "[+]";
+        } else {
+            return this.accountId + "[-]";
+        }
     }
 }
 
@@ -57,15 +68,23 @@ class ChannelWithInfo {
                 obj.workSpaceId,
                 obj.accountId,
                 obj.deviceId,
-                obj.applicationId
+                obj.applicationId,
+                obj.active
             )
         );
         return new ChannelWithInfo(channel, members, channelObj.counter, channelObj.time, channelObj.read);
     }
+}
 
-    static fromWsResponseToList(jsonString) {
+class ChannelsResponse {
+    constructor(channels) {
+        this.channels = channels;
+    }
+
+    static fromWsResponse(jsonString) {
         const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
-        return jsonObject.body.channels.map(obj => ChannelWithInfo.fromObject(obj));
+        const channels = jsonObject.body.channels.map(obj => ChannelWithInfo.fromObject(obj));
+        return new ChannelsResponse(channels);
     }
 }
 
@@ -98,11 +117,12 @@ class MessageDetails {
 
 class ChannelEvent {
 
-    constructor(type, actor, channelId, filters) {
+    constructor(type, actor, channelId, filters, time) {
         this.type = type;
         this.actor = actor;
         this.channelId = channelId;
         this.filters = filters;
+        this.time = time;
     }
 
     static fromJSON(jsonString) {
@@ -113,20 +133,23 @@ class ChannelEvent {
             jsonObject.actor.deviceId,
             jsonObject.actor.applicationId
         );
-        const filters = jsonObject.filters.map(obj => new ClientFilter(
-                obj.workSpaceId,
-                obj.accountId,
-                obj.deviceId,
-                obj.applicationId
-            )
-        );
-        return new ChannelEvent(jsonObject.type, actor, jsonObject.channelId, filters);
+        let filters = [];
+        if (jsonObject.filters) {
+            filters = jsonObject.filters.map(obj => new ClientFilter(
+                    obj.workSpaceId,
+                    obj.accountId,
+                    obj.deviceId,
+                    obj.applicationId
+                )
+            );
+        }
+        return new ChannelEvent(jsonObject.type, actor, jsonObject.channelId, filters, jsonObject.time);
     }
 }
 
 class ChannelMessage {
 
-    constructor(sender, channelId, messageId, sendTime, body, mentioned) {
+    constructor(sender, channelId, messageId, parentId, sendTime, body, mentioned) {
         this.sender = sender;
         this.channelId = channelId;
         if (messageId) {
@@ -134,6 +157,7 @@ class ChannelMessage {
         } else {
             this.messageId = crypto.randomUUID().toString();
         }
+        this.parentId = parentId;
         if (sendTime) {
             this.sendTime = sendTime;
         } else {
@@ -160,8 +184,8 @@ class ChannelMessage {
                 )
             );
         }
-        return new ChannelMessage(sender, jsonObject.channelId, jsonObject.messageId, jsonObject.sendTime,
-            jsonObject.body, mentioned);
+        return new ChannelMessage(sender, jsonObject.channelId, jsonObject.messageId, jsonObject.parentId,
+            jsonObject.sendTime, jsonObject.body, mentioned);
     }
 
     static fromJSON(jsonString) {
@@ -513,5 +537,5 @@ PushcaClient.getChannels = async function (filter) {
     if (ResponseType.ERROR === result.type) {
         console.log("Failed get channels attempt: " + result.body.message);
     }
-    return ChannelWithInfo.fromWsResponseToList(result.body);
+    return ChannelsResponse.fromWsResponse(result.body);
 }
