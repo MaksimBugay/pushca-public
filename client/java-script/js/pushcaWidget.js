@@ -1,5 +1,5 @@
-function filtersToAccountWithActiveFlagList(filters) {
-    return filters.map(filter => filter.shortPrint()).join(";");
+function printListOfChannelMembers(members) {
+    return members.map(member => member.shortPrint()).join(";");
 }
 
 function filtersToAccountList(filters) {
@@ -26,6 +26,7 @@ $(document).ready(function () {
     let history = $("textarea#p-history");
     history.val("");
     let myChannels = $("textarea#p-channels-with-info");
+    let publicChannels = $("textarea#p-channels-public-info");
 
     function printChannelMessage(channelMessage) {
         channelMessages.val(channelMessages.val() + "sender: " + printObject(channelMessage.sender) + "\n");
@@ -57,12 +58,21 @@ $(document).ready(function () {
     function printChannelWithInfo(channelWithInfo) {
         myChannels.val(myChannels.val() + printObject(channelWithInfo.channel) + "\n");
         if (isArrayNotEmpty(channelWithInfo.members)) {
-            myChannels.val(myChannels.val() + "members: " + filtersToAccountWithActiveFlagList(channelWithInfo.members) + "\n");
+            myChannels.val(myChannels.val() + "members: " + printListOfChannelMembers(channelWithInfo.members) + "\n");
         }
         myChannels.val(myChannels.val() + "counter: " + channelWithInfo.counter + "\n");
         myChannels.val(myChannels.val() + "last updated: " + printDateTime(channelWithInfo.time) + "\n");
         myChannels.val(myChannels.val() + "read: " + channelWithInfo.read + "\n");
         myChannels.val(myChannels.val() + "------------------------" + "\n");
+        const textArea = document.getElementById("p-channels-with-info");
+        textArea.scrollTop = textArea.scrollHeight;
+    }
+
+    function printChannelsPublicInfo(channelWithInfo) {
+        publicChannels.val(publicChannels.val() + printObject(channelWithInfo.channel) + "\n");
+        publicChannels.val(publicChannels.val() + "counter: " + channelWithInfo.counter + "\n");
+        publicChannels.val(publicChannels.val() + "last updated: " + printDateTime(channelWithInfo.time) + "\n");
+        publicChannels.val(publicChannels.val() + "------------------------" + "\n");
         const textArea = document.getElementById("p-channels-with-info");
         textArea.scrollTop = textArea.scrollHeight;
     }
@@ -77,6 +87,17 @@ $(document).ready(function () {
         }
     }
 
+    async function reloadPublicChannels() {
+        publicChannels.val("");
+        let ids = [channel.id];
+        const channelsResponse = await PushcaClient.getChannelsPublicInfo(ids);
+        if (isArrayNotEmpty(channelsResponse.channels)) {
+            console.log(JSON.stringify(channelsResponse));
+            channelsResponse.channels.forEach(channelWithInfo => {
+                printChannelsPublicInfo(channelWithInfo);
+            });
+        }
+    }
     async function reloadMyChannels() {
         let filterObj = new ClientFilter(
             PushcaClient.ClientObj.workSpaceId,
@@ -182,6 +203,10 @@ $(document).ready(function () {
         await reloadMyChannels();
     });
 
+    $("#p-get-channels-public-info").click(async function () {
+        await reloadPublicChannels();
+    });
+
     let clientObj = new ClientFilter(
         "workSpaceMain",
         getQueryParam("account-id"),
@@ -198,6 +223,7 @@ $(document).ready(function () {
             }, 20000);
             reloadMessagesFromHistory();
             reloadMyChannels();
+            reloadPublicChannels();
         },
         function (ws, event) {
             window.clearInterval(PushcaClient.PingIntervalId);

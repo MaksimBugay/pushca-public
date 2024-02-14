@@ -9,7 +9,8 @@ const Command = Object.freeze({
     SEND_MESSAGE_TO_CHANNEL: "SEND_MESSAGE_TO_CHANNEL",
     GET_CHANNEL_HISTORY: "GET_CHANNEL_HISTORY",
     REMOVE_ME_FROM_CHANNEL: "REMOVE_ME_FROM_CHANNEL",
-    GET_CHANNELS: "GET_CHANNELS"
+    GET_CHANNELS: "GET_CHANNELS",
+    GET_CHANNELS_PUBLIC_INFO: "GET_CHANNELS_PUBLIC_INFO"
 });
 
 const ResponseType = Object.freeze({
@@ -34,14 +35,21 @@ class PChannel {
 }
 
 class ClientFilter {
+    constructor(workSpaceId, accountId, deviceId, applicationId) {
+        this.workSpaceId = workSpaceId;
+        this.accountId = accountId;
+        this.deviceId = deviceId;
+        this.applicationId = applicationId;
+    }
+}
+
+class ChannelMember {
     constructor(workSpaceId, accountId, deviceId, applicationId, active) {
         this.workSpaceId = workSpaceId;
         this.accountId = accountId;
         this.deviceId = deviceId;
         this.applicationId = applicationId;
-        if (active) {
-            this.active = active;
-        }
+        this.active = active;
     }
 
     shortPrint() {
@@ -64,14 +72,17 @@ class ChannelWithInfo {
 
     static fromObject(channelObj) {
         const channel = new PChannel(channelObj.channel.id, channelObj.channel.name);
-        const members = channelObj.members.map(obj => new ClientFilter(
-                obj.workSpaceId,
-                obj.accountId,
-                obj.deviceId,
-                obj.applicationId,
-                obj.active
-            )
-        );
+        let members = [];
+        if (channelObj.members) {
+            members = channelObj.members.map(obj => new ChannelMember(
+                    obj.workSpaceId,
+                    obj.accountId,
+                    obj.deviceId,
+                    obj.applicationId,
+                    obj.active
+                )
+            );
+        }
         return new ChannelWithInfo(channel, members, channelObj.counter, channelObj.time, channelObj.read);
     }
 }
@@ -533,6 +544,17 @@ PushcaClient.getChannels = async function (filter) {
     let metaData = {};
     metaData["filter"] = filter;
     let commandWithId = PushcaClient.buildCommandMessage(Command.GET_CHANNELS, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed get channels attempt: " + result.body.message);
+    }
+    return ChannelsResponse.fromWsResponse(result.body);
+}
+
+PushcaClient.getChannelsPublicInfo = async function (ids) {
+    let metaData = {};
+    metaData["ids"] = ids;
+    let commandWithId = PushcaClient.buildCommandMessage(Command.GET_CHANNELS_PUBLIC_INFO, metaData);
     let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
     if (ResponseType.ERROR === result.type) {
         console.log("Failed get channels attempt: " + result.body.message);
