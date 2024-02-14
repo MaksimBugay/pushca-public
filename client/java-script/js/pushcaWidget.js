@@ -206,6 +206,9 @@ $(document).ready(function () {
     $("#p-get-channels-public-info").click(async function () {
         await reloadPublicChannels();
     });
+    $("#p-mark-channel-as-read").click(async function () {
+        await PushcaClient.markChannelAsRead(channel);
+    });
 
     let clientObj = new ClientFilter(
         "workSpaceMain",

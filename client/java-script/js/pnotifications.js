@@ -10,7 +10,8 @@ const Command = Object.freeze({
     GET_CHANNEL_HISTORY: "GET_CHANNEL_HISTORY",
     REMOVE_ME_FROM_CHANNEL: "REMOVE_ME_FROM_CHANNEL",
     GET_CHANNELS: "GET_CHANNELS",
-    GET_CHANNELS_PUBLIC_INFO: "GET_CHANNELS_PUBLIC_INFO"
+    GET_CHANNELS_PUBLIC_INFO: "GET_CHANNELS_PUBLIC_INFO",
+    MARK_CHANNEL_AS_READ: "MARK_CHANNEL_AS_READ"
 });
 
 const ResponseType = Object.freeze({
@@ -557,7 +558,17 @@ PushcaClient.getChannelsPublicInfo = async function (ids) {
     let commandWithId = PushcaClient.buildCommandMessage(Command.GET_CHANNELS_PUBLIC_INFO, metaData);
     let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
     if (ResponseType.ERROR === result.type) {
-        console.log("Failed get channels attempt: " + result.body.message);
+        console.log("Failed get channels public info attempt: " + result.body.message);
     }
     return ChannelsResponse.fromWsResponse(result.body);
+}
+
+PushcaClient.markChannelAsRead = async function (channel) {
+    let metaData = {};
+    metaData["channel"] = channel;
+    let commandWithId = PushcaClient.buildCommandMessage(Command.MARK_CHANNEL_AS_READ, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed mark channel as read attempt: " + result.body.message);
+    }
 }
