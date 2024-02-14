@@ -41,6 +41,21 @@ $(document).ready(function () {
         channelMessages.val(channelMessages.val() + "------------------------" + "\n");
         const textArea = document.getElementById("p-channel-messages");
         textArea.scrollTop = textArea.scrollHeight;
+
+        const container = document.getElementById('comments-container');
+        const commentElement = document.createElement('div');
+        commentElement.className = 'comment-item';
+        commentElement.innerHTML = `
+          <div class="comment-content">
+            <div class="comment-author-date">
+                <div class="comment-author">${channelMessage.sender.accountId}</div>
+                <div class="comment-date">${printDateTime(channelMessage.sendTime)}</div>
+            </div>
+            <div class="comment-text">${channelMessage.body}</div>
+          </div>
+        `;
+        container.appendChild(commentElement);
+        container.scrollTop = container.scrollHeight;
     }
 
     function printChannelEvent(channelEvent) {

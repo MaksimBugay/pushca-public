@@ -48,6 +48,14 @@
             background-color: bisque;
         }
 
+        .shrinkTextMemo {
+            width: 90%;
+            resize: both;
+            max-width: 100%;
+            height: 1pt;
+            background-color: bisque;
+        }
+
         .inputText {
             width: 220pt;
         }
@@ -57,6 +65,69 @@
             justify-content: center; /* This centers the buttons in the line */
             align-items: center; /* This aligns the buttons vertically */
             gap: 10px; /* Optional: adds space between buttons */
+        }
+
+        .comments-container {
+            height: 300px; /* Fixed height, adjust as needed */
+            overflow-y: auto; /* Allows vertical scrolling if content exceeds container height */
+            border: 1px solid #ccc; /* Optional, adds a border for visual delineation */
+            border-radius: 4px; /* Optional, rounds the corners */
+            padding: 10px; /* Optional, adds some spacing inside the container */
+            margin-top: 20px; /* Optional, adds some space above the container */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Optional, adds subtle shadow for depth */
+        }
+
+        .comment-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 2px;
+            padding: 10px;
+            background-color: #f8f8f8;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .avatar img {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            margin-right: 15px;
+        }
+
+        .comment-content {
+            flex: 1;
+            width: 200px;
+            text-align: left;
+            word-wrap: break-word;
+        }
+
+        .comment-author {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        .comment-date {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 5px;
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        .comment-author-date {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+        }
+
+        .comment-text {
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: #444;
         }
     </style>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
@@ -85,12 +156,6 @@
             </div>
             <div>
                 <button id="p-get-impression-stat">get impression stat</button>
-            </div>
-            <div>
-                <button id="p-add-impression">add impression</button>
-            </div>
-            <div>
-                <button id="p-remove-impression">remove impression</button>
             </div>
         </div>
         <label for="p-channels-with-info">My channels</label>
@@ -126,11 +191,18 @@
             <div>
                 <button id="p-reload-from-history">reload from history</button>
             </div>
+            <div>
+                <button id="p-add-impression">add impression</button>
+            </div>
+            <div>
+                <button id="p-remove-impression">remove impression</button>
+            </div>
         </div>
 
         <label for="p-channel-messages">Channel messages</label>
         <br>
-        <textarea id="p-channel-messages" class="textMemo"></textarea>
+        <textarea id="p-channel-messages" class="shrinkTextMemo"></textarea>
+        <div id="comments-container" class="comments-container"></div>
         <br>
         <label for="p-channel-events">Channel events</label>
         <br>
