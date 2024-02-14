@@ -27,6 +27,7 @@ $(document).ready(function () {
     history.val("");
     let myChannels = $("textarea#p-channels-with-info");
     let publicChannels = $("textarea#p-channels-public-info");
+    let impressionStat = $("textarea#p-impression-stat");
 
     function printChannelMessage(channelMessage) {
         channelMessages.val(channelMessages.val() + "sender: " + printObject(channelMessage.sender) + "\n");
@@ -77,6 +78,18 @@ $(document).ready(function () {
         textArea.scrollTop = textArea.scrollHeight;
     }
 
+    function printImpressionStatItem(item) {
+        impressionStat.val(impressionStat.val() + "resource id: " + item.resourceId + "\n");
+        if (isArrayNotEmpty(item.counters)) {
+            item.counters.forEach(counter => {
+                impressionStat.val(impressionStat.val() + counter.shortPrint() + "\n");
+            });
+        }
+        impressionStat.val(impressionStat.val() + "------------------------" + "\n");
+        const textArea = document.getElementById("p-impression-stat");
+        textArea.scrollTop = textArea.scrollHeight;
+    }
+
     async function reloadMessagesFromHistory() {
         channelMessages.val("");
         let historyPage = await PushcaClient.getChannelHistory(channel);
@@ -98,6 +111,19 @@ $(document).ready(function () {
             });
         }
     }
+
+    async function reloadImpressionStat() {
+        impressionStat.val("");
+        let ids = [channel.id];
+        const impressionsResponse = await PushcaClient.getImpressionStat(ids);
+        if (isArrayNotEmpty(impressionsResponse.items)) {
+            console.log(JSON.stringify(impressionsResponse));
+            impressionsResponse.items.forEach(item => {
+                printImpressionStatItem(item);
+            });
+        }
+    }
+
     async function reloadMyChannels() {
         let filterObj = new ClientFilter(
             PushcaClient.ClientObj.workSpaceId,
@@ -209,6 +235,18 @@ $(document).ready(function () {
     $("#p-mark-channel-as-read").click(async function () {
         await PushcaClient.markChannelAsRead(channel);
     });
+    $("#p-get-impression-stat").click(async function () {
+        await reloadImpressionStat();
+    });
+    $("#p-add-impression").click(async function () {
+        const impression = new PImpression(channel.id, ResourceType.CHANNEL, 7);
+        await PushcaClient.addImpression(channel, impression);
+    });
+
+    $("#p-remove-impression").click(async function () {
+        const impression = new PImpression(channel.id, ResourceType.CHANNEL, 7);
+        await PushcaClient.removeImpression(channel, impression);
+    });
 
     let clientObj = new ClientFilter(
         "workSpaceMain",
@@ -227,6 +265,7 @@ $(document).ready(function () {
             reloadMessagesFromHistory();
             reloadMyChannels();
             reloadPublicChannels();
+            reloadImpressionStat();
         },
         function (ws, event) {
             window.clearInterval(PushcaClient.PingIntervalId);

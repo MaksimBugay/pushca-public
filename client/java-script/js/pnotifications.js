@@ -11,7 +11,10 @@ const Command = Object.freeze({
     REMOVE_ME_FROM_CHANNEL: "REMOVE_ME_FROM_CHANNEL",
     GET_CHANNELS: "GET_CHANNELS",
     GET_CHANNELS_PUBLIC_INFO: "GET_CHANNELS_PUBLIC_INFO",
-    MARK_CHANNEL_AS_READ: "MARK_CHANNEL_AS_READ"
+    MARK_CHANNEL_AS_READ: "MARK_CHANNEL_AS_READ",
+    GET_IMPRESSION_STAT: "GET_IMPRESSION_STAT",
+    ADD_IMPRESSION: "ADD_IMPRESSION",
+    REMOVE_IMPRESSION: "REMOVE_IMPRESSION"
 });
 
 const ResponseType = Object.freeze({
@@ -24,6 +27,11 @@ const MessageType = Object.freeze({
     RESPONSE: "RESPONSE",
     CHANNEL_MESSAGE: "CHANNEL_MESSAGE",
     CHANNEL_EVENT: "CHANNEL_EVENT"
+});
+
+const ResourceType = Object.freeze({
+    CHANNEL: "CHANNEL",
+    CHANNEL_MESSAGE: "CHANNEL_MESSAGE"
 });
 
 const MessagePartsDelimiter = "@@";
@@ -97,6 +105,53 @@ class ChannelsResponse {
         const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
         const channels = jsonObject.body.channels.map(obj => ChannelWithInfo.fromObject(obj));
         return new ChannelsResponse(channels);
+    }
+}
+
+class ImpressionCounter {
+    constructor(code, counter) {
+        this.code = code;
+        this.counter = counter;
+    }
+
+    static fromObject(icObj) {
+        return new ImpressionCounter(icObj.code, icObj.counter);
+    }
+
+    shortPrint() {
+        return this.code + ": " + this.counter;
+    }
+}
+
+class ResourceImpressionCounters {
+    constructor(resourceId, counters) {
+        this.resourceId = resourceId;
+        this.counters = counters;
+    }
+
+    static fromObject(ricObj) {
+        const counters = ricObj.counters.map(obj => ImpressionCounter.fromObject(obj));
+        return new ResourceImpressionCounters(ricObj.resourceId, counters);
+    }
+}
+
+class PImpression {
+    constructor(resourceId, resourceType, code) {
+        this.resourceId = resourceId;
+        this.resourceType = resourceType;
+        this.code = code;
+    }
+}
+
+class ImpressionsResponse {
+    constructor(items) {
+        this.items = items;
+    }
+
+    static fromWsResponse(jsonString) {
+        const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+        const items = jsonObject.body.map(obj => ResourceImpressionCounters.fromObject(obj));
+        return new ImpressionsResponse(items);
     }
 }
 
@@ -572,3 +627,39 @@ PushcaClient.markChannelAsRead = async function (channel) {
         console.log("Failed mark channel as read attempt: " + result.body.message);
     }
 }
+
+PushcaClient.getImpressionStat = async function (ids) {
+    let metaData = {};
+    metaData["ids"] = ids;
+    let commandWithId = PushcaClient.buildCommandMessage(Command.GET_IMPRESSION_STAT, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed get impression statistic attempt: " + result.body.message);
+    }
+    return ImpressionsResponse.fromWsResponse(result.body);
+}
+
+PushcaClient.addImpression = async function (channel, impression) {
+    let metaData = {};
+    metaData["channel"] = channel;
+    metaData["impression"] = impression;
+    let commandWithId = PushcaClient.buildCommandMessage(Command.ADD_IMPRESSION, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed add impression attempt: " + result.body.message);
+    }
+}
+
+PushcaClient.removeImpression = async function (channel, impression) {
+    let metaData = {};
+    metaData["channel"] = channel;
+    metaData["impression"] = impression;
+    let commandWithId = PushcaClient.buildCommandMessage(Command.REMOVE_IMPRESSION, metaData);
+    let result = await PushcaClient.executeWithRepeatOnFailure(null, commandWithId)
+    if (ResponseType.ERROR === result.type) {
+        console.log("Failed add impression attempt: " + result.body.message);
+    }
+}
+
+
+
