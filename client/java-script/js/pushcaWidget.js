@@ -272,7 +272,7 @@ $(document).ready(function () {
 
     $("#l-client").text(printObject(clientObj));
 
-    PushcaClient.openConnection('http://localhost:8050', clientObj,
+    PushcaClient.openConnection('http://13.51.172.15:8050', clientObj,
         function (ws) {
             PushcaClient.PingIntervalId = window.setInterval(function () {
                 PushcaClient.ws.send(JSON.stringify({"command": "PING"}));
@@ -300,4 +300,8 @@ $(document).ready(function () {
             printChannelMessage(channelMessage);
         }
     );
+});
+
+$(window).on('beforeunload', function() {
+    PushcaClient.ws.close(1000, "leave");
 });
