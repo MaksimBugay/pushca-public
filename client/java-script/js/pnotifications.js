@@ -316,6 +316,71 @@ function allClientFieldsAreNotEmpty(obj) {
     });
 }
 
+function encodeToBase64UrlSafe(str) {
+    // Encode UTF-8 string to Uint8Array
+    const encoder = new TextEncoder();
+    const uint8Array = encoder.encode(str);
+
+    // Convert Uint8Array to binary string
+    const binaryString = String.fromCharCode.apply(null, uint8Array);
+
+    // Encode to standard Base64 string
+    const base64 = btoa(binaryString);
+
+    // Make the Base64 string URL safe
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeFromBase64UrlSafe(base64UrlSafe) {
+    // Replace URL safe characters with Base64 standard characters
+    let base64 = base64UrlSafe.replace(/-/g, '+').replace(/_/g, '/');
+
+    // Add padding if necessary
+    while (base64.length % 4) {
+        base64 += '=';
+    }
+
+    // Decode from Base64 to binary string
+    const binaryString = atob(base64);
+
+    // Convert binary string to Uint8Array
+    const uint8Array = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        uint8Array[i] = binaryString.charCodeAt(i);
+    }
+
+    // Decode UTF-8 Uint8Array to string
+    const decoder = new TextDecoder();
+    return decoder.decode(uint8Array);
+}
+
+class OpenConnectionRequest {
+    constructor(client, pusherInstanceId, apiKey) {
+        this.client = client;
+        this.pusherInstanceId = pusherInstanceId;
+        this.apiKey = apiKey;
+    }
+}
+
+class OpenConnectionResponse {
+    constructor(pusherInstanceId, externalAdvertisedUrl, internalAdvertisedUrl, browserAdvertisedUrl) {
+        this.pusherInstanceId = pusherInstanceId;
+        this.externalAdvertisedUrl = externalAdvertisedUrl;
+        this.internalAdvertisedUrl = internalAdvertisedUrl;
+        this.browserAdvertisedUrl = browserAdvertisedUrl;
+    }
+
+    static fromJSON(jsonString) {
+        const jsonObject = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+        return new OpenConnectionResponse(
+            jsonObject.pusherInstanceId,
+            jsonObject.externalAdvertisedUrl,
+            jsonObject.internalAdvertisedUrl,
+            jsonObject.browserAdvertisedUrl
+        );
+    }
+}
+
 class CommandWithId {
     constructor(id, message) {
         this.id = id;
@@ -386,6 +451,95 @@ PushcaClient.buildCommandMessage = function (command, args) {
     return new CommandWithId(id, message);
 }
 
+PushcaClient.openWebSocket = function (onOpenHandler, onCloseHandler, onMessageHandler,
+                                       onChannelEventHandler, onChannelMessageHandler) {
+    PushcaClient.ws = new WebSocket(PushcaClient.wsUrl);
+    if (PushcaClient.ws) {
+        PushcaClient.ws.onopen = function () {
+            console.log('open');
+            if (typeof onOpenHandler === 'function') {
+                onOpenHandler(PushcaClient.ws);
+            }
+        };
+
+        PushcaClient.ws.onmessage = function (event) {
+            console.log('message', event.data);
+            let parts = event.data.split(MessagePartsDelimiter);
+            if (parts[1] === MessageType.ACKNOWLEDGE) {
+                PushcaClient.releaseWaiterIfExists(parts[0], null);
+                return;
+            }
+            if (parts[1] === MessageType.RESPONSE) {
+                let body;
+                if (parts.length > 2) {
+                    body = parts[2];
+                }
+                PushcaClient.releaseWaiterIfExists(parts[0], body);
+                return;
+            }
+            if (parts[1] === MessageType.CHANNEL_EVENT) {
+                if (typeof onChannelEventHandler === 'function') {
+                    onChannelEventHandler(ChannelEvent.fromJSON(parts[2]))
+                }
+                return;
+            }
+            if (parts[1] === MessageType.CHANNEL_MESSAGE) {
+                if (typeof onChannelMessageHandler === 'function') {
+                    onChannelMessageHandler(ChannelMessage.fromJSON(parts[2]))
+                }
+                return;
+            }
+            if (parts.length === 2) {
+                PushcaClient.sendAcknowledge(parts[0]);
+                if (typeof onMessageHandler === 'function') {
+                    onMessageHandler(PushcaClient.ws, parts[1]);
+                }
+                return;
+            }
+            if (typeof onMessageHandler === 'function') {
+                onMessageHandler(PushcaClient.ws, event.data);
+            }
+        };
+
+        PushcaClient.ws.onerror = function (error) {
+            console.log("There was an error with your websocket!");
+        };
+
+        PushcaClient.ws.onclose = function (event) {
+            if (event.wasClean) {
+                console.log(
+                    `[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+            }
+            if (typeof onCloseHandler === 'function') {
+                onCloseHandler(PushcaClient.ws, event)
+            }
+        };
+    }
+}
+
+PushcaClient.openWsConnection = function (baseUrl, clientObj, onOpenHandler, onCloseHandler, onMessageHandler,
+                                          onChannelEventHandler, onChannelMessageHandler) {
+    PushcaClient.serverBaseUrl = baseUrl;
+    PushcaClient.ClientObj = clientObj;
+    const openConnectionRequest = new OpenConnectionRequest(clientObj, null, null);
+    const wsUrl = baseUrl + "sign-in/" + encodeToBase64UrlSafe(JSON.stringify(openConnectionRequest));
+    console.log(wsUrl);
+    const tmpWs = new WebSocket(wsUrl);
+    if (tmpWs) {
+        tmpWs.onmessage = function (event) {
+            const response = OpenConnectionResponse.fromJSON(event.data);
+            PushcaClient.wsUrl = response.browserAdvertisedUrl;
+            console.log("Ws connection url was acquired: " + PushcaClient.wsUrl);
+        };
+        tmpWs.onclose = function (event) {
+            if (event.wasClean) {
+                PushcaClient.openWebSocket(onOpenHandler, onCloseHandler, onMessageHandler,
+                    onChannelEventHandler, onChannelMessageHandler);
+            }
+        };
+    }
+}
+
 PushcaClient.openConnection = function (baseUrl, clientObj, onOpenHandler, onCloseHandler, onMessageHandler,
                                         onChannelEventHandler, onChannelMessageHandler) {
     PushcaClient.serverBaseUrl = baseUrl;
@@ -396,77 +550,11 @@ PushcaClient.openConnection = function (baseUrl, clientObj, onOpenHandler, onClo
         contentType: 'application/json',
         data: JSON.stringify(requestObj),
         dataType: 'json',
-        success: function (data) {
-            let wsUrl
-            $.each(data, function (index, element) {
-                if (index === "browserAdvertisedUrl") {
-                    wsUrl = element
-                }
-            });
-            console.log("Ws connection url was acquired: " + wsUrl);
-
-            PushcaClient.ws = new WebSocket(wsUrl);
-            if (PushcaClient.ws) {
-                PushcaClient.ws.onopen = function () {
-                    console.log('open');
-                    if (typeof onOpenHandler === 'function') {
-                        onOpenHandler(PushcaClient.ws);
-                    }
-                };
-
-                PushcaClient.ws.onmessage = function (event) {
-                    console.log('message', event.data);
-                    let parts = event.data.split(MessagePartsDelimiter);
-                    if (parts[1] === MessageType.ACKNOWLEDGE) {
-                        PushcaClient.releaseWaiterIfExists(parts[0], null);
-                        return;
-                    }
-                    if (parts[1] === MessageType.RESPONSE) {
-                        let body;
-                        if (parts.length > 2) {
-                            body = parts[2];
-                        }
-                        PushcaClient.releaseWaiterIfExists(parts[0], body);
-                        return;
-                    }
-                    if (parts[1] === MessageType.CHANNEL_EVENT) {
-                        if (typeof onChannelEventHandler === 'function') {
-                            onChannelEventHandler(ChannelEvent.fromJSON(parts[2]))
-                        }
-                        return;
-                    }
-                    if (parts[1] === MessageType.CHANNEL_MESSAGE) {
-                        if (typeof onChannelMessageHandler === 'function') {
-                            onChannelMessageHandler(ChannelMessage.fromJSON(parts[2]))
-                        }
-                        return;
-                    }
-                    if (parts.length === 2) {
-                        PushcaClient.sendAcknowledge(parts[0]);
-                        if (typeof onMessageHandler === 'function') {
-                            onMessageHandler(PushcaClient.ws, parts[1]);
-                        }
-                        return;
-                    }
-                    if (typeof onMessageHandler === 'function') {
-                        onMessageHandler(PushcaClient.ws, event.data);
-                    }
-                };
-
-                PushcaClient.ws.onerror = function (error) {
-                    console.log("There was an error with your websocket!");
-                };
-
-                PushcaClient.ws.onclose = function (event) {
-                    if (event.wasClean) {
-                        console.log(
-                            `[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
-                    }
-                    if (typeof onCloseHandler === 'function') {
-                        onCloseHandler(PushcaClient.ws, event)
-                    }
-                };
-            }
+        success: function (openConnectionResponse) {
+            PushcaClient.wsUrl = openConnectionResponse["browserAdvertisedUrl"];
+            console.log("Ws connection url was acquired: " + PushcaClient.wsUrl);
+            PushcaClient.openWebSocket(onOpenHandler, onCloseHandler,
+                onMessageHandler, onChannelEventHandler, onChannelMessageHandler);
         },
         error: function () {
             console.log("Attempt to acquire ws connection url failed");

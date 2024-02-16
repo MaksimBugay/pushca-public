@@ -260,7 +260,7 @@ $(document).ready(function () {
 
     $("#l-client").text(printObject(clientObj));
 
-    PushcaClient.openConnection('http://13.51.172.15:8050', clientObj,
+    PushcaClient.openWsConnection('wss://ec2-13-51-172-15.eu-north-1.compute.amazonaws.com:35085/', clientObj,
         function (ws) {
             PushcaClient.PingIntervalId = window.setInterval(function () {
                 PushcaClient.ws.send(JSON.stringify({"command": "PING"}));
