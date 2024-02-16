@@ -56,6 +56,8 @@ $(document).ready(function () {
         `;
         container.appendChild(commentElement);
         container.scrollTop = container.scrollHeight;
+        reloadMyChannels();
+        reloadPublicChannels();
     }
 
     function printChannelEvent(channelEvent) {
@@ -69,6 +71,10 @@ $(document).ready(function () {
         channelEvents.val(channelEvents.val() + "------------------------" + "\n");
         const textArea = document.getElementById("p-channel-events");
         textArea.scrollTop = textArea.scrollHeight;
+
+        reloadMyChannels();
+        reloadPublicChannels();
+        reloadImpressionStat();
     }
 
     function printChannelWithInfo(channelWithInfo) {
@@ -139,6 +145,16 @@ $(document).ready(function () {
         }
     }
 
+    async function addMeToChannel() {
+        let filterObj = new ClientFilter(
+            PushcaClient.ClientObj.workSpaceId,
+            PushcaClient.ClientObj.accountId,
+            null,
+            PushcaClient.ClientObj.applicationId
+        );
+        PushcaClient.addMembersToChannel(channel, [filterObj]);
+    }
+
     async function reloadMyChannels() {
         let filterObj = new ClientFilter(
             PushcaClient.ClientObj.workSpaceId,
@@ -187,14 +203,9 @@ $(document).ready(function () {
             $('#p-message').val()
         );
     });
+
     $("#p-add-members-to-channel").click(function () {
-        let filterObj1 = new ClientFilter(
-            PushcaClient.ClientObj.workSpaceId,
-            PushcaClient.ClientObj.accountId,
-            null,
-            PushcaClient.ClientObj.applicationId
-        );
-        PushcaClient.addMembersToChannel(channel, [filterObj1]);
+        addMeToChannel();
     });
 
     $("#p-reload-from-history").click(async function () {
@@ -221,11 +232,14 @@ $(document).ready(function () {
                 PushcaClient.ClientObj, channel.id, messageDetails.id, null, null,
                 messageBody, [filterObj2, filterObj3]);
             printChannelMessage(channelMessage);
+            await reloadMyChannels();
+            await reloadPublicChannels();
         }
     });
 
     $("#p-remove-me-from-channel").click(async function () {
         await PushcaClient.removeMeFromChannel(channel);
+        await reloadMyChannels();
     });
 
     $("#p-get-my-channels").click(async function () {
@@ -237,6 +251,7 @@ $(document).ready(function () {
     });
     $("#p-mark-channel-as-read").click(async function () {
         await PushcaClient.markChannelAsRead(channel);
+        await reloadMyChannels();
     });
     $("#p-get-impression-stat").click(async function () {
         await reloadImpressionStat();
@@ -244,11 +259,13 @@ $(document).ready(function () {
     $("#p-add-impression").click(async function () {
         const impression = new PImpression(channel.id, ResourceType.CHANNEL, 7);
         await PushcaClient.addImpression(channel, impression);
+        await reloadImpressionStat();
     });
 
     $("#p-remove-impression").click(async function () {
         const impression = new PImpression(channel.id, ResourceType.CHANNEL, 7);
         await PushcaClient.removeImpression(channel, impression);
+        await reloadImpressionStat();
     });
 
     let clientObj = new ClientFilter(
@@ -265,6 +282,7 @@ $(document).ready(function () {
             PushcaClient.PingIntervalId = window.setInterval(function () {
                 PushcaClient.ws.send(JSON.stringify({"command": "PING"}));
             }, 20000);
+            addMeToChannel();
             reloadMessagesFromHistory();
             reloadMyChannels();
             reloadPublicChannels();
@@ -290,6 +308,6 @@ $(document).ready(function () {
     );
 });
 
-$(window).on('beforeunload', function() {
+$(window).on('beforeunload', function () {
     PushcaClient.ws.close(1000, "leave");
 });

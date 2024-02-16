@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="eng">
 <head>
-    <title>Welcome to nginx!</title>
     <style>
         body, html {
             margin: 0;
@@ -15,16 +14,35 @@
             width: 100%;
             height: 100%;
             background-color: #f0f0f0;
-            /*display: flex;*/
             justify-content: center;
             align-items: center;
             text-align: center;
         }
 
         .container {
-            display: flex; /* Use flexbox to layout children horizontally */
+            display: flex;
             height: 100vh; /* Full height of the viewport */
             margin: 0;
+        }
+
+        .input-group {
+            flex: 1;
+            align-items: center;
+            width: 100%;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin: 3px;
+        }
+
+        .input-group input {
+            width: 80%;
+            height: 40px;
+        }
+
+        .input-group button {
+            margin-left: 5px;
+            width: 15%;
+            height: 40px;
         }
 
         .column {
@@ -73,8 +91,9 @@
             border: 1px solid #ccc; /* Optional, adds a border for visual delineation */
             border-radius: 4px; /* Optional, rounds the corners */
             padding: 10px; /* Optional, adds some spacing inside the container */
-            margin-top: 20px; /* Optional, adds some space above the container */
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Optional, adds subtle shadow for depth */
+            margin-top: 5px; /* Optional, adds some space above the container */
+            margin-bottom: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Optional, adds subtle shadow for depth */
         }
 
         .comment-item {
@@ -135,83 +154,82 @@
     <script type="text/javascript" src="/js/pushcaWidget.js"></script>
 </head>
 <body>
-<h1>Push notifications demo</h1>
-<div id="bmv" class="container full-page-div">
-    <div class="column right-column">
-        <div class="buttons-container">
-            <div>
-                <button id="p-add-members-to-channel">Add me to channel</button>
+<div id="bmv" class="full-page-div">
+    <label>Push notifications demo</label>
+    <br>
+    <label id="l-client" for="p-message"></label>
+    <br>
+    <div class="container">
+        <div class="column right-column-column">
+            <div class="buttons-container">
+                <div>
+                    <button id="p-send-with-acknowledge">Send with acknowledge</button>
+                </div>
+                <div>
+                    <button id="p-send">send message</button>
+                </div>
+                <div>
+                    <button id="p-reload-from-history">reload from history</button>
+                </div>
+                <div>
+                    <button id="p-add-impression">add impression</button>
+                </div>
+                <div>
+                    <button id="p-remove-impression">remove impression</button>
+                </div>
             </div>
-            <div>
-                <button id="p-remove-me-from-channel">remove me from channel</button>
+            <br>
+            <label for="p-channel-messages">Channel messages</label>
+            <div id="comments-container" class="comments-container"></div>
+            <div class="input-group">
+                <input type="text" id="p-message" name="push-message" required minlength="50" maxlength="300"
+                       size="12" class="inputText"/>
+                <button id="p-send-message-to-channel">Send</button>
             </div>
-            <div>
-                <button id="p-get-my-channels">get my channels</button>
-            </div>
-            <div>
-                <button id="p-get-channels-public-info">get public channels</button>
-            </div>
-            <div>
-                <button id="p-mark-channel-as-read">mark channel as read</button>
-            </div>
-            <div>
-                <button id="p-get-impression-stat">get impression stat</button>
-            </div>
+            <textarea id="p-channel-messages" class="shrinkTextMemo"></textarea>
+            <br>
+            <label for="p-channel-events">Channel events</label>
+            <br>
+            <textarea id="p-channel-events" class="textMemo"></textarea>
+            <br>
+            <label for="p-history">Message history</label>
+            <br>
+            <textarea id="p-history" class="textMemo"></textarea>
+            <br>
         </div>
-        <label for="p-channels-with-info">My channels</label>
-        <br>
-        <textarea id="p-channels-with-info" class="textMemo"></textarea>
-        <br>
-        <label for="p-channels-public-info">Channels public info</label>
-        <br>
-        <textarea id="p-channels-public-info" class="textMemo"></textarea>
-        <br>
-        <label for="p-impression-stat">Impression statistic</label>
-        <br>
-        <textarea id="p-impression-stat" class="textMemo"></textarea>
-    </div>
-    <div class="column left-column">
-        <label id="l-client" for="p-message"></label>
-        <br>
-        <br>
-        <label id="l-message" for="p-message">push notification message</label>
-        <input type="text" id="p-message" name="push-message" required minlength="10" maxlength="180"
-               size="12" class="inputText"/>
-        <br><br>
-        <div class="buttons-container">
-            <div>
-                <button id="p-send">Send</button>
+        <div class="column left-column-column">
+            <div class="buttons-container">
+                <div>
+                    <button id="p-add-members-to-channel">Add me to channel</button>
+                </div>
+                <div>
+                    <button id="p-remove-me-from-channel">remove me from channel</button>
+                </div>
+                <div>
+                    <button id="p-get-my-channels">get my channels</button>
+                </div>
+                <div>
+                    <button id="p-get-channels-public-info">get public channels</button>
+                </div>
+                <div>
+                    <button id="p-mark-channel-as-read">mark channel as read</button>
+                </div>
+                <div>
+                    <button id="p-get-impression-stat">get impression stat</button>
+                </div>
             </div>
-            <div>
-                <button id="p-send-with-acknowledge">Send with acknowledge</button>
-            </div>
-            <div>
-                <button id="p-send-message-to-channel">send message to channel</button>
-            </div>
-            <div>
-                <button id="p-reload-from-history">reload from history</button>
-            </div>
-            <div>
-                <button id="p-add-impression">add impression</button>
-            </div>
-            <div>
-                <button id="p-remove-impression">remove impression</button>
-            </div>
+            <label for="p-channels-with-info">My channels</label>
+            <br>
+            <textarea id="p-channels-with-info" class="textMemo"></textarea>
+            <br>
+            <label for="p-channels-public-info">Channels public info</label>
+            <br>
+            <textarea id="p-channels-public-info" class="textMemo"></textarea>
+            <br>
+            <label for="p-impression-stat">Impression statistic</label>
+            <br>
+            <textarea id="p-impression-stat" class="textMemo"></textarea>
         </div>
-
-        <label for="p-channel-messages">Channel messages</label>
-        <br>
-        <textarea id="p-channel-messages" class="shrinkTextMemo"></textarea>
-        <div id="comments-container" class="comments-container"></div>
-        <br>
-        <label for="p-channel-events">Channel events</label>
-        <br>
-        <textarea id="p-channel-events" class="textMemo"></textarea>
-        <br>
-        <label for="p-history">Message history</label>
-        <br>
-        <textarea id="p-history" class="textMemo"></textarea>
-        <br>
     </div>
 </div>
 </body>
