@@ -189,24 +189,12 @@ $(document).ready(function () {
     });
     $("#p-add-members-to-channel").click(function () {
         let filterObj1 = new ClientFilter(
-            "workSpaceMain",
-            "clientWeb1",
+            PushcaClient.ClientObj.workSpaceId,
+            PushcaClient.ClientObj.accountId,
             null,
-            "MLA_JAVA_HEADLESS"
+            PushcaClient.ClientObj.applicationId
         );
-        let filterObj2 = new ClientFilter(
-            "workSpaceMain",
-            "clientWeb2",
-            null,
-            "MLA_JAVA_HEADLESS"
-        );
-        let filterObj3 = new ClientFilter(
-            "workSpaceMain",
-            "clientWeb3",
-            null,
-            "MLA_JAVA_HEADLESS"
-        );
-        PushcaClient.addMembersToChannel(channel, [filterObj1, filterObj2, filterObj3]);
+        PushcaClient.addMembersToChannel(channel, [filterObj1]);
     });
 
     $("#p-reload-from-history").click(async function () {
