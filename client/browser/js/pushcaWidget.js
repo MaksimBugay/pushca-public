@@ -273,11 +273,18 @@ $(document).ready(function () {
         await PushcaClient.removeImpression(channel, impression);
         await reloadImpressionStat();
     });
-
+    let accountId = getQueryParam("account-id");
+    if (!isNotEmpty(accountId)) {
+        accountId = "clientWeb" + Date.now();
+    }
+    let deviceId = getQueryParam("device-id");
+    if (!isNotEmpty(deviceId)) {
+        deviceId = crypto.randomUUID().toString();
+    }
     let clientObj = new ClientFilter(
         "workSpaceMain",
-        getQueryParam("account-id"),
-        getQueryParam("device-id"),
+        accountId,
+        deviceId,
         "MLA_JAVA_HEADLESS"
     );
 
