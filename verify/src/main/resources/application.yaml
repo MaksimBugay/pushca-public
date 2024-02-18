@@ -26,14 +26,14 @@ logging:
 verification:
   pushca-coordinator:
 #    url: http://localhost:8050
-#    url: http://push-app-rc.multiloginapp.net:8050
-    url: https://app-rc.multiloginapp.net/pushca
+    url: http://ec2-13-60-25-150.eu-north-1.compute.amazonaws.com:8070
+#    url: https://app-rc.multiloginapp.net/pushca
 #should be always odd
-  number-of-clients: 51
+  number-of-clients: 41
   processor-type: BINARY_MESSAGE_WITH_ACKNOWLEDGE_WS
   preserve-order: false
   load-test-runner:
-    number: 2
+    number: 1
 #   number: 120
   client-connection-pool:
     size: 2
