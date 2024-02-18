@@ -62,7 +62,7 @@ class ChannelMember {
     }
 
     shortPrint() {
-        if (isNotEmpty(this.active)) {
+        if (isNotEmpty(this.active) && this.active) {
             return this.accountId + "[+]";
         } else {
             return this.accountId + "[-]";
