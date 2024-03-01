@@ -26,8 +26,11 @@ $(document).ready(function () {
     let history = $("textarea#p-history");
     history.val("");
     let myChannels = $("textarea#p-channels-with-info");
+    myChannels.val("");
     let publicChannels = $("textarea#p-channels-public-info");
+    publicChannels.val("");
     let impressionStat = $("textarea#p-impression-stat");
+    impressionStat.val("");
 
     function printChannelMessage(channelMessage, withRefresh) {
         channelMessages.val(channelMessages.val() + "sender: " + printObject(channelMessage.sender) + "\n");
@@ -62,7 +65,7 @@ $(document).ready(function () {
         }
     }
 
-    function printChannelEvent(channelEvent, withRefresh) {
+    async function printChannelEvent(channelEvent, withRefresh) {
         channelEvents.val(channelEvents.val() + channelEvent.type + "\n");
         channelEvents.val(channelEvents.val() + channelEvent.channelId + "\n");
         channelEvents.val(channelEvents.val() + "time: " + printDateTime(channelEvent.time) + "\n");
@@ -75,9 +78,9 @@ $(document).ready(function () {
         textArea.scrollTop = textArea.scrollHeight;
 
         if (withRefresh) {
-            reloadMyChannels();
-            reloadPublicChannels();
-            reloadImpressionStat();
+            await reloadMyChannels();
+            await reloadPublicChannels();
+            await reloadImpressionStat();
         }
     }
 
@@ -123,8 +126,8 @@ $(document).ready(function () {
                 printChannelMessage(channelMessage, false);
             });
         }
-        reloadMyChannels();
-        reloadPublicChannels();
+        await reloadMyChannels();
+        await reloadPublicChannels();
     }
 
     async function reloadPublicChannels() {
@@ -158,7 +161,7 @@ $(document).ready(function () {
             null,
             PushcaClient.ClientObj.applicationId
         );
-        PushcaClient.addMembersToChannel(channel, [filterObj]);
+        await PushcaClient.addMembersToChannel(channel, [filterObj]);
     }
 
     async function reloadMyChannels() {
