@@ -63,6 +63,7 @@ import bmv.org.pushca.core.PushcaMessageFactory.CommandWithId;
 import bmv.org.pushca.core.PushcaMessageFactory.MessageType;
 import bmv.org.pushca.core.PushcaURI;
 import bmv.org.pushca.core.ResourceImpressionCounters;
+import bmv.org.pushca.core.SendMessageToChannelWsResponse;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.File;
@@ -731,7 +732,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public synchronized void sendMessageToChannel(@NotNull PChannel channel,
+  public synchronized String sendMessageToChannel(@NotNull PChannel channel,
       List<ClientFilter> mentioned, String message) {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("channel", channel);
@@ -739,10 +740,15 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       metaData.put("mentioned", mentioned);
     }
     metaData.put("message", message);
-    String response = sendCommand(SEND_MESSAGE_TO_CHANNEL, metaData);
-    if (!"SUCCESS".equals(response)) {
-      throw new IllegalStateException("Cannot send message to channel " + channel.name);
+    String responseJson = sendCommand(SEND_MESSAGE_TO_CHANNEL, metaData);
+
+    SendMessageToChannelWsResponse response =
+        fromJson(responseJson, SendMessageToChannelWsResponse.class);
+    if (StringUtils.isNotEmpty(response.error)) {
+      throw new IllegalStateException(
+          "Cannot send message to channel " + channel.name + ":" + response.error);
     }
+    return response.body.messageId;
   }
 
   public void sendAsBinaryMessageToChannel(@NotNull PChannel channel,

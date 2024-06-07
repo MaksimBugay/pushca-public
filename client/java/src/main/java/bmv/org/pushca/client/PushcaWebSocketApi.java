@@ -342,8 +342,9 @@ public interface PushcaWebSocketApi {
    * @param channel   - channel object
    * @param mentioned - channel members that were directly mentioned in message
    * @param message   - message text
+   * @return - generated message id
    */
-  void sendMessageToChannel(@NotNull PChannel channel, List<ClientFilter> mentioned,
+  String sendMessageToChannel(@NotNull PChannel channel, List<ClientFilter> mentioned,
       String message);
 
   /**
