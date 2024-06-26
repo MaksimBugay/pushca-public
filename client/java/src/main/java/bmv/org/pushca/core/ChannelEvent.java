@@ -6,7 +6,8 @@ import java.util.List;
 
 public class ChannelEvent {
 
-  public enum EventType {CREATE, ADD_MEMBERS, MARK_AS_READ, REMOVE_MEMBERS, REMOVE, ADD_IMPRESSION, REMOVE_IMPRESSION}
+  public enum EventType {CREATE, ADD_MEMBERS, MARK_AS_READ, REMOVE_MEMBERS, REMOVE, ADD_IMPRESSION, REMOVE_IMPRESSION,
+    MEMBER_ACTIVE, MEMBER_NOT_ACTIVE}
 
   public EventType type;
 
@@ -15,4 +16,7 @@ public class ChannelEvent {
   public String channelId;
 
   public List<ClientFilter> filters;
+
+  public PImpression impression;
+  public long time;
 }

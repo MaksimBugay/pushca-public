@@ -5,7 +5,7 @@
   <groupId>io.github.maksimbugay</groupId>
   <artifactId>pushca-client</artifactId>
   <packaging>jar</packaging>
-  <version>1.2.0</version>
+  <version>1.3.0</version>
   <name>pushca-client</name>
   <url>https://github.com/MaksimBugay/pushca-public/tree/master/client/java</url>
   <description>
