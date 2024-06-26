@@ -8,7 +8,11 @@ import bmv.org.pushca.client.transformation.BinaryPayloadTransformer;
 import bmv.org.pushca.client.transformation.base64.Base64PayloadTransformer;
 import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
+import bmv.org.pushca.core.gateway.GatewayRequestHeader;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import javax.net.ssl.SSLContext;
 
 public class PushcaWebSocketBuilder {
@@ -22,6 +26,8 @@ public class PushcaWebSocketBuilder {
   private BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer;
   private BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer;
   private BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer;
+  private Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors =
+      new HashMap<>();
   private BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer;
   private BiConsumer<Integer, String> onCloseListener;
   private BinaryPayloadTransformer binaryPayloadTransformer = new Base64PayloadTransformer();
@@ -73,6 +79,12 @@ public class PushcaWebSocketBuilder {
     return this;
   }
 
+  public PushcaWebSocketBuilder withGatewayProcessors(
+      Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors) {
+    this.gatewayProcessors = gatewayProcessors;
+    return this;
+  }
+
   public PushcaWebSocketBuilder withBinaryManifestConsumer(
       BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer) {
     this.binaryManifestConsumer = binaryManifestConsumer;
@@ -104,7 +116,7 @@ public class PushcaWebSocketBuilder {
   public PushcaWebSocket build() {
     return new PushcaWebSocket(pushcaApiUrl, pusherId, client, connectTimeoutMs, messageConsumer,
         dataConsumer, unknownDatagramConsumer, binaryManifestConsumer,
-        channelEventConsumer, channelMessageConsumer, binaryPayloadTransformer, onCloseListener,
-        sslContext, wsConnectionFactory);
+        channelEventConsumer, channelMessageConsumer, gatewayProcessors, binaryPayloadTransformer,
+        onCloseListener, sslContext, wsConnectionFactory);
   }
 }

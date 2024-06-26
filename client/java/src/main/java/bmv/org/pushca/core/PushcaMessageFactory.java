@@ -16,7 +16,8 @@ public class PushcaMessageFactory {
   public static final String DEFAULT_RESPONSE = "SUCCESS";
 
   public enum MessageType {
-    ACKNOWLEDGE, BINARY_MANIFEST, CHANNEL_MESSAGE, CHANNEL_EVENT, RESPONSE, UPLOAD_BINARY_APPEAL
+    ACKNOWLEDGE, BINARY_MANIFEST, CHANNEL_MESSAGE, CHANNEL_EVENT, RESPONSE,
+    UPLOAD_BINARY_APPEAL, GATEWAY_REQUEST
   }
 
   public static final TimeBasedEpochGenerator ID_GENERATOR = Generators.timeBasedEpochGenerator();
@@ -28,8 +29,9 @@ public class PushcaMessageFactory {
     return Arrays.stream(MessageType.values()).anyMatch(v -> v.name().equals(msg));
   }
 
-  public static CommandWithId buildCommandMessage(Command command, Map<String, Object> args) {
-    String id = ID_GENERATOR.generate().toString();
+  public static CommandWithId buildCommandMessage(String externalId, Command command,
+      Map<String, Object> args) {
+    String id = externalId == null ? ID_GENERATOR.generate().toString() : externalId;
     return new CommandWithId(
         id,
         MessageFormat.format("{0}{1}{2}{3}{4}",
@@ -38,8 +40,8 @@ public class PushcaMessageFactory {
     );
   }
 
-  public static CommandWithId buildCommandMessage(Command command) {
-    String id = ID_GENERATOR.generate().toString();
+  public static CommandWithId buildCommandMessage(String externalId, Command command) {
+    String id = externalId == null ? ID_GENERATOR.generate().toString() : externalId;
     return new CommandWithId(
         id,
         MessageFormat.format("{0}@@{1}", id, command.name())

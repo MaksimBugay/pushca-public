@@ -25,6 +25,8 @@ import static bmv.org.pushca.core.Command.REGISTER_FILTER;
 import static bmv.org.pushca.core.Command.REMOVE_FILTER;
 import static bmv.org.pushca.core.Command.REMOVE_ME_FROM_CHANNEL;
 import static bmv.org.pushca.core.Command.SEND_BINARY_MANIFEST;
+import static bmv.org.pushca.core.Command.SEND_GATEWAY_REQUEST;
+import static bmv.org.pushca.core.Command.SEND_GATEWAY_RESPONSE;
 import static bmv.org.pushca.core.Command.SEND_MESSAGE;
 import static bmv.org.pushca.core.Command.SEND_MESSAGE_TO_CHANNEL;
 import static bmv.org.pushca.core.Command.SEND_MESSAGE_WITH_ACKNOWLEDGE;
@@ -64,6 +66,8 @@ import bmv.org.pushca.core.PushcaMessageFactory.MessageType;
 import bmv.org.pushca.core.PushcaURI;
 import bmv.org.pushca.core.ResourceImpressionCounters;
 import bmv.org.pushca.core.SendMessageToChannelWsResponse;
+import bmv.org.pushca.core.SimpleWsResponse;
+import bmv.org.pushca.core.gateway.GatewayRequestHeader;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.File;
@@ -81,6 +85,7 @@ import java.text.MessageFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -99,6 +104,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
@@ -154,6 +160,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer,
+      Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors,
       BinaryPayloadTransformer binaryPayloadTransformer,
       BiConsumer<Integer, String> onCloseListener,
       SSLContext sslContext,
@@ -164,7 +171,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     this.client = client;
     this.wsMessageConsumer =
         (ws, message) -> processMessage(ws, message, messageConsumer, channelEventConsumer,
-            channelMessageConsumer, binaryManifestConsumer);
+            channelMessageConsumer, binaryManifestConsumer, gatewayProcessors);
     this.wsDataConsumer =
         (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer, unknownDatagramConsumer,
             messageConsumer, channelMessageConsumer);
@@ -367,7 +374,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       BiConsumer<PushcaWebSocketApi, String> messageConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer,
-      BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer) {
+      BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer,
+      Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors) {
     if (StringUtils.isEmpty(inMessage)) {
       return;
     }
@@ -383,6 +391,23 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
               callback.complete(DEFAULT_RESPONSE);
               return callback;
             });
+            return;
+          case GATEWAY_REQUEST:
+            String path = parts[2];
+            GatewayRequestHeader header = fromJson(parts[3], GatewayRequestHeader.class);
+            byte[] requestPayload = new byte[0];
+            if (parts.length == 5) {
+              requestPayload = Base64.getDecoder().decode(parts[4]);
+            }
+            BiFunction<GatewayRequestHeader, byte[], byte[]> gatewayProcessor =
+                gatewayProcessors.get(path);
+            if (gatewayProcessor != null) {
+              byte[] responsePayload = gatewayProcessor.apply(header, requestPayload);
+              if (responsePayload == null) {
+                responsePayload = new byte[0];
+              }
+              sendGatewayResponse(parts[0], responsePayload);
+            }
             return;
           case BINARY_MANIFEST:
             processBinaryManifest(parts[2], binaryManifestConsumer);
@@ -438,8 +463,24 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("messageId", id);
-    CommandWithId cmd = PushcaMessageFactory.buildCommandMessage(ACKNOWLEDGE, metaData);
+    CommandWithId cmd = PushcaMessageFactory.buildCommandMessage(id, ACKNOWLEDGE, metaData);
     webSocket.send(cmd.commandBody);
+  }
+
+  public void sendGatewayResponse(String id, byte[] response) {
+    if (!webSocket.isOpen()) {
+      throw new IllegalStateException("Web socket connection is broken");
+    }
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("id", id);
+    metaData.put("payload", Base64.getEncoder().encodeToString(response));
+    webSocket.send(
+        PushcaMessageFactory.buildCommandMessage(
+            id,
+            SEND_GATEWAY_RESPONSE,
+            metaData
+        ).commandBody
+    );
   }
 
   public void sendAcknowledge(UUID binaryId, int order) {
@@ -459,6 +500,24 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
     sendCommand(id, SEND_MESSAGE_WITH_ACKNOWLEDGE, metaData);
   }
+
+  public synchronized byte[] sendGatewayRequest(@NotNull ClientFilter dest,
+      boolean preserveOrder, String path, byte[] requestPayload) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("receiver", dest);
+    metaData.put("preserveOrder", preserveOrder);
+    metaData.put("path", path);
+    byte[] payload = requestPayload == null ? new byte[0] : requestPayload;
+    metaData.put("payload", Base64.getEncoder().encodeToString(payload));
+
+    String responseJson = sendCommand(SEND_GATEWAY_REQUEST, metaData);
+    SimpleWsResponse response = fromJson(responseJson, SimpleWsResponse.class);
+    if (StringUtils.isNotEmpty(response.error)) {
+      throw new IllegalStateException("Failed attempt to send gateway request: " + response.error);
+    }
+    return Base64.getDecoder().decode(response.body);
+  }
+
 
   public void sendMessageWithAcknowledge(String id, PClient dest, String message) {
     sendMessageWithAcknowledge(id, dest, false, message);
@@ -961,10 +1020,10 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     if (!webSocket.isOpen()) {
       throw new IllegalStateException("Web socket connection is broken");
     }
-    CommandWithId cmd = (metaData == null) ? PushcaMessageFactory.buildCommandMessage(command) :
-        PushcaMessageFactory.buildCommandMessage(command, metaData);
+    CommandWithId cmd = (metaData == null) ? PushcaMessageFactory.buildCommandMessage(id, command) :
+        PushcaMessageFactory.buildCommandMessage(id, command, metaData);
     return executeWithRepeatOnFailure(
-        StringUtils.isEmpty(id) ? cmd.id : id,
+        cmd.id,
         () -> webSocket.send(cmd.commandBody),
         MessageFormat.format("command {0}, metadata {1}", command.name(), toJson(metaData))
     );

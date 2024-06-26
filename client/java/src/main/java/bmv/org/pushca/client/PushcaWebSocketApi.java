@@ -13,11 +13,14 @@ import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
 import bmv.org.pushca.core.PImpression;
 import bmv.org.pushca.core.ResourceImpressionCounters;
+import bmv.org.pushca.core.gateway.GatewayRequestHeader;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import org.jetbrains.annotations.NotNull;
 
 public interface PushcaWebSocketApi {
@@ -55,12 +58,14 @@ public interface PushcaWebSocketApi {
    * @param channelMessageConsumer - dedicated external handler of channel messages (object with
    *                               additional info about channel, sender etc.)
    * @param binaryManifestConsumer - external handler of reveived binary manifests
+   * @param gatewayProcessors      - gateway path to response producer mapping
    */
   void processMessage(WebSocketApi ws, String inMessage,
       BiConsumer<PushcaWebSocketApi, String> messageConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer,
-      BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer);
+      BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer,
+      Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors);
 
   /**
    * acknowledge Pushca about received message (Pushca forwards acknowledge to sender)
@@ -275,6 +280,10 @@ public interface PushcaWebSocketApi {
    */
   void sendUploadBinaryAppeal(String binaryPushcaURI, boolean withAcknowledge,
       List<Integer> requestedChunks);
+
+  //====================================GateWay API=================================================
+  byte[] sendGatewayRequest(@NotNull ClientFilter dest, boolean preserveOrder, String path,
+      byte[] requestPayload);
   //====================================CHANNEL API=================================================
 
   /**
@@ -309,14 +318,14 @@ public interface PushcaWebSocketApi {
    */
   List<ChannelWithInfo> getChannels(@NotNull ClientFilter filter);
 
-    /**
+  /**
    * Return list of records with channel public info for provided identifiers
    *
    * @param ids - list of channel identifiers
    * @return list of channels with information about message counter, last update time and read
    * status
    */
-    List<ChannelWithInfo> getChannels(@NotNull List<String> ids);
+  List<ChannelWithInfo> getChannels(@NotNull List<String> ids);
 
 
   /**
@@ -375,7 +384,7 @@ public interface PushcaWebSocketApi {
    */
   void addImpression(@NotNull PChannel channel, @NotNull PImpression impression);
 
-    /**
+  /**
    * Remove previously added impression
    *
    * @param channel    - channel object
