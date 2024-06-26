@@ -282,6 +282,17 @@ public interface PushcaWebSocketApi {
       List<Integer> requestedChunks);
 
   //====================================GateWay API=================================================
+  /**
+   * Generate binary manifest and store it in memory cache
+   *
+   * @param dest           - filter of receivers
+   * @param preserveOrder  - keep sending order during delivery
+   * @param path           - gateway path
+   * @param requestPayload - gateway request object, protocol implementation is a responsibility of
+   *        gateway owner, can be any representation (json, avro, protobuf) converted to byte array
+   * @return - gateway response object, protocol implementation is a responsibility of
+   *        gateway owner, can be any representation (json, avro, protobuf) converted to byte array
+   */
   byte[] sendGatewayRequest(@NotNull ClientFilter dest, boolean preserveOrder, String path,
       byte[] requestPayload);
   //====================================CHANNEL API=================================================
