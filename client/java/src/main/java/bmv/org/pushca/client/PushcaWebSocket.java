@@ -130,6 +130,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   private String baseWsUrl;
   private final TokenHolder tokenHolder = new TokenHolder();
   private final PClient client;
+  private final String apiKey;
+  private final String passwordHash;
   private WebSocketApi webSocket;
   private final ScheduledExecutorService refreshAndCleanupScheduler;
   private final ScheduledExecutorService keepAliveScheduler;
@@ -150,10 +152,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   private final Executor asyncExecutor;
 
   public static String buildAcknowledgeId(String binaryId, int order) {
-    return MessageFormat.format("{0}-{1}", binaryId, String.valueOf(order));
+    return MessageFormat.format("{0}-{1}", binaryId, java.lang.String.valueOf(order));
   }
 
-  PushcaWebSocket(String pushcaApiUrl, String pusherId, PClient client, int connectTimeoutMs,
+  PushcaWebSocket(String pushcaApiUrl, String pusherId,
+      String apiKey, PClient client, String passwordHash,
+      int connectTimeoutMs,
       BiConsumer<PushcaWebSocketApi, String> messageConsumer,
       BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
       BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer,
@@ -169,6 +173,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     this.pushcaApiUrl = pushcaApiUrl;
     this.requestedPusherId = pusherId;
     this.client = client;
+    this.apiKey = apiKey;
+    this.passwordHash = passwordHash;
     this.wsMessageConsumer =
         (ws, message) -> processMessage(ws, message, messageConsumer, channelEventConsumer,
             channelMessageConsumer, binaryManifestConsumer, gatewayProcessors);
@@ -196,7 +202,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   private void doSignIn() {
     OpenConnectionResponse openConnectionResponse = null;
     try {
-      openConnectionResponse = openConnection(pushcaApiUrl, requestedPusherId, client);
+      openConnectionResponse =
+          openConnection(pushcaApiUrl, requestedPusherId, apiKey, client, passwordHash);
     } catch (IOException e) {
       LOGGER.error(
           "Cannot acquire ws connection parameters during sign in attempt: client {}, pusher id {}",
@@ -988,7 +995,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   private OpenConnectionResponse openConnection(String pushcaApiUrl, String pusherId,
-      PClient client) throws IOException {
+      String apiKey, PClient client, String passwordHash) throws IOException {
     URL url = new URL(pushcaApiUrl + "/open-connection");
     URLConnection httpsConn = url.openConnection();
     httpsConn.addRequestProperty("User-Agent", "Mozilla");
@@ -996,7 +1003,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     httpsConn.setRequestProperty("Content-Type", "application/json");
     httpsConn.setRequestProperty("Accept", "application/json");
     httpsConn.setDoOutput(true);
-    OpenConnectionRequest request = new OpenConnectionRequest(client, pusherId);
+    OpenConnectionRequest request =
+        new OpenConnectionRequest(client, pusherId, apiKey, passwordHash);
     try (OutputStream os = httpsConn.getOutputStream()) {
       byte[] input = toJson(request).getBytes(StandardCharsets.UTF_8);
       os.write(input, 0, input.length);

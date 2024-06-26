@@ -20,6 +20,8 @@ public class PushcaWebSocketBuilder {
   private final String pushcaApiUrl;
   private String pusherId;
   private final PClient client;
+  private final String apiKey;
+  private final String passwordHash;
   private int connectTimeoutMs = 0;
   private BiConsumer<PushcaWebSocketApi, String> messageConsumer;
   private BiConsumer<PushcaWebSocketApi, Binary> dataConsumer;
@@ -34,9 +36,12 @@ public class PushcaWebSocketBuilder {
   private SSLContext sslContext;
   private WsConnectionFactory wsConnectionFactory = new WsConnectionWithJavaWebSocketFactory();
 
-  public PushcaWebSocketBuilder(String pushcaApiUrl, PClient client) {
+  public PushcaWebSocketBuilder(String pushcaApiUrl, String apiKey, PClient client,
+      String passwordHash) {
     this.pushcaApiUrl = pushcaApiUrl;
+    this.apiKey = apiKey;
     this.client = client;
+    this.passwordHash = passwordHash;
   }
 
   public PushcaWebSocketBuilder withPusherId(String pusherId) {
@@ -114,9 +119,9 @@ public class PushcaWebSocketBuilder {
   }
 
   public PushcaWebSocket build() {
-    return new PushcaWebSocket(pushcaApiUrl, pusherId, client, connectTimeoutMs, messageConsumer,
-        dataConsumer, unknownDatagramConsumer, binaryManifestConsumer,
-        channelEventConsumer, channelMessageConsumer, gatewayProcessors, binaryPayloadTransformer,
-        onCloseListener, sslContext, wsConnectionFactory);
+    return new PushcaWebSocket(pushcaApiUrl, pusherId, apiKey, client, passwordHash,
+        connectTimeoutMs, messageConsumer, dataConsumer, unknownDatagramConsumer,
+        binaryManifestConsumer, channelEventConsumer, channelMessageConsumer, gatewayProcessors,
+        binaryPayloadTransformer, onCloseListener, sslContext, wsConnectionFactory);
   }
 }
