@@ -2,8 +2,8 @@ package bmv.org.pushca.client;
 
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
+import bmv.org.pushca.client.model.BinaryWithHeader;
 import bmv.org.pushca.client.model.PClient;
-import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.client.transformation.BinaryPayloadTransformer;
 import bmv.org.pushca.client.transformation.base64.Base64PayloadTransformer;
 import bmv.org.pushca.core.ChannelEvent;
@@ -25,7 +25,7 @@ public class PushcaWebSocketBuilder {
   private int connectTimeoutMs = 0;
   private BiConsumer<PushcaWebSocketApi, String> messageConsumer;
   private BiConsumer<PushcaWebSocketApi, Binary> dataConsumer;
-  private BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer;
+  private BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer;
   private BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer;
   private BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer;
   private Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors =
@@ -67,7 +67,7 @@ public class PushcaWebSocketBuilder {
   }
 
   public PushcaWebSocketBuilder withUnknownDatagramConsumer(
-      BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer) {
+      BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer) {
     this.unknownDatagramConsumer = unknownDatagramConsumer;
     return this;
   }

@@ -3,9 +3,9 @@ package bmv.org.pushca.client;
 import bmv.org.pushca.client.exception.WebsocketConnectionIsBrokenException;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
+import bmv.org.pushca.client.model.BinaryWithHeader;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
-import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.client.model.UploadBinaryAppeal;
 import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
@@ -43,7 +43,7 @@ public interface PushcaWebSocketApi {
    */
   void processBinary(WebSocketApi ws, byte[] binary,
       BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
-      BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer,
+      BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer,
       BiConsumer<PushcaWebSocketApi, String> messageConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer);
 

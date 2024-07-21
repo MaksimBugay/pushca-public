@@ -106,6 +106,26 @@ public final class BmvObjectUtils {
     );
   }
 
+  // Convert any enum to byte array
+  public static <E extends Enum<E>> byte[] enumToBytes(E enumValue) {
+    byte[] byteArray = new byte[1];
+    byteArray[0] = (byte) enumValue.ordinal();
+    return byteArray;
+  }
+
+  // Convert byte array to any enum
+  public static <E extends Enum<E>> E bytesToEnum(byte[] byteArray, Class<E> enumClass) {
+    if (byteArray.length != 1) {
+      throw new IllegalArgumentException("Invalid byte array length");
+    }
+    int ordinal = byteArray[0] & 0xFF; // Convert byte to unsigned int
+    E[] enumConstants = enumClass.getEnumConstants();
+    if (ordinal >= enumConstants.length) {
+      throw new IllegalArgumentException("Invalid ordinal value");
+    }
+    return enumConstants[ordinal];
+  }
+
   public static byte[] booleanToBytes(boolean value) {
     return ByteBuffer.allocate(1).put(value ? (byte) 1 : 0).array();
   }

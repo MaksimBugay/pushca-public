@@ -40,17 +40,18 @@ import static org.apache.commons.lang3.ArrayUtils.addAll;
 import bmv.org.pushca.client.exception.WebsocketConnectionIsBrokenException;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
+import bmv.org.pushca.client.model.BinaryWithHeader;
 import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.Datagram;
 import bmv.org.pushca.client.model.OpenConnectionRequest;
 import bmv.org.pushca.client.model.OpenConnectionResponse;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.RefreshTokenWsResponse;
-import bmv.org.pushca.client.model.UnknownDatagram;
 import bmv.org.pushca.client.model.UploadBinaryAppeal;
 import bmv.org.pushca.client.serialization.json.JsonUtility;
 import bmv.org.pushca.client.transformation.BinaryPayloadTransformer;
 import bmv.org.pushca.client.utils.BmvObjectUtils;
+import bmv.org.pushca.client.utils.SendBinaryHelper.BinaryType;
 import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
@@ -84,7 +85,6 @@ import java.nio.file.Paths;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -160,7 +160,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       int connectTimeoutMs,
       BiConsumer<PushcaWebSocketApi, String> messageConsumer,
       BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
-      BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer,
+      BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer,
       BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer,
@@ -256,17 +256,11 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public void processBinary(WebSocketApi ws, byte[] binary,
       BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
-      BiConsumer<PushcaWebSocketApi, UnknownDatagram> unknownDatagramConsumer,
+      BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer,
       BiConsumer<PushcaWebSocketApi, String> messageConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer) {
-    final int clientHash = BmvObjectUtils.bytesToInt(
-        Arrays.copyOfRange(binary, 0, 4)
-    );
-    boolean withAcknowledge = BmvObjectUtils.bytesToBoolean(
-        Arrays.copyOfRange(binary, 4, 5)
-    );
-    final UUID binaryId = BmvObjectUtils.bytesToUuid(Arrays.copyOfRange(binary, 5, 21));
-    final int order = BmvObjectUtils.bytesToInt(Arrays.copyOfRange(binary, 21, 25));
+
+    BinaryWithHeader binaryWithHeader = new BinaryWithHeader(binary);
 
 /*
     LOGGER.debug(MessageFormat.format(
@@ -274,9 +268,9 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         String.valueOf(order), String.valueOf(withAcknowledge)));
 */
     //binary message was received
-    if (Integer.MAX_VALUE == order) {
+    if (binaryWithHeader.isBinaryMessage()) {
       final String decodedMessage = binaryPayloadTransformer.getDecoder().apply(
-          Arrays.copyOfRange(binary, 25, binary.length)
+          binaryWithHeader.getPayload()
       );
       ChannelMessage channelMessage;
       try {
@@ -290,51 +284,49 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       } else {
         Optional.ofNullable(messageConsumer).ifPresent(c -> c.accept(this, decodedMessage));
       }
-      if (withAcknowledge) {
-        sendAcknowledge(binaryId.toString());
+      if (binaryWithHeader.withAcknowledge) {
+        sendAcknowledge(binaryWithHeader.binaryId.toString());
       }
       return;
     }
 
-    BinaryObjectData binaryData = binaries.computeIfPresent(binaryId.toString(), (k, v) -> {
-      v.fillWithReceivedData(order, Arrays.copyOfRange(binary, 25, binary.length));
-      return v;
-    });
+    BinaryObjectData binaryData =
+        binaries.computeIfPresent(binaryWithHeader.binaryId.toString(), (k, v) -> {
+          v.fillWithReceivedData(
+              binaryWithHeader.order, binaryWithHeader.getPayload());
+          return v;
+        });
     if (binaryData == null) {
       if (unknownDatagramConsumer != null) {
-        unknownDatagramConsumer.accept(this, new UnknownDatagram(
-            binaryId,
-            Arrays.copyOfRange(binary, 0, 25),
-            order,
-            Arrays.copyOfRange(binary, 25, binary.length)
-        ));
+        unknownDatagramConsumer.accept(this, binaryWithHeader);
         return;
       }
-      throw new IllegalStateException("Unknown binary with id = " + binaryId);
+      throw new IllegalStateException("Unknown binary with id = " + binaryWithHeader.binaryId);
     }
-    Datagram datagram = binaryData.getDatagram(order);
+    Datagram datagram = binaryData.getDatagram(binaryWithHeader.order);
     if (datagram == null) {
       throw new IllegalArgumentException(
-          MessageFormat.format("Unknown datagram: binaryId={0}, order={1}", binaryId.toString(),
-              String.valueOf(order))
+          MessageFormat.format("Unknown datagram: binaryId={0}, order={1}",
+              binaryWithHeader.binaryId.toString(),
+              String.valueOf(binaryWithHeader.order))
       );
     }
     if (!datagram.md5.equals(calculateSha256(datagram.data))) {
       throw new IllegalArgumentException(
           MessageFormat.format("Md5 validation was not passed: binaryId={0}, order={1}",
-              binaryId.toString(),
-              String.valueOf(order))
+              binaryWithHeader.binaryId.toString(),
+              String.valueOf(binaryWithHeader.order))
       );
     }
     if (datagram.size != datagram.data.length) {
       throw new IllegalArgumentException(
           MessageFormat.format("Size validation was not passed: binaryId={0}, order={1}",
-              binaryId.toString(),
-              String.valueOf(order))
+              binaryWithHeader.binaryId.toString(),
+              String.valueOf(binaryWithHeader.order))
       );
     }
-    if (withAcknowledge) {
-      sendAcknowledge(binaryId, order);
+    if (binaryWithHeader.withAcknowledge) {
+      sendAcknowledge(binaryWithHeader.binaryId, binaryWithHeader.order);
     }
     if (binaryData.isCompleted()) {
       Optional.ofNullable(dataConsumer).ifPresent(
@@ -576,8 +568,13 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       boolean withAcknowledge) {
     byte[] message = binaryPayloadTransformer.getEncoder().apply(strMessage);
     UUID binaryMsgId = (id == null) ? ID_GENERATOR.generate() : id;
-    int order = Integer.MAX_VALUE;
-    byte[] prefix = toDatagramPrefix(binaryMsgId, order, destHashCode, withAcknowledge);
+    byte[] prefix = toDatagramPrefix(
+        BinaryType.BINARY_MESSAGE,
+        destHashCode,
+        withAcknowledge,
+        binaryMsgId,
+        0
+    );
     byte[] binary = addAll(prefix, message);
     String responseId = withAcknowledge ? binaryMsgId.toString()
         : String.valueOf(binaryMsgId.toString().hashCode());
@@ -674,7 +671,11 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     List<Datagram> datagrams = binaryObjectData.getDatagrams().stream()
         .filter(filter)
         .peek(datagram -> datagram.prefix =
-            toDatagramPrefix(binaryId, datagram.order, dest.hashCode(), withAcknowledge))
+            toDatagramPrefix(
+                BinaryType.FILE,
+                dest.hashCode(), withAcknowledge,
+                binaryId, datagram.order
+            ))
         .collect(Collectors.toList());
 
     for (Datagram datagram : datagrams) {

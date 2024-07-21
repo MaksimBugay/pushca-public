@@ -2,6 +2,7 @@ package bmv.org.pushca.client.utils;
 
 import static bmv.org.pushca.client.utils.BmvObjectUtils.booleanToBytes;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.calculateSha256;
+import static bmv.org.pushca.client.utils.BmvObjectUtils.enumToBytes;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.intToBytes;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.uuidToBytes;
 import static org.apache.commons.lang3.ArrayUtils.addAll;
@@ -14,6 +15,10 @@ import java.util.List;
 import java.util.UUID;
 
 public final class SendBinaryHelper {
+
+  public enum BinaryType {FILE, MEDIA_STREAM, BINARY_MESSAGE}
+
+  public static final int BINARY_HEADER_LENGTH = 26;
 
   private SendBinaryHelper() {
   }
@@ -37,11 +42,11 @@ public final class SendBinaryHelper {
     return datagram;
   }
 
-  public static byte[] toDatagramPrefix(UUID id, int order, int clientHashCode,
-      boolean withAcknowledge) {
-    byte[] prefix = addAll(intToBytes(clientHashCode), booleanToBytes(withAcknowledge));
-    prefix = addAll(prefix, uuidToBytes(id));
+  public static byte[] toDatagramPrefix(BinaryType binaryType, int destHashCode,
+      boolean withAcknowledge, UUID binaryId, int order) {
+    byte[] prefix = addAll(enumToBytes(binaryType), intToBytes(destHashCode));
+    prefix = addAll(prefix, booleanToBytes(withAcknowledge));
+    prefix = addAll(prefix, uuidToBytes(binaryId));
     return addAll(prefix, intToBytes(order));
   }
-
 }
