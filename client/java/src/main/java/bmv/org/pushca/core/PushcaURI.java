@@ -1,5 +1,6 @@
 package bmv.org.pushca.core;
 
+import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.UploadBinaryAppeal;
 import java.net.URI;
@@ -21,11 +22,14 @@ public class PushcaURI {
   private final int numberOfChunks;
   private final UploadBinaryAppeal uploadBinaryAppeal;
 
-  public PushcaURI(String pusherInstanceId, int numberOfChunks,
+  private final String binaryName;
+
+  public PushcaURI(String pusherInstanceId, int numberOfChunks, String binaryName,
       UploadBinaryAppeal uploadBinaryAppeal) {
     this.pusherInstanceId = pusherInstanceId;
     this.numberOfChunks = numberOfChunks;
     this.uploadBinaryAppeal = uploadBinaryAppeal;
+    this.binaryName = binaryName;
   }
 
   public PushcaURI(String pushcaURIStr) {
@@ -53,15 +57,19 @@ public class PushcaURI {
           .collect(Collectors.toMap(pa -> pa[0], pa -> pa[1]));
       this.pusherInstanceId = uri.getHost();
       this.numberOfChunks = Integer.parseInt(queryParams.get("chunk-total"));
+      this.binaryName = queryParams.get("name");
       this.uploadBinaryAppeal = new UploadBinaryAppeal(
-          owner,
+          new ClientFilter(owner),
           pathSegments[5],
-          queryParams.get("name"),
           Integer.parseInt(queryParams.get("chunk-size"))
       );
     } catch (Exception ex) {
       throw new IllegalArgumentException("String cannot be converted to pushca uri", ex);
     }
+  }
+
+  public String getBinaryName() {
+    return binaryName;
   }
 
   public UploadBinaryAppeal getUploadBinaryAppeal() {
@@ -85,7 +93,7 @@ public class PushcaURI {
         uploadBinaryAppeal.owner.deviceId,
         uploadBinaryAppeal.owner.applicationId,
         uploadBinaryAppeal.binaryId,
-        uploadBinaryAppeal.binaryName,
+        binaryName,
         String.valueOf(uploadBinaryAppeal.chunkSize),
         String.valueOf(numberOfChunks)
     );

@@ -611,7 +611,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
           throw new IllegalArgumentException("Cannot load binary with id = " + id, e);
         }
         if (ArrayUtils.isEmpty(binaryBytes)) {
-          throw new IllegalArgumentException("Cannot load binary with id = " + id);
+          throw new IllegalArgumentException(
+              MessageFormat.format("Binary with id {0} was not found", id));
         }
       }
       return toBinaryObjectData(
@@ -652,13 +653,16 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void sendBinary(UploadBinaryAppeal uploadBinaryAppeal) {
+    BinaryObjectData manifest = prepareBinaryManifest(
+        null, "", uploadBinaryAppeal.binaryId, uploadBinaryAppeal.chunkSize);
+    sendBinaryManifest(new ClientFilter(uploadBinaryAppeal.sender),
+        deepClone(manifest, BinaryObjectData.class).setRedOnly(false));
+    if (uploadBinaryAppeal.manifestOnly) {
+      return;
+    }
     sendBinary(
         uploadBinaryAppeal.sender,
-        null,
-        uploadBinaryAppeal.binaryName,
-        uploadBinaryAppeal.binaryId,
-        uploadBinaryAppeal.chunkSize,
-        uploadBinaryAppeal.withAcknowledge,
+        manifest, false,
         uploadBinaryAppeal.requestedChunks
     );
   }
@@ -688,14 +692,13 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  public void sendUploadBinaryAppeal(PClient owner, String binaryId, String binaryName,
-      int chunkSize, boolean withAcknowledge, List<Integer> requestedChunks) {
+  public void sendUploadBinaryAppeal(ClientFilter owner, String binaryId,
+      int chunkSize, boolean manifestOnly, List<Integer> requestedChunks) {
     UploadBinaryAppeal appeal = new UploadBinaryAppeal();
     appeal.owner = owner;
     appeal.binaryId = binaryId;
-    appeal.binaryName = binaryName;
     appeal.chunkSize = chunkSize;
-    appeal.withAcknowledge = withAcknowledge;
+    appeal.manifestOnly = manifestOnly;
     appeal.requestedChunks = requestedChunks;
 
     sendUploadBinaryAppeal(appeal);
@@ -707,9 +710,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     UploadBinaryAppeal appeal = new UploadBinaryAppeal();
     appeal.owner = uri.getUploadBinaryAppeal().owner;
     appeal.binaryId = uri.getUploadBinaryAppeal().binaryId;
-    appeal.binaryName = uri.getUploadBinaryAppeal().binaryName;
     appeal.chunkSize = uri.getUploadBinaryAppeal().chunkSize;
-    appeal.withAcknowledge = withAcknowledge;
+    appeal.manifestOnly = withAcknowledge;
     appeal.requestedChunks = requestedChunks;
 
     sendUploadBinaryAppeal(appeal);
@@ -719,9 +721,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("owner", appeal.owner);
     metaData.put("binaryId", appeal.binaryId);
-    metaData.put("binaryName", appeal.binaryName);
     metaData.put("chunkSize", appeal.chunkSize);
-    metaData.put("withAcknowledge", appeal.withAcknowledge);
+    metaData.put("withAcknowledge", appeal.manifestOnly);
     metaData.put("requestedChunks", appeal.requestedChunks);
 
     String response = sendCommand(SEND_UPLOAD_BINARY_APPEAL, metaData);

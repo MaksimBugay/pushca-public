@@ -260,15 +260,14 @@ public interface PushcaWebSocketApi {
    *
    * @param owner           - binary owner
    * @param binaryId        - binary identifier
-   * @param binaryName      - binary name
    * @param chunkSize       - pushca client splits file into chunks before sending and sends it
    *                        chunk by chunk
-   * @param withAcknowledge - wait for acknowledge of previous chunk delivery by receiver before
+   * @param manifestOnly    - only binary manifest should be sent, not data
    *                        send the next chunk
    * @param requestedChunks - upload only chunks with provided identifiers, if empty - upload all
    */
-  void sendUploadBinaryAppeal(PClient owner, String binaryId, String binaryName, int chunkSize,
-      boolean withAcknowledge, List<Integer> requestedChunks);
+  void sendUploadBinaryAppeal(ClientFilter owner, String binaryId, int chunkSize,
+      boolean manifestOnly, List<Integer> requestedChunks);
 
   /**
    * Ask binary owner to send some binary based on shared binary Pushca URI

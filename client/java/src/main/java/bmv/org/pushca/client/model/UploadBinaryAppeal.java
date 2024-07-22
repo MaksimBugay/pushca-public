@@ -5,20 +5,18 @@ import java.util.List;
 public class UploadBinaryAppeal {
 
   public PClient sender;
-  public PClient owner;
+  public ClientFilter owner;
   public String binaryId;
-  public String binaryName;
   public int chunkSize;
-  public boolean withAcknowledge;
+  public boolean manifestOnly;
   public List<Integer> requestedChunks;
 
   public UploadBinaryAppeal() {
   }
 
-  public UploadBinaryAppeal(PClient owner, String binaryId, String binaryName, int chunkSize) {
+  public UploadBinaryAppeal(ClientFilter owner, String binaryId, int chunkSize) {
     this.owner = owner;
     this.binaryId = binaryId;
-    this.binaryName = binaryName;
     this.chunkSize = chunkSize;
   }
 }
