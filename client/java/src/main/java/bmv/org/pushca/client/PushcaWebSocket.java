@@ -576,10 +576,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         0
     );
     byte[] binary = addAll(prefix, message);
-    String responseId = withAcknowledge ? binaryMsgId.toString()
-        : String.valueOf(binaryMsgId.toString().hashCode());
     executeWithRepeatOnFailure(
-        responseId,
+        binaryMsgId.toString(),
         () -> webSocket.send(binary)
     );
   }
@@ -662,7 +660,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
     sendBinary(
         uploadBinaryAppeal.sender,
-        manifest, false,
+        manifest, true,
         uploadBinaryAppeal.requestedChunks
     );
   }
@@ -683,8 +681,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         .collect(Collectors.toList());
 
     for (Datagram datagram : datagrams) {
-      final String ackId = buildAcknowledgeId(binaryObjectData.id, datagram.order);
-      final String responseId = withAcknowledge ? ackId : String.valueOf(ackId.hashCode());
+      final String responseId = buildAcknowledgeId(binaryObjectData.id, datagram.order);
       executeWithRepeatOnFailure(
           responseId,
           () -> webSocket.send(addAll(datagram.prefix, datagram.data))
