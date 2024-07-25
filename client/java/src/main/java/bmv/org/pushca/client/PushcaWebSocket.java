@@ -721,7 +721,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     metaData.put("owner", appeal.owner);
     metaData.put("binaryId", appeal.binaryId);
     metaData.put("chunkSize", appeal.chunkSize);
-    metaData.put("withAcknowledge", appeal.manifestOnly);
+    metaData.put("manifestOnly", appeal.manifestOnly);
     metaData.put("requestedChunks", appeal.requestedChunks);
 
     String response = sendCommand(SEND_UPLOAD_BINARY_APPEAL, metaData);
