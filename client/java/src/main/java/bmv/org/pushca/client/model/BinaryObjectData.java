@@ -9,6 +9,7 @@ public class BinaryObjectData {
   public String id;
 
   public String name;
+  public String mimeType;
   private List<Datagram> datagrams;
   public PClient sender;
   public String pusherInstanceId;
@@ -18,7 +19,7 @@ public class BinaryObjectData {
   public BinaryObjectData() {
   }
 
-  public BinaryObjectData(String id, String name, List<Datagram> datagrams, PClient sender,
+  public BinaryObjectData(String id, String name, String mimeType, List<Datagram> datagrams, PClient sender,
       String pusherInstanceId) {
     this.id = id;
     this.name = name;

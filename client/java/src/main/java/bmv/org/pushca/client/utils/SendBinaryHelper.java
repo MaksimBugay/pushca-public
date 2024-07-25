@@ -30,7 +30,7 @@ public final class SendBinaryHelper {
       datagrams.add(toDatagram(i, chunks.get(i)));
     }
 
-    return new BinaryObjectData(id, name, datagrams, sender, pusherInstanceId);
+    return new BinaryObjectData(id, name, null, datagrams, sender, pusherInstanceId);
   }
 
   public static Datagram toDatagram(int order, byte[] chunk) {
