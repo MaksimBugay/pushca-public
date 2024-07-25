@@ -653,8 +653,10 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   public void sendBinary(UploadBinaryAppeal uploadBinaryAppeal) {
     BinaryObjectData manifest = prepareBinaryManifest(
         null, "", uploadBinaryAppeal.binaryId, uploadBinaryAppeal.chunkSize);
-    sendBinaryManifest(new ClientFilter(uploadBinaryAppeal.sender),
-        deepClone(manifest, BinaryObjectData.class).setRedOnly(false));
+    if (uploadBinaryAppeal.manifestOnly || isEmpty(uploadBinaryAppeal.requestedChunks)) {
+      sendBinaryManifest(new ClientFilter(uploadBinaryAppeal.sender),
+          deepClone(manifest, BinaryObjectData.class).setRedOnly(false));
+    }
     if (uploadBinaryAppeal.manifestOnly) {
       return;
     }
