@@ -4,7 +4,6 @@ import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.toJson;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
-import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.internal.api.ApiGatewayResponseModule;
 import bmv.pushca.binary.proxy.jms.TopicProducer;
 import bmv.pushca.binary.proxy.model.ErrorObject;
@@ -12,8 +11,8 @@ import bmv.pushca.binary.proxy.model.InternalMessage;
 import bmv.pushca.binary.proxy.model.InternalMessage.JmsRoute;
 import bmv.pushca.binary.proxy.model.command.Command;
 import bmv.pushca.binary.proxy.model.query.Query;
+import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.Collectors;

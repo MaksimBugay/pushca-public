@@ -3,13 +3,10 @@ package bmv.pushca.binary.proxy.service;
 import static bmv.pushca.binary.proxy.util.serialisation.TaskRunner.runWithDelay;
 
 import bmv.pushca.binary.proxy.jms.kafka.config.MicroserviceWithKafkaConfiguration;
-import bmv.pushca.binary.proxy.pushca.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.ClientSearchFilter;
-import bmv.pushca.binary.proxy.util.serialisation.JsonUtility;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Service;

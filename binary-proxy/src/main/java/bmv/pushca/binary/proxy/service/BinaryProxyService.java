@@ -83,8 +83,4 @@ public class BinaryProxyService {
 
     return future;
   }
-
-  private byte[] generateChunk(long sequence) {
-    return ("Chunk " + sequence).getBytes(StandardCharsets.UTF_8);
-  }
 }
