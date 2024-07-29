@@ -1,5 +1,7 @@
 package bmv.pushca.binary.proxy.service;
 
+import static bmv.pushca.binary.proxy.util.serialisation.TaskRunner.runWithDelay;
+
 import bmv.pushca.binary.proxy.jms.kafka.config.MicroserviceWithKafkaConfiguration;
 import bmv.pushca.binary.proxy.pushca.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.ClientSearchFilter;
@@ -36,10 +38,21 @@ public class WebsocketPool {
     return future;
   }
 
-  public void completeWithBinaryManifest(BinaryManifest manifest) {
-    CompletableFuture<Object> future = waitingHall.asMap().get(manifest.id());
+  public void completeWithResponse(String id, Object responseObject) {
+    completeWithResponse(id, null, responseObject);
+  }
+
+  public void completeWithResponse(String id, String previousId, Object responseObject) {
+    if (previousId != null) {
+      CompletableFuture<Object> future = waitingHall.asMap().get(previousId);
+      if (future != null && !future.isDone()) {
+        runWithDelay(() -> completeWithResponse(id, previousId, responseObject), 100);
+        return;
+      }
+    }
+    CompletableFuture<Object> future = waitingHall.asMap().get(id);
     if (future != null) {
-      future.complete(manifest);
+      future.complete(responseObject);
     }
   }
 }

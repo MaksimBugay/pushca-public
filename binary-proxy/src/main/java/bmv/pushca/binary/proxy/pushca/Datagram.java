@@ -1,5 +1,7 @@
 package bmv.pushca.binary.proxy.pushca;
 
+import java.text.MessageFormat;
+
 public record Datagram(
     int size,
     String md5,
@@ -7,4 +9,7 @@ public record Datagram(
     int order
 ) {
 
+  public static String buildDatagramId(String binaryId, int order) {
+    return MessageFormat.format("{0}-{1}", binaryId, String.valueOf(order));
+  }
 }
