@@ -12,8 +12,10 @@ public class MicroserviceConfiguration {
   @Value("${spring.application.name:}")
   public String appName;
 
-  @Value("${api-gateway.requests-threads-pool.size:1200}")
-  public int requestThreadsPoolSize;
+  @Value("${api-gateway.selectors-threads-pool.size:8}")
+  public int webServerSelectorsPoolSize;
+  @Value("${api-gateway.workers-threads-pool.size:500}")
+  public int webServerWorkersPoolSize;
 
   @Value("${binary-proxy.delayed-executor.pool-size:100}")
   public int delayedExecutorPoolSize;

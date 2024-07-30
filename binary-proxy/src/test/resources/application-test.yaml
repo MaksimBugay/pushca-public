@@ -1,8 +1,11 @@
+
 spring:
   application:
     name: binary-proxy
   webflux:
     base-path: /
+  netty:
+    leak-detection: PARANOID
 
 management:
   endpoint.health.show-details: always
