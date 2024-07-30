@@ -1,12 +1,14 @@
 package bmv.pushca.binary.proxy;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
-import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Value;
@@ -64,15 +66,17 @@ class JmsApiControllerIT {
         .expectStatus().isOk()
         .returnResult(byte[].class)
         .getResponseBody();
-
+    Map<Integer, byte[]> binary = new ConcurrentHashMap<>();
+    AtomicInteger order = new AtomicInteger();
     StepVerifier.create(responseBody)
-        .consumeNextWith(
-            chunk -> assertThat(new String(chunk, StandardCharsets.UTF_8)).startsWith("Chunk 0"))
-        .consumeNextWith(
-            chunk -> assertThat(new String(chunk, StandardCharsets.UTF_8)).startsWith("Chunk 1"))
-        .consumeNextWith(
-            chunk -> assertThat(new String(chunk, StandardCharsets.UTF_8)).startsWith("Chunk 2"))
-        .thenConsumeWhile(chunk -> true)
+        .thenConsumeWhile(chunk -> {
+          binary.put(order.getAndIncrement(), chunk);
+          return true;
+        })
         .verifyComplete();
+    long totalSize = binary.values().stream()
+        .map(chunk -> chunk.length)
+        .reduce(Integer::sum).orElse(0);
+    assertEquals(3 * 1048576 + 173159, totalSize);
   }
 }

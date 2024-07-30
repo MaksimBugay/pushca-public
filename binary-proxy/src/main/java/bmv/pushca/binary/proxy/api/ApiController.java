@@ -37,7 +37,11 @@ public class ApiController {
         .flatMapMany(binaryManifest -> Flux.fromIterable(binaryManifest.datagrams())
             .flatMap(
                 dtm -> Mono.fromFuture(
-                        binaryProxyService.requestBinaryChunk(workspaceId, binaryId, dtm.order())
+                        binaryProxyService.requestBinaryChunk(
+                            workspaceId,
+                            binaryId,
+                            dtm.order(),
+                            dtm.order() == (binaryManifest.datagrams().size() - 1))
                     )
                     .onErrorResume(throwable -> Mono.error(
                         new RuntimeException("Error fetching chunk: " + dtm.order(), throwable)))
