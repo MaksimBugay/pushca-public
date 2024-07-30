@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.2.2</version>
+    <version>3.2.5</version>
     <relativePath/> <!-- lookup parent from repository -->
   </parent>
   <groupId>bmv.pushca</groupId>
@@ -17,9 +17,7 @@
   <properties>
     <java.version>17</java.version>
     <fasterxml.jackson.version>2.14.2</fasterxml.jackson.version>
-    <testcontainers.version>1.17.6</testcontainers.version>
-    <reactor-kafka.version>1.3.17</reactor-kafka.version>
-    <spring-kafka.version>3.0.5</spring-kafka.version>
+    <testcontainers.version>1.19.8</testcontainers.version>
     <caffeine.version>3.1.5</caffeine.version>
   </properties>
 
@@ -40,16 +38,6 @@
         <scope>import</scope>
       </dependency>
       <dependency>
-        <groupId>io.projectreactor.kafka</groupId>
-        <artifactId>reactor-kafka</artifactId>
-        <version>${reactor-kafka.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.springframework.kafka</groupId>
-        <artifactId>spring-kafka</artifactId>
-        <version>${spring-kafka.version}</version>
-      </dependency>
-      <dependency>
         <groupId>com.github.ben-manes.caffeine</groupId>
         <artifactId>caffeine</artifactId>
         <version>${caffeine.version}</version>
@@ -64,19 +52,7 @@
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-undertow</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.projectreactor.kafka</groupId>
-      <artifactId>reactor-kafka</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.kafka</groupId>
-      <artifactId>spring-kafka</artifactId>
     </dependency>
     <dependency>
       <groupId>com.github.ben-manes.caffeine</groupId>
@@ -124,11 +100,6 @@
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>kafka</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

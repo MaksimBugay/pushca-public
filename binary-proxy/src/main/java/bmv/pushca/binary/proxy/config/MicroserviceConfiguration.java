@@ -1,7 +1,9 @@
 package bmv.pushca.binary.proxy.config;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
 
+@Configuration
 public class MicroserviceConfiguration {
 
   @Value("${api-gateway.response.timeout.ms}")

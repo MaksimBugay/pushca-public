@@ -3,6 +3,7 @@ package bmv.pushca.binary.proxy.util.serialisation;
 import static java.util.stream.Collectors.toMap;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -166,5 +167,14 @@ public final class JsonUtility {
 
   public static ObjectMapper getWithNullMapper() {
     return WITH_NULL_MAPPER;
+  }
+
+  public static boolean isValid(String json) {
+    try {
+      SIMPLE_MAPPER.readTree(json);
+    } catch (JacksonException e) {
+      return false;
+    }
+    return true;
   }
 }

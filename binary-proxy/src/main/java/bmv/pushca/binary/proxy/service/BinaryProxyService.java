@@ -1,11 +1,11 @@
 package bmv.pushca.binary.proxy.service;
 
-import static bmv.pushca.binary.proxy.pushca.Datagram.buildDatagramId;
-import static bmv.pushca.binary.proxy.pushca.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
+import static bmv.pushca.binary.proxy.pushca.model.Datagram.buildDatagramId;
+import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
 
-import bmv.pushca.binary.proxy.pushca.BinaryManifest;
-import bmv.pushca.binary.proxy.pushca.ClientSearchData;
-import bmv.pushca.binary.proxy.pushca.Datagram;
+import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
+import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
+import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;

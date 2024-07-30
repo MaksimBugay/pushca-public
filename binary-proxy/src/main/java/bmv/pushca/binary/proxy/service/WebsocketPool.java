@@ -1,7 +1,7 @@
 package bmv.pushca.binary.proxy.service;
 
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
-import bmv.pushca.binary.proxy.pushca.ClientSearchFilter;
+import bmv.pushca.binary.proxy.pushca.model.ClientSearchFilter;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.util.List;
