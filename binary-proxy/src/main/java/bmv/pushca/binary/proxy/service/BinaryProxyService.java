@@ -5,6 +5,7 @@ import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CH
 
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
+import bmv.pushca.binary.proxy.pushca.model.ClientSearchFilter;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -27,7 +28,7 @@ public class BinaryProxyService {
         binaryId,
         BinaryManifest.class
     );
-    websocketPool.sendUploadBinaryAppeal(
+    sendUploadBinaryAppeal(
         new ClientSearchData(
             workspaceId,
             null,
@@ -64,7 +65,7 @@ public class BinaryProxyService {
         byte[].class
     );
 
-    websocketPool.sendUploadBinaryAppeal(
+    sendUploadBinaryAppeal(
         new ClientSearchData(
             workspaceId,
             null,
@@ -82,5 +83,10 @@ public class BinaryProxyService {
         (10 - order) * 100L);
 
     return future;
+  }
+
+  private void sendUploadBinaryAppeal(ClientSearchFilter owner, String binaryId, int chunkSize,
+      boolean manifestOnly, List<Integer> requestedChunks) {
+
   }
 }

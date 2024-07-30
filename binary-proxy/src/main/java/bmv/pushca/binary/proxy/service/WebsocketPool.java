@@ -5,7 +5,6 @@ import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.pushca.connection.ListWithRandomAccess;
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClient;
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
-import bmv.pushca.binary.proxy.pushca.model.ClientSearchFilter;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.util.List;
@@ -75,11 +74,6 @@ public class WebsocketPool implements DisposableBean {
       throw new IllegalStateException("Pushca connection pool is exhausted");
     }
     return wsPool.get();
-  }
-
-  public void sendUploadBinaryAppeal(ClientSearchFilter owner, String binaryId, int chunkSize,
-      boolean manifestOnly, List<Integer> requestedChunks) {
-
   }
 
   public <T> CompletableFuture<T> registerResponseFuture(String waiterId, Class<T> responseType) {
