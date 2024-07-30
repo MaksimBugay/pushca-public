@@ -102,7 +102,7 @@ public class ApiGatewayModule {
     try {
       messages = Arrays.stream(payloads).map(
           payload -> Command.getCommand(commandName, toJson(payload), apiGatewayResponseRoute)
-      ).collect(Collectors.toList()).toArray(new InternalMessage[] {});
+      ).toList().toArray(new InternalMessage[] {});
     } catch (IllegalArgumentException ex) {
       return Mono.just(toJson(ErrorObject.getInstance(ex)));
     }

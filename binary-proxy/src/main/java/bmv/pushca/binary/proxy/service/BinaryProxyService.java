@@ -2,7 +2,6 @@ package bmv.pushca.binary.proxy.service;
 
 import static bmv.pushca.binary.proxy.pushca.Datagram.buildDatagramId;
 import static bmv.pushca.binary.proxy.pushca.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
-import static bmv.pushca.binary.proxy.util.serialisation.TaskRunner.runWithDelay;
 
 import bmv.pushca.binary.proxy.pushca.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.ClientSearchData;
@@ -50,7 +49,8 @@ public class BinaryProxyService {
         ),
         null, null
     );
-    runWithDelay(() -> websocketPool.completeWithResponse(manifest.id(), manifest), 300L);
+    websocketPool.runWithDelay(() -> websocketPool.completeWithResponse(manifest.id(), manifest),
+        300L);
 
     return future;
   }
@@ -74,7 +74,7 @@ public class BinaryProxyService {
         binaryId, DEFAULT_CHUNK_SIZE, false, List.of(order)
     );
 
-    runWithDelay(() -> websocketPool.completeWithResponse(
+    websocketPool.runWithDelay(() -> websocketPool.completeWithResponse(
             datagramId,
             previousDatagramId,
             ("Chunk " + order).getBytes(StandardCharsets.UTF_8)

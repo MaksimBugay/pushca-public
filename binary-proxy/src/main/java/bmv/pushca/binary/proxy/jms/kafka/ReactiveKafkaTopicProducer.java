@@ -62,7 +62,7 @@ public class ReactiveKafkaTopicProducer implements TopicProducer {
     CompletableFuture<Void> future = new CompletableFuture<>();
     CountDownLatch latch = new CountDownLatch(messages.length);
     List<SendData> sendDataList = Arrays.stream(messages).flatMap(msg -> msg.getSendData().stream())
-        .collect(Collectors.toList());
+        .toList();
     sender.send(
         Flux.range(1, sendDataList.size())
             .map(i -> SenderRecord.create(

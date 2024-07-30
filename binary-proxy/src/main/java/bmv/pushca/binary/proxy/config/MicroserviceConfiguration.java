@@ -12,4 +12,7 @@ public class MicroserviceConfiguration {
 
   @Value("${api-gateway.requests-threads-pool.size:1200}")
   public int requestThreadsPoolSize;
+
+  @Value("${binary-proxy.delayed-executor.pool-size:100}")
+  public int delayedExecutorPoolSize;
 }
