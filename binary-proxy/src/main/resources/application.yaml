@@ -19,7 +19,7 @@ logging:
 binary-proxy:
   response:
     timeout:
-      ms: 5000
+      ms: 1200000
   selectors-threads-pool:
     size: 2
   workers-threads-pool:

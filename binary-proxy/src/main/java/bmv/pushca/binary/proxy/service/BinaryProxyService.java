@@ -45,7 +45,7 @@ public class BinaryProxyService {
   }
 
   public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String binaryId,
-      Datagram datagram, boolean isLastChunk) {
+      Datagram datagram) {
     final ClientSearchData ownerFilter = new ClientSearchData(
         workspaceId,
         null,
@@ -61,11 +61,12 @@ public class BinaryProxyService {
         MessageFormat.format("Invalid chunk {0} of binary with id {1} was received",
             String.valueOf(datagram.order()), binaryId)
     );
+
     websocketPool.registerResponseWaiter(
         datagramId, responseWaiter
     );
 
-    if (isLastChunk) {
+    if (datagram.order() == 0) {
       sendUploadBinaryAppeal(
           ownerFilter, binaryId, DEFAULT_CHUNK_SIZE, false, null
       );

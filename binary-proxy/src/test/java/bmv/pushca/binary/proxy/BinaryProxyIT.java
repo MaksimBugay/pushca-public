@@ -26,7 +26,7 @@ import reactor.test.StepVerifier;
 @TestPropertySource(locations = "classpath:application-test.yaml")
 @SpringBootTest(classes = {
     BinaryProxyMicroservice.class}, webEnvironment = RANDOM_PORT)
-class JmsApiControllerIT {
+class BinaryProxyIT {
 
   static {
   }
@@ -57,13 +57,15 @@ class JmsApiControllerIT {
     Thread.sleep(2000);
     final String workspaceId = "cec7abf69bab9f5aa793bd1c0c101e99";
     final String binaryId = "a9be54a5-5203-4fa6-9515-eda2341f5890";
+    String mimeType = "video/mp4";
     Flux<byte[]> responseBody = client.get().uri(MessageFormat.format(
-            "/binary/{0}/{1}",
+            "/binary/{0}/{1}?mimeType=" + mimeType,
             workspaceId,
             binaryId
         ))
         .exchange()
         .expectStatus().isOk()
+        .expectHeader().contentType(mimeType)
         .returnResult(byte[].class)
         .getResponseBody();
     Map<Integer, byte[]> binary = new ConcurrentHashMap<>();

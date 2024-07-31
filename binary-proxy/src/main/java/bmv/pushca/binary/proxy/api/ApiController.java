@@ -14,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -35,10 +36,12 @@ public class ApiController {
   }
 
   @GetMapping(value = "/binary/{workspaceId}/{binaryId}")
-  public Flux<byte[]> serveBinaryAsStream(@PathVariable String workspaceId,
+  public Flux<byte[]> serveBinaryAsStream(
+      @PathVariable String workspaceId,
       @PathVariable String binaryId,
+      @RequestParam(value = "mimeType", defaultValue = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+      String mimeType,
       ServerHttpResponse response) {
-    String mimeType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
     response.getHeaders().setContentType(MediaType.valueOf(mimeType));
 
     return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId)
@@ -51,8 +54,7 @@ public class ApiController {
                         binaryProxyService.requestBinaryChunk(
                                 workspaceId,
                                 binaryId,
-                                dtm,
-                                dtm.order() == (binaryManifest.datagrams().size() - 1))
+                                dtm)
                             .orTimeout(responseTimeoutMs, TimeUnit.MILLISECONDS)
                     )
                     .onErrorResume(throwable -> Mono.error(
