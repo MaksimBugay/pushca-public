@@ -54,7 +54,7 @@ public class BinaryProxyService {
     );
     final String datagramId = buildDatagramId(binaryId, datagram.order());
     ResponseWaiter<byte[]> responseWaiter = new ResponseWaiter<>(
-        (chunk) -> chunk.length == /*datagram.size()*/1048576 && calculateSha256(chunk).equals(datagram.md5()),
+        (chunk) -> chunk.length == datagram.size() && calculateSha256(chunk).equals(datagram.md5()),
         (ex) -> sendUploadBinaryAppeal(
             ownerFilter, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order())
         ),

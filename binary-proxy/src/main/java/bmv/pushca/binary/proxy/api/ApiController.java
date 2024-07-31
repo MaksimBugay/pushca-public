@@ -2,8 +2,12 @@ package bmv.pushca.binary.proxy.api;
 
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
-import java.time.Duration;
+import bmv.pushca.binary.proxy.service.WebsocketPool;
+import java.text.MessageFormat;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -16,6 +20,8 @@ import reactor.core.publisher.Mono;
 
 @RestController
 public class ApiController {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(WebsocketPool.class);
 
   private final BinaryProxyService binaryProxyService;
   private final int responseTimeoutMs;
@@ -35,24 +41,31 @@ public class ApiController {
     String mimeType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
     response.getHeaders().setContentType(MediaType.valueOf(mimeType));
 
-    return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
+    return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId)
+            .orTimeout(responseTimeoutMs, TimeUnit.MILLISECONDS))
+        .onErrorResume(throwable -> Mono.error(
+            new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
         .flatMapMany(binaryManifest -> Flux.fromIterable(binaryManifest.datagrams())
             .flatMap(
                 dtm -> Mono.fromFuture(
                         binaryProxyService.requestBinaryChunk(
-                            workspaceId,
-                            binaryId,
-                            dtm,
-                            dtm.order() == (binaryManifest.datagrams().size() - 1))
+                                workspaceId,
+                                binaryId,
+                                dtm,
+                                dtm.order() == (binaryManifest.datagrams().size() - 1))
+                            .orTimeout(responseTimeoutMs, TimeUnit.MILLISECONDS)
                     )
                     .onErrorResume(throwable -> Mono.error(
-                        new RuntimeException("Error fetching chunk: " + dtm.order(), throwable)))
-                    .timeout(Duration.ofMillis(responseTimeoutMs))
+                        new RuntimeException(MessageFormat.format(
+                            "Error fetching chunk: binary id {0}, order {1}",
+                            binaryId, String.valueOf(dtm.order())), throwable)))
             )
         )
         .onErrorResume(
             throwable -> {
-              if (throwable instanceof TimeoutException) {
+              if (throwable instanceof RuntimeException
+                  && throwable.getCause() instanceof TimeoutException) {
+                LOGGER.error("Failed attempt to download binary with id {}", binaryId, throwable);
                 response.setStatusCode(HttpStatus.NOT_FOUND);
                 return Mono.empty();
               } else {
