@@ -65,17 +65,19 @@ public class WebsocketPool implements DisposableBean {
             "delayedExecutionThreads");
 
     runWithDelay(() -> {
-      List<PushcaWsClient> pool = pushcaWsClientFactory.createConnectionPool(
+      pushcaWsClientFactory.createConnectionPool(
           pushcaConfig.getPushcaConnectionPoolSize(), null,
           this::wsConnectionMessageWasReceivedHandler,
           this::wsConnectionDataWasReceivedHandler,
           this::wsConnectionWasOpenHandler,
-          this::wsConnectionWasClosedHandler);
-      for (int i = 0; i < pool.size(); i++) {
-        final int index = i;
-        runWithDelay(() -> pool.get(index).connect(), i * 500L);
-      }
-    }, 200);
+          this::wsConnectionWasClosedHandler).subscribe(pool -> {
+        for (int i = 0; i < pool.size(); i++) {
+          final int index = i;
+          runWithDelay(() -> pool.get(index).connect(), i * 500L);
+        }
+      });
+    }, 1000);
+
     delayedExecutor.schedulePeriodically(
         () -> wsPool.forEach(ws -> ws.send(buildCommandMessage(null, PING).commandBody)),
         25, 30, TimeUnit.SECONDS

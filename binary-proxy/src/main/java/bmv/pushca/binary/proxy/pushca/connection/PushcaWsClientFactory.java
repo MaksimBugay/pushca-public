@@ -27,6 +27,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
@@ -51,7 +52,7 @@ public class PushcaWsClientFactory {
     this.webClient = initWebClient();
   }
 
-  public List<PushcaWsClient> createConnectionPool(int poolSize, String pusherInstanceId,
+  public Mono<List<PushcaWsClient>> createConnectionPool(int poolSize, String pusherInstanceId,
       Consumer<String> messageConsumer,
       BiConsumer<PushcaWsClient, ByteBuffer> dataConsumer,
       Consumer<PushcaWsClient> afterOpenListener,
@@ -62,43 +63,53 @@ public class PushcaWsClientFactory {
         microserviceConfiguration.getInstanceId(),
         BINARY_PROXY_CONNECTION_TO_PUSHER_APP_ID
     );
-    OpenConnectionPoolResponse openConnectionPoolResponse = webClient.post()
+
+    return webClient.post()
         .uri(pushcaConfig.getPushcaClusterUrl() + "/open-connection-pool")
         .body(Mono.just(new OpenConnectionPoolRequest(client, pusherInstanceId, poolSize)),
-            OpenConnectionPoolResponse.class)
+            OpenConnectionPoolRequest.class)
         .accept(MediaType.APPLICATION_JSON)
         .exchangeToMono(clientResponse -> {
           if (!HttpStatus.OK.equals(clientResponse.statusCode())) {
-            throw new IllegalStateException(
-                "Failed attempt to open internal ws connections pool" + toJson(client));
+            return Mono.error(new IllegalStateException(
+                "Failed attempt to open internal ws connections pool" + toJson(client)));
           } else {
             return clientResponse.bodyToMono(OpenConnectionPoolResponse.class);
           }
-        }).block();
-    if (openConnectionPoolResponse == null || CollectionUtils.isEmpty(
-        openConnectionPoolResponse.addresses())) {
-      throw new IllegalStateException(
-          "Failed attempt to open internal ws connections pool(empty response) " + toJson(client));
-    }
-    AtomicInteger counter = new AtomicInteger();
-    return openConnectionPoolResponse.addresses().stream()
-        .map(address -> {
-          try {
-            return new PushcaWsClient(
-                new URI(address.externalAdvertisedUrl()),
-                MessageFormat.format("{0}_{1}", client.accountId(), counter.incrementAndGet()),
-                Math.toIntExact(Duration.ofMinutes(5).toMillis()),
-                messageConsumer,
-                dataConsumer,
-                afterOpenListener,
-                afterCloseListener,
-                pushcaConfig.getSslContext()
-            );
-          } catch (URISyntaxException e) {
-            throw new RuntimeException(e);
-          }
         })
-        .toList();
+        .flatMap(openConnectionPoolResponse -> {
+          if (openConnectionPoolResponse == null || CollectionUtils.isEmpty(
+              openConnectionPoolResponse.addresses())) {
+            return Mono.error(new IllegalStateException(
+                "Failed attempt to open internal ws connections pool(empty response) " + toJson(
+                    client)));
+          }
+          AtomicInteger counter = new AtomicInteger();
+          return Flux.fromIterable(openConnectionPoolResponse.addresses())
+              .<PushcaWsClient>handle((address, sink) -> {
+                try {
+                  sink.next(new PushcaWsClient(
+                      new URI(address.externalAdvertisedUrl()),
+                      MessageFormat.format("{0}_{1}", client.accountId(),
+                          counter.incrementAndGet()),
+                      Math.toIntExact(Duration.ofMinutes(5).toMillis()),
+                      messageConsumer,
+                      dataConsumer,
+                      afterOpenListener,
+                      afterCloseListener,
+                      pushcaConfig.getSslContext()
+                  ));
+                } catch (URISyntaxException e) {
+                  sink.error(new RuntimeException(e));
+                }
+              })
+              .collectList();
+        })
+        .onErrorResume(throwable -> {
+          LOGGER.error("Failed attempt to get authorized websocket urls from Pushca", throwable);
+          return Mono.empty();
+        })
+        .timeout(Duration.ofSeconds(30));
   }
 
   private WebClient initWebClient() {
