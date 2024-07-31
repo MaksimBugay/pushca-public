@@ -1,12 +1,16 @@
 package bmv.pushca.binary.proxy.service;
 
+import static bmv.pushca.binary.proxy.pushca.BmvObjectUtils.calculateSha256;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_UPLOAD_BINARY_APPEAL;
 import static bmv.pushca.binary.proxy.pushca.model.Datagram.buildDatagramId;
 import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
 
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
+import bmv.pushca.binary.proxy.pushca.model.Datagram;
+import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
 import bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal;
+import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,25 +45,33 @@ public class BinaryProxyService {
   }
 
   public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String binaryId,
-      int order, boolean isLastChunk) {
-    final String datagramId = buildDatagramId(binaryId, order);
-    CompletableFuture<byte[]> future = websocketPool.registerResponseWaiter(
-        datagramId
+      Datagram datagram, boolean isLastChunk) {
+    final ClientSearchData ownerFilter = new ClientSearchData(
+        workspaceId,
+        null,
+        null,
+        "ultimate-file-sharing-listener"
+    );
+    final String datagramId = buildDatagramId(binaryId, datagram.order());
+    ResponseWaiter<byte[]> responseWaiter = new ResponseWaiter<>(
+        (chunk) -> chunk.length == /*datagram.size()*/1048576 && calculateSha256(chunk).equals(datagram.md5()),
+        (ex) -> sendUploadBinaryAppeal(
+            ownerFilter, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order())
+        ),
+        MessageFormat.format("Invalid chunk {0} of binary with id {1} was received",
+            String.valueOf(datagram.order()), binaryId)
+    );
+    websocketPool.registerResponseWaiter(
+        datagramId, responseWaiter
     );
 
     if (isLastChunk) {
       sendUploadBinaryAppeal(
-          new ClientSearchData(
-              workspaceId,
-              null,
-              null,
-              "ultimate-file-sharing-listener"
-          ),
-          binaryId, DEFAULT_CHUNK_SIZE, false, null
+          ownerFilter, binaryId, DEFAULT_CHUNK_SIZE, false, null
       );
     }
 
-    return future;
+    return responseWaiter;
   }
 
   private void sendUploadBinaryAppeal(ClientSearchData owner, String binaryId, int chunkSize,

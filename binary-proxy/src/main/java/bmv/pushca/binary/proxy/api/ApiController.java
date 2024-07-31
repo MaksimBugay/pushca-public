@@ -3,7 +3,9 @@ package bmv.pushca.binary.proxy.api;
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import java.time.Duration;
+import java.util.concurrent.TimeoutException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,7 +42,7 @@ public class ApiController {
                         binaryProxyService.requestBinaryChunk(
                             workspaceId,
                             binaryId,
-                            dtm.order(),
+                            dtm,
                             dtm.order() == (binaryManifest.datagrams().size() - 1))
                     )
                     .onErrorResume(throwable -> Mono.error(
@@ -49,9 +51,16 @@ public class ApiController {
             )
         )
         .onErrorResume(
-            throwable -> Mono.error(new RuntimeException("Error fetching binary data", throwable)))
-        .doOnCancel(() -> {
+            throwable -> {
+              if (throwable instanceof TimeoutException) {
+                response.setStatusCode(HttpStatus.NOT_FOUND);
+                return Mono.empty();
+              } else {
+                return Mono.error(new RuntimeException("Error fetching binary data", throwable));
+              }
+            });
+        /*.doOnCancel(() -> {
 
-        });
+        });*/
   }
 }
