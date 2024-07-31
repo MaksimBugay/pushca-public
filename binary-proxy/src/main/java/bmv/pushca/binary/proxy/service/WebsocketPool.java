@@ -2,8 +2,10 @@ package bmv.pushca.binary.proxy.service;
 
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.BINARY_MANIFEST;
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.buildCommandMessage;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.isValidMessageType;
 import static bmv.pushca.binary.proxy.pushca.model.Command.ACKNOWLEDGE;
+import static bmv.pushca.binary.proxy.pushca.model.Command.PING;
 import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.fromJson;
 
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
@@ -43,6 +45,7 @@ public class WebsocketPool implements DisposableBean {
 
   private final AsyncLoadingCache<String, Object> waitingHall;
 
+  private final PushcaConfig pushcaConfig;
   private final Scheduler delayedExecutor;
 
   private final ListWithRandomAccess<PushcaWsClient> wsPool =
@@ -51,6 +54,7 @@ public class WebsocketPool implements DisposableBean {
   public WebsocketPool(MicroserviceConfiguration configuration,
       PushcaConfig pushcaConfig,
       PushcaWsClientFactory pushcaWsClientFactory) {
+    this.pushcaConfig = pushcaConfig;
     this.waitingHall =
         Caffeine.newBuilder()
             .expireAfterWrite(configuration.responseTimeoutMs, TimeUnit.MILLISECONDS)
@@ -72,6 +76,10 @@ public class WebsocketPool implements DisposableBean {
         runWithDelay(() -> pool.get(index).connect(), i * 500L);
       }
     }, 200);
+    delayedExecutor.schedulePeriodically(
+        () -> wsPool.forEach(ws -> ws.send(buildCommandMessage(null, PING).commandBody)),
+        25, 30, TimeUnit.SECONDS
+    );
 
     runWithDelay(() -> {
       LOGGER.info("Pushca connection pool: size = {}", wsPool.size());
@@ -102,11 +110,11 @@ public class WebsocketPool implements DisposableBean {
   private void wsConnectionDataWasReceivedHandler(PushcaWsClient ws, ByteBuffer data) {
     //LOGGER.info("New portion of data arrived: {}", data.array().length);
     BinaryWithHeader binaryWithHeader = new BinaryWithHeader(data.array());
-    LOGGER.info("New chunk arrived on {}: {}, {}, {}",
+    /*LOGGER.info("New chunk arrived on {}: {}, {}, {}",
         ws.getClientId(),
         binaryWithHeader.binaryId(),
         binaryWithHeader.order(),
-        binaryWithHeader.getPayload().length);
+        binaryWithHeader.getPayload().length);*/
     completeWithResponse(
         binaryWithHeader.getDatagramId(),
         binaryWithHeader.order() == 0 ? null : Datagram.buildDatagramId(
@@ -182,5 +190,11 @@ public class WebsocketPool implements DisposableBean {
   public void destroy() {
     wsPool.forEach(WebSocketClient::close);
     Optional.ofNullable(delayedExecutor).ifPresent(Scheduler::dispose);
+  }
+
+  public void isHealthy() {
+    if (((1.0 * wsPool.size()) / pushcaConfig.getPushcaConnectionPoolSize()) < 0.7) {
+      throw new IllegalStateException("Pushca connection pool is broken");
+    }
   }
 }

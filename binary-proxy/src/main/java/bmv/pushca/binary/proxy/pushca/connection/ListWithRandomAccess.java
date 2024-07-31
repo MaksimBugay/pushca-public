@@ -18,6 +18,10 @@ public record ListWithRandomAccess<T>(List<T> list, SplittableRandom random) {
     return list.get(random.nextInt(list.size()));
   }
 
+  public T get(int index) {
+    return list.get(index);
+  }
+
   public boolean add(T element) {
     return list.add(element);
   }

@@ -30,4 +30,4 @@ binary-proxy:
     cluster:
       url: http://vasilii.prodpushca.com:8070
     connection-pool:
-      size: 7
+      size: 10
