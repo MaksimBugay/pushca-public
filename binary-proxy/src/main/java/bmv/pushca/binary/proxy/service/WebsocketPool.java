@@ -18,15 +18,14 @@ import bmv.pushca.binary.proxy.pushca.connection.model.BinaryWithHeader;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.Command;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
+import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.java_websocket.client.WebSocketClient;
@@ -128,28 +127,38 @@ public class WebsocketPool implements DisposableBean {
     return wsPool.get();
   }
 
-  public <T> CompletableFuture<T> registerResponseFuture(String waiterId, Class<T> responseType) {
-    CompletableFuture<T> future = new CompletableFuture<>();
-    waitingHall.put(waiterId, future);
-    return future;
+  public <T> ResponseWaiter<T> registerResponseWaiter(String waiterId,
+      ResponseWaiter<T> responseWaiter) {
+    waitingHall.put(waiterId, responseWaiter);
+    return responseWaiter;
   }
 
-  public void completeWithResponse(String id, Object responseObject) {
+  public <T> ResponseWaiter<T> registerResponseWaiter(String waiterId) {
+    return registerResponseWaiter(waiterId, new ResponseWaiter<>());
+  }
+
+  public <T> void completeWithResponse(String id, T responseObject) {
     completeWithResponse(id, null, responseObject);
   }
 
-  public void completeWithResponse(String id, String previousId, Object responseObject) {
+  public <T> void completeWithResponse(String id, String previousId, T responseObject) {
     if (previousId != null) {
-      CompletableFuture<Object> future = waitingHall.asMap().get(previousId);
-      if (future != null && !future.isDone()) {
+      ResponseWaiter<T> waiter = getWaiter(previousId);
+      if (waiter != null && !waiter.isDone()) {
         runWithDelay(() -> completeWithResponse(id, previousId, responseObject), 100);
         return;
       }
     }
-    CompletableFuture<Object> future = waitingHall.asMap().get(id);
-    if (future != null) {
-      future.complete(responseObject);
+    ResponseWaiter<T> waiter = getWaiter(id);
+    if (waiter != null) {
+      if (waiter.isResponseValid(responseObject)) {
+        waiter.complete(responseObject);
+      }
     }
+  }
+
+  private <T> ResponseWaiter<T> getWaiter(String id) {
+    return (ResponseWaiter<T>) waitingHall.asMap().get(id);
   }
 
   public void sendAcknowledge(String id) {

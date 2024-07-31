@@ -24,9 +24,8 @@ public class BinaryProxyService {
 
   public CompletableFuture<BinaryManifest> requestBinaryManifest(String workspaceId,
       String binaryId) {
-    CompletableFuture<BinaryManifest> future = websocketPool.registerResponseFuture(
-        binaryId,
-        BinaryManifest.class
+    CompletableFuture<BinaryManifest> future = websocketPool.registerResponseWaiter(
+        binaryId
     );
     sendUploadBinaryAppeal(
         new ClientSearchData(
@@ -44,9 +43,8 @@ public class BinaryProxyService {
   public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String binaryId,
       int order, boolean isLastChunk) {
     final String datagramId = buildDatagramId(binaryId, order);
-    CompletableFuture<byte[]> future = websocketPool.registerResponseFuture(
-        datagramId,
-        byte[].class
+    CompletableFuture<byte[]> future = websocketPool.registerResponseWaiter(
+        datagramId
     );
 
     if (isLastChunk) {
