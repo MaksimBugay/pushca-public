@@ -6,7 +6,7 @@ services:
     image: n7fr846yfa6ohlhe/mbugai:binary-proxy-${DEPLOY_VERSION:-1}
     environment:
       - 'spring.config.location=/conf/application.yaml'
-#      - 'JVM_ARGS=-agentlib:jdwp=transport=dt_socket,address=8081,server=y,suspend=n'
+      - 'JVM_ARGS=-agentlib:jdwp=transport=dt_socket,address=8081,server=y,suspend=n'
     ports:
       - target: 8080
         published: 8060

@@ -1,6 +1,4 @@
-#FROM eclipse-temurin:20_36-jdk-alpine
 FROM eclipse-temurin:22.0.2_9-jdk-alpine
-MAINTAINER MBugai <maksim.bugai@multilogin.com>
 
 #install curl and remove apk indexes
 RUN apk update && apk add curl \
