@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  binary-proxy:
+    restart: unless-stopped
+    image: n7fr846yfa6ohlhe/mbugai:binary-proxy-${DEPLOY_VERSION:-1}
+    environment:
+      - 'spring.config.location=/conf/application.yaml'
+#      - 'JVM_ARGS=-agentlib:jdwp=transport=dt_socket,address=8081,server=y,suspend=n'
+    ports:
+      - target: 8080
+        published: 8060
+        protocol: tcp
+#        mode: host
+    configs:
+      - source: binary-proxy-config
+        target: /conf/application.yaml
+    networks:
+      default:
+        aliases:
+          - binary-proxy-local
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "10"
+    labels:
+      filebeats_log: "false"
+    deploy:
+      labels:
+        - traefik.enable=false
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 9999999
+        window: 90s
+
+networks:
+  default:
+    external: true
+    name: "mla"
+
+configs:
+  binary-proxy-config:
+    name: binary-proxy-config-${CONFIG_VERSION:-0}
+    file: conf/application.yaml

@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: binary-proxy
+  webflux:
+    base-path: /
+  netty:
+    leak-detection: PARANOID
+
+management:
+  endpoint.health.show-details: always
+  endpoints.web.exposure:
+    include: '*'
+    exclude: 'shutdown'
+
+logging:
+  level:
+    root: INFO
+
+binary-proxy:
+  response:
+    timeout:
+      ms: 1200000
+  selectors-threads-pool:
+    size: 2
+  workers-threads-pool:
+    size: 20
+  delayed-executor-pool:
+    size: 10
+  pushca:
+    cluster:
+      url: http://vasilii.prodpushca.com:8070
+    connection-pool:
+      size: 10
