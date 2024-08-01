@@ -1,21 +1,21 @@
 package bmv.pushca.binary.proxy.service;
 
-import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.calculateSha256;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_UPLOAD_BINARY_APPEAL;
 import static bmv.pushca.binary.proxy.pushca.model.Datagram.buildDatagramId;
 import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
+import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.calculateSha256;
 
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
-import bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal;
 import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -37,31 +37,19 @@ public class BinaryProxyService {
         binaryId
     );
     sendUploadBinaryAppeal(
-        new ClientSearchData(
-            workspaceId,
-            null,
-            null,
-            "ultimate-file-sharing-listener"
-        ),
-        binaryId, DEFAULT_CHUNK_SIZE, true, null
+        workspaceId, binaryId, DEFAULT_CHUNK_SIZE, true, null
     );
 
     return future;
   }
 
   public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String binaryId,
-      Datagram datagram) {
-    final ClientSearchData ownerFilter = new ClientSearchData(
-        workspaceId,
-        null,
-        null,
-        "ultimate-file-sharing-listener"
-    );
+      Datagram datagram, int responseTimeoutMs) {
     final String datagramId = buildDatagramId(binaryId, datagram.order(), pushcaClientHashCode);
     ResponseWaiter<byte[]> responseWaiter = new ResponseWaiter<>(
         (chunk) -> chunk.length == datagram.size() && calculateSha256(chunk).equals(datagram.md5()),
         (ex) -> sendUploadBinaryAppeal(
-            ownerFilter, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order())
+            workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order())
         ),
         MessageFormat.format("Invalid chunk {0} of binary with id {1} was received",
             String.valueOf(datagram.order()), binaryId)
@@ -73,17 +61,24 @@ public class BinaryProxyService {
 
     if (datagram.order() == 0) {
       sendUploadBinaryAppeal(
-          ownerFilter, binaryId, DEFAULT_CHUNK_SIZE, false, null
+          workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(0)
       );
     }
 
-    return responseWaiter;
+    return responseWaiter
+        .orTimeout(responseTimeoutMs, TimeUnit.MILLISECONDS);
   }
 
-  private void sendUploadBinaryAppeal(ClientSearchData owner, String binaryId, int chunkSize,
+  public void sendUploadBinaryAppeal(String workspaceId, String binaryId, int chunkSize,
       boolean manifestOnly, List<Integer> requestedChunks) {
+    final ClientSearchData ownerFilter = new ClientSearchData(
+        workspaceId,
+        null,
+        null,
+        "ultimate-file-sharing-listener"
+    );
     Map<String, Object> metaData = new HashMap<>();
-    metaData.put("owner", owner);
+    metaData.put("owner", ownerFilter);
     metaData.put("binaryId", binaryId);
     metaData.put("chunkSize", chunkSize);
     metaData.put("manifestOnly", manifestOnly);
@@ -92,13 +87,4 @@ public class BinaryProxyService {
     websocketPool.sendCommand(null, SEND_UPLOAD_BINARY_APPEAL, metaData);
   }
 
-  private synchronized void sendUploadBinaryAppeal(UploadBinaryAppeal appeal) {
-    sendUploadBinaryAppeal(
-        appeal.owner(),
-        appeal.binaryId(),
-        appeal.chunkSize(),
-        appeal.manifestOnly(),
-        appeal.requestedChunks()
-    );
-  }
 }

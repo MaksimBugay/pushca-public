@@ -1,9 +1,12 @@
 package bmv.pushca.binary.proxy.api;
 
+import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
+
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
 import java.text.MessageFormat;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
@@ -52,11 +55,18 @@ public class ApiController {
             .flatMap(
                 dtm -> Mono.fromFuture(
                         binaryProxyService.requestBinaryChunk(
-                                workspaceId,
-                                binaryId,
-                                dtm)
-                            .orTimeout(responseTimeoutMs, TimeUnit.MILLISECONDS)
-                    )
+                            workspaceId,
+                            binaryId,
+                            dtm,
+                            responseTimeoutMs)
+                    ).doOnSuccess(bytes -> {
+                      if (dtm.order() < (binaryManifest.datagrams().size() - 1)) {
+                        binaryProxyService.sendUploadBinaryAppeal(
+                            workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false,
+                            List.of(dtm.order() + 1)
+                        );
+                      }
+                    })
                     .onErrorResume(throwable -> Mono.error(
                         new RuntimeException(MessageFormat.format(
                             "Error fetching chunk: binary id {0}, order {1}",
