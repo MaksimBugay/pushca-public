@@ -163,7 +163,7 @@ public class WebsocketPool implements DisposableBean {
       }
     }
     ResponseWaiter<T> waiter = getWaiter(id);
-    if (waiter != null) {
+    if (waiter != null && !waiter.isDone()) {
       if (waiter.isResponseValid(responseObject)) {
         waiter.complete(responseObject);
         Optional.ofNullable(waiter.getSuccessHandler())
