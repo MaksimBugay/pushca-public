@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import javax.net.ssl.SSLContext;
+import org.apache.commons.lang3.StringUtils;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft_6455;
 import org.java_websocket.handshake.ServerHandshake;
@@ -31,10 +32,11 @@ public class PushcaWsClient extends WebSocketClient {
       BiConsumer<PushcaWsClient, ByteBuffer> dataConsumer,
       Consumer<PushcaWsClient> afterOpenListener,
       BiConsumer<PushcaWsClient, Integer> afterCloseListener,
-      SSLContext sslContext) {
+      SSLContext sslContext, String clientIp) {
     super(wsUrl, new Draft_6455(),
         Map.of(
-            "client-id", clientId
+            "client-id", clientId,
+            "X-Real-IP", StringUtils.isNotEmpty(clientIp) ? clientIp : "127.0.0.1"
         ),
         connectTimeoutMs);
     if (sslContext != null) {

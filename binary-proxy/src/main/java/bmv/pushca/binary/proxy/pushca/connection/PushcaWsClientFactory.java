@@ -47,9 +47,11 @@ public class PushcaWsClientFactory {
   public final PClient pushcaClient;
   private final WebClient webClient;
   private final PushcaConfig pushcaConfig;
+  private final MicroserviceConfiguration microserviceConfiguration;
 
   public PushcaWsClientFactory(PushcaConfig pushcaConfig,
       MicroserviceConfiguration microserviceConfiguration) {
+    this.microserviceConfiguration = microserviceConfiguration;
     this.pushcaConfig = pushcaConfig;
     this.webClient = initWebClient();
     this.pushcaClient = new PClient(
@@ -67,8 +69,10 @@ public class PushcaWsClientFactory {
       BiConsumer<PushcaWsClient, ByteBuffer> dataConsumer,
       Consumer<PushcaWsClient> afterOpenListener,
       BiConsumer<PushcaWsClient, Integer> afterCloseListener) {
+    LOGGER.info("Instance IP: {}", microserviceConfiguration.getInstanceIP());
     return webClient.post()
         .uri(pushcaConfig.getPushcaClusterUrl() + "/open-connection-pool")
+        .header("X-Real-IP", microserviceConfiguration.getInstanceIP())
         .body(Mono.just(new OpenConnectionPoolRequest(pushcaClient, pusherInstanceId, poolSize)),
             OpenConnectionPoolRequest.class)
         .accept(MediaType.APPLICATION_JSON)
@@ -100,7 +104,8 @@ public class PushcaWsClientFactory {
                       dataConsumer,
                       afterOpenListener,
                       afterCloseListener,
-                      pushcaConfig.getSslContext()
+                      pushcaConfig.getSslContext(),
+                      microserviceConfiguration.getInstanceIP()
                   ));
                 } catch (URISyntaxException e) {
                   sink.error(new RuntimeException(e));

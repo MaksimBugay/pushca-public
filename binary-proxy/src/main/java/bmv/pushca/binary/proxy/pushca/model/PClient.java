@@ -1,6 +1,6 @@
 package bmv.pushca.binary.proxy.pushca.model;
 
-import bmv.pushca.binary.proxy.pushca.BmvObjectUtils;
+import bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils;
 import java.text.MessageFormat;
 import java.util.Objects;
 import org.apache.commons.lang3.StringUtils;

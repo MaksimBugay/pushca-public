@@ -1,6 +1,6 @@
 package bmv.pushca.binary.proxy.service;
 
-import static bmv.pushca.binary.proxy.pushca.BmvObjectUtils.calculateSha256;
+import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.calculateSha256;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_UPLOAD_BINARY_APPEAL;
 import static bmv.pushca.binary.proxy.pushca.model.Datagram.buildDatagramId;
 import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;

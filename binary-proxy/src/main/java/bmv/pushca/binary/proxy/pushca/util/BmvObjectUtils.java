@@ -1,4 +1,4 @@
-package bmv.pushca.binary.proxy.pushca;
+package bmv.pushca.binary.proxy.pushca.util;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 

@@ -2,7 +2,7 @@ package bmv.pushca.binary.proxy.pushca.model;
 
 import static org.apache.commons.lang3.StringUtils.isNotEmpty;
 
-import bmv.pushca.binary.proxy.pushca.BmvObjectUtils;
+import bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
 import java.util.Objects;

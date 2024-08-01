@@ -1,6 +1,6 @@
 package bmv.pushca.binary.proxy.pushca.connection.model;
 
-import bmv.pushca.binary.proxy.pushca.BmvObjectUtils;
+import bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import java.util.Arrays;
 import java.util.UUID;
