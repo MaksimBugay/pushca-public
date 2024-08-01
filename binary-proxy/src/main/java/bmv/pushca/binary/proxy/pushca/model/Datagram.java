@@ -9,7 +9,8 @@ public record Datagram(
     int order
 ) {
 
-  public static String buildDatagramId(String binaryId, int order) {
-    return MessageFormat.format("{0}-{1}", binaryId, String.valueOf(order));
+  public static String buildDatagramId(String binaryId, int order, int destHashCode) {
+    return MessageFormat.format("{0}-{1}-{2}", binaryId, String.valueOf(order),
+        String.valueOf(destHashCode));
   }
 }

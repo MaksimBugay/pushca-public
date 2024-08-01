@@ -23,7 +23,7 @@ public record BinaryWithHeader(BinaryType binaryType, int clientHash, boolean wi
   }
 
   public String getDatagramId() {
-    return Datagram.buildDatagramId(binaryId.toString(), order);
+    return Datagram.buildDatagramId(binaryId.toString(), order, clientHash);
   }
 
   public boolean isBinaryMessage() {

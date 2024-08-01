@@ -67,6 +67,8 @@ public class WebsocketPool implements DisposableBean {
     runWithDelay(() -> {
       pushcaWsClientFactory.createConnectionPool(
           pushcaConfig.getPushcaConnectionPoolSize(), null,
+          (pusherAddress) -> configuration.dockerized ? pusherAddress.internalAdvertisedUrl()
+              : pusherAddress.externalAdvertisedUrl(),
           this::wsConnectionMessageWasReceivedHandler,
           this::wsConnectionDataWasReceivedHandler,
           this::wsConnectionWasOpenHandler,
@@ -121,7 +123,8 @@ public class WebsocketPool implements DisposableBean {
         binaryWithHeader.getDatagramId(),
         binaryWithHeader.order() == 0 ? null : Datagram.buildDatagramId(
             binaryWithHeader.binaryId().toString(),
-            binaryWithHeader.order() - 1
+            binaryWithHeader.order() - 1,
+            binaryWithHeader.clientHash()
         ),
         binaryWithHeader.getPayload()
     );

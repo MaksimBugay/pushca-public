@@ -5,6 +5,7 @@ import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_UPLOAD_BINARY_AP
 import static bmv.pushca.binary.proxy.pushca.model.Datagram.buildDatagramId;
 import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
 
+import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
@@ -22,7 +23,11 @@ public class BinaryProxyService {
 
   private final WebsocketPool websocketPool;
 
-  public BinaryProxyService(WebsocketPool websocketPool) {
+  private final int pushcaClientHashCode;
+
+  public BinaryProxyService(WebsocketPool websocketPool,
+      PushcaWsClientFactory pushcaWsClientFactory) {
+    this.pushcaClientHashCode = pushcaWsClientFactory.pushcaClient.hashCode();
     this.websocketPool = websocketPool;
   }
 
@@ -52,7 +57,7 @@ public class BinaryProxyService {
         null,
         "ultimate-file-sharing-listener"
     );
-    final String datagramId = buildDatagramId(binaryId, datagram.order());
+    final String datagramId = buildDatagramId(binaryId, datagram.order(), pushcaClientHashCode);
     ResponseWaiter<byte[]> responseWaiter = new ResponseWaiter<>(
         (chunk) -> chunk.length == datagram.size() && calculateSha256(chunk).equals(datagram.md5()),
         (ex) -> sendUploadBinaryAppeal(

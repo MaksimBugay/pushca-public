@@ -17,6 +17,9 @@ public class MicroserviceConfiguration {
   @Value("${spring.application.name:}")
   public String appName;
 
+  @Value("${binary-proxy.dockerized:true}")
+  public boolean dockerized;
+
   @Value("${binary-proxy.selectors-threads-pool.size:8}")
   public int webServerSelectorsPoolSize;
   @Value("${binary-proxy.workers-threads-pool.size:500}")

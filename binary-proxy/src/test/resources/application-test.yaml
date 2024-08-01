@@ -17,6 +17,7 @@ logging:
     root: INFO
 
 binary-proxy:
+  dockerized : false
   response:
     timeout:
       ms: 1200000
