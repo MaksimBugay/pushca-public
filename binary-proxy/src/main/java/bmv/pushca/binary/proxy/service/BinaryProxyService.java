@@ -44,10 +44,17 @@ public class BinaryProxyService {
   }
 
   public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String binaryId,
-      Datagram datagram, int responseTimeoutMs) {
+      Datagram datagram, int maxOrder, int responseTimeoutMs) {
     final String datagramId = buildDatagramId(binaryId, datagram.order(), pushcaClientHashCode);
     ResponseWaiter<byte[]> responseWaiter = new ResponseWaiter<>(
         (chunk) -> chunk.length == datagram.size() && calculateSha256(chunk).equals(datagram.md5()),
+        (chunk) -> {
+          if (datagram.order() < maxOrder) {
+            sendUploadBinaryAppeal(
+                workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order() + 1)
+            );
+          }
+        },
         (ex) -> sendUploadBinaryAppeal(
             workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order())
         ),

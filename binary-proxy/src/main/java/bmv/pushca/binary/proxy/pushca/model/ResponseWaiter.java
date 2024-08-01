@@ -10,22 +10,30 @@ import java.util.function.Function;
 public class ResponseWaiter<T> extends CompletableFuture<T> {
 
   private final Function<T, Boolean> validator;
+
+  private final Consumer<T> successHandler;
   private final Consumer<Throwable> errorHandler;
   private final String errorMessage;
 
   private final AtomicInteger errorCounter = new AtomicInteger();
 
-  public ResponseWaiter(Function<T, Boolean> validator, Consumer<Throwable> errorHandler,
+  public ResponseWaiter(Function<T, Boolean> validator, Consumer<T> successHandler, Consumer<Throwable> errorHandler,
       String errorMessage) {
     this.validator = validator;
+    this.successHandler = successHandler;
     this.errorHandler = errorHandler;
     this.errorMessage = errorMessage;
   }
 
   public ResponseWaiter() {
     this.validator = null;
+    this.successHandler = null;
     this.errorHandler = null;
     this.errorMessage = null;
+  }
+
+  public Consumer<T> getSuccessHandler() {
+    return successHandler;
   }
 
   public boolean isResponseValid(T responseObj) {

@@ -114,11 +114,11 @@ public class WebsocketPool implements DisposableBean {
   private void wsConnectionDataWasReceivedHandler(PushcaWsClient ws, ByteBuffer data) {
     //LOGGER.info("New portion of data arrived: {}", data.array().length);
     BinaryWithHeader binaryWithHeader = new BinaryWithHeader(data.array());
-    /*LOGGER.info("New chunk arrived on {}: {}, {}, {}",
+    LOGGER.info("New chunk arrived on {}: {}, {}, {}",
         ws.getClientId(),
         binaryWithHeader.binaryId(),
         binaryWithHeader.order(),
-        binaryWithHeader.getPayload().length);*/
+        binaryWithHeader.getPayload().length);
     completeWithResponse(
         binaryWithHeader.getDatagramId(),
         binaryWithHeader.order() == 0 ? null : Datagram.buildDatagramId(
@@ -166,6 +166,9 @@ public class WebsocketPool implements DisposableBean {
     if (waiter != null) {
       if (waiter.isResponseValid(responseObject)) {
         waiter.complete(responseObject);
+        Optional.ofNullable(waiter.getSuccessHandler())
+            .ifPresent(handler -> handler.accept(responseObject));
+        waitingHall.asMap().remove(id);
       }
     }
   }

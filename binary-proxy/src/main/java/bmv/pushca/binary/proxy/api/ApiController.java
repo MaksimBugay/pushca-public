@@ -58,15 +58,9 @@ public class ApiController {
                             workspaceId,
                             binaryId,
                             dtm,
+                            binaryManifest.datagrams().size() - 1,
                             responseTimeoutMs)
-                    ).doOnSuccess(bytes -> {
-                      if (dtm.order() < (binaryManifest.datagrams().size() - 1)) {
-                        binaryProxyService.sendUploadBinaryAppeal(
-                            workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false,
-                            List.of(dtm.order() + 1)
-                        );
-                      }
-                    })
+                    )
                     .onErrorResume(throwable -> Mono.error(
                         new RuntimeException(MessageFormat.format(
                             "Error fetching chunk: binary id {0}, order {1}",
