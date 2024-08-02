@@ -62,7 +62,8 @@ public class ApiController {
                     .onErrorResume(throwable -> Mono.error(
                             new CannotDownloadBinaryChunkException(
                                 binaryId, dtm,
-                                binaryManifest.downloadSessionId()
+                                binaryManifest.downloadSessionId(),
+                                throwable
                             )
                         )
                     )
