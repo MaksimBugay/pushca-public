@@ -20,7 +20,7 @@ binary-proxy:
   dockerized: false
   response:
     timeout:
-      ms: 1200000
+      ms: 5000
   selectors-threads-pool:
     size: 2
   workers-threads-pool:

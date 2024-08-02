@@ -81,7 +81,7 @@ public class BinaryProxyService {
     }
 
     return responseWaiter
-        .orTimeout(responseTimeoutMs, TimeUnit.MILLISECONDS);
+        .orTimeout((long) responseTimeoutMs * (datagram.order() + 1), TimeUnit.MILLISECONDS);
   }
 
   public void removeDownloadSession(String binaryId, String sessionId) {
