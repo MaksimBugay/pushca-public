@@ -20,10 +20,7 @@ import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.connection.model.BinaryWithHeader;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.Command;
-import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
-import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
@@ -46,7 +43,7 @@ public class WebsocketPool implements DisposableBean {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WebsocketPool.class);
 
-  private final AsyncLoadingCache<String, Object> waitingHall;
+  private final Map<String, ResponseWaiter> waitingHall = new ConcurrentHashMap<>();
 
   private final Map<String, List<String>> activeDownloadSessions = new ConcurrentHashMap<>();
 
@@ -60,11 +57,6 @@ public class WebsocketPool implements DisposableBean {
       PushcaConfig pushcaConfig,
       PushcaWsClientFactory pushcaWsClientFactory) {
     this.pushcaConfig = pushcaConfig;
-    this.waitingHall =
-        Caffeine.newBuilder()
-            .expireAfterWrite(configuration.responseTimeoutMs, TimeUnit.MILLISECONDS)
-            .maximumSize(10_000)
-            .buildAsync((key, ignored) -> null);
     this.delayedExecutor =
         Schedulers.newBoundedElastic(configuration.delayedExecutorPoolSize, 10_000,
             "delayedExecutionThreads");
@@ -119,33 +111,21 @@ public class WebsocketPool implements DisposableBean {
   private void wsConnectionDataWasReceivedHandler(PushcaWsClient ws, ByteBuffer data) {
     //LOGGER.info("New portion of data arrived: {}", data.array().length);
     BinaryWithHeader binaryWithHeader = new BinaryWithHeader(data.array());
-    LOGGER.info("New chunk arrived on {}: {}, {}, {}",
+    /*LOGGER.info("New chunk arrived on {}: {}, {}, {}",
         ws.getClientId(),
         binaryWithHeader.binaryId(),
         binaryWithHeader.order(),
-        binaryWithHeader.getPayload().length);
+        binaryWithHeader.getPayload().length);*/
     for (String downloadSessionId : getActiveDownloadSession(
         binaryWithHeader.binaryId().toString())) {
       completeWithResponse(
           concatParts(binaryWithHeader.getDatagramId(), downloadSessionId),
-          buildPreviousChunkId(binaryWithHeader, downloadSessionId),
           binaryWithHeader.getPayload()
       );
     }
     if (binaryWithHeader.withAcknowledge()) {
       sendAcknowledge(binaryWithHeader.getDatagramId());
     }
-  }
-
-  private String buildPreviousChunkId(BinaryWithHeader chunk, String downloadSessionId) {
-    return chunk.order() == 0 ? null : concatParts(
-        Datagram.buildDatagramId(
-            chunk.binaryId().toString(),
-            chunk.order() - 1,
-            chunk.clientHash()
-        ),
-        downloadSessionId
-    );
   }
 
   public PushcaWsClient getConnection() {
@@ -191,36 +171,25 @@ public class WebsocketPool implements DisposableBean {
   }
 
   public <T> void completeWithResponse(String id, T responseObject) {
-    completeWithResponse(id, null, responseObject);
-  }
-
-  public <T> void completeWithResponse(String id, String previousId, T responseObject) {
-    if (previousId != null) {
-      ResponseWaiter<T> waiter = getWaiter(previousId);
-      if (waiter != null && !waiter.isDone()) {
-        runWithDelay(() -> completeWithResponse(id, previousId, responseObject), 100);
-        return;
-      }
-    }
-    ResponseWaiter<T> waiter = getWaiter(id);
-    if (waiter != null && !waiter.isDone()) {
-      if (waiter.isResponseValid(responseObject)) {
+    waitingHall.computeIfPresent(id, (wId, waiter) -> {
+      if ((!waiter.isDone()) && waiter.isResponseValid(responseObject)) {
         waiter.complete(responseObject);
-        waitingHall.asMap().remove(id);
+        return null;
+      } else {
+        return waiter;
       }
-    }
+    });
   }
 
-  public <T> void completeWithTimeout(String id) {
-    ResponseWaiter<T> waiter = getWaiter(id);
-    if (waiter != null && !waiter.isDone()) {
-      waiter.completeExceptionally(new TimeoutException());
-      waitingHall.asMap().remove(id);
-    }
-  }
-
-  private <T> ResponseWaiter<T> getWaiter(String id) {
-    return (ResponseWaiter<T>) waitingHall.asMap().get(id);
+  public void completeWithTimeout(String id) {
+    waitingHall.computeIfPresent(id, (wId, waiter) -> {
+      if ((!waiter.isDone())) {
+        waiter.completeExceptionally(new TimeoutException());
+        return null;
+      } else {
+        return waiter;
+      }
+    });
   }
 
   public void sendAcknowledge(String id) {

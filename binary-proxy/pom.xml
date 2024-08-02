@@ -18,7 +18,6 @@
     <java.version>17</java.version>
     <fasterxml.jackson.version>2.14.2</fasterxml.jackson.version>
     <testcontainers.version>1.19.8</testcontainers.version>
-    <caffeine.version>3.1.5</caffeine.version>
     <java-websocket.version>1.5.6</java-websocket.version>
   </properties>
 
@@ -39,11 +38,6 @@
         <scope>import</scope>
       </dependency>
       <dependency>
-        <groupId>com.github.ben-manes.caffeine</groupId>
-        <artifactId>caffeine</artifactId>
-        <version>${caffeine.version}</version>
-      </dependency>
-      <dependency>
         <groupId>org.java-websocket</groupId>
         <artifactId>Java-WebSocket</artifactId>
         <version>${java-websocket.version}</version>
@@ -59,10 +53,6 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.github.ben-manes.caffeine</groupId>
-      <artifactId>caffeine</artifactId>
     </dependency>
     <dependency>
       <groupId>org.java-websocket</groupId>
