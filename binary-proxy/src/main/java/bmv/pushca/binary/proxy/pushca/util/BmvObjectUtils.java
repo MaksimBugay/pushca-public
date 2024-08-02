@@ -25,6 +25,7 @@ import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 public final class BmvObjectUtils {
@@ -85,6 +86,13 @@ public final class BmvObjectUtils {
         MILLISECONDS
     );
     return scheduler;
+  }
+
+  public static String concatParts(String... parts) {
+    if (ArrayUtils.isEmpty(parts)) {
+      return "";
+    }
+    return String.join("-", parts);
   }
 
   public static byte[] booleanToBytes(boolean value) {

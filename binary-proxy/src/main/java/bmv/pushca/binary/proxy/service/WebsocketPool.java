@@ -6,6 +6,7 @@ import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.buildCommandMe
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.isValidMessageType;
 import static bmv.pushca.binary.proxy.pushca.model.Command.ACKNOWLEDGE;
 import static bmv.pushca.binary.proxy.pushca.model.Command.PING;
+import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.concatParts;
 import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.fromJson;
 
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
@@ -28,6 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.java_websocket.client.WebSocketClient;
@@ -44,6 +46,8 @@ public class WebsocketPool implements DisposableBean {
   private static final Logger LOGGER = LoggerFactory.getLogger(WebsocketPool.class);
 
   private final AsyncLoadingCache<String, Object> waitingHall;
+
+  private final Map<String, List<String>> activeDownloadSessions = new ConcurrentHashMap<>();
 
   private final PushcaConfig pushcaConfig;
   private final Scheduler delayedExecutor;
@@ -119,18 +123,28 @@ public class WebsocketPool implements DisposableBean {
         binaryWithHeader.binaryId(),
         binaryWithHeader.order(),
         binaryWithHeader.getPayload().length);
-    completeWithResponse(
-        binaryWithHeader.getDatagramId(),
-        binaryWithHeader.order() == 0 ? null : Datagram.buildDatagramId(
-            binaryWithHeader.binaryId().toString(),
-            binaryWithHeader.order() - 1,
-            binaryWithHeader.clientHash()
-        ),
-        binaryWithHeader.getPayload()
-    );
+    for (String downloadSessionId : getActiveDownloadSession(
+        binaryWithHeader.binaryId().toString())) {
+      completeWithResponse(
+          concatParts(binaryWithHeader.getDatagramId(), downloadSessionId),
+          buildPreviousChunkId(binaryWithHeader, downloadSessionId),
+          binaryWithHeader.getPayload()
+      );
+    }
     if (binaryWithHeader.withAcknowledge()) {
       sendAcknowledge(binaryWithHeader.getDatagramId());
     }
+  }
+
+  private String buildPreviousChunkId(BinaryWithHeader chunk, String downloadSessionId) {
+    return chunk.order() == 0 ? null : concatParts(
+        Datagram.buildDatagramId(
+            chunk.binaryId().toString(),
+            chunk.order() - 1,
+            chunk.clientHash()
+        ),
+        downloadSessionId
+    );
   }
 
   public PushcaWsClient getConnection() {
@@ -138,6 +152,31 @@ public class WebsocketPool implements DisposableBean {
       throw new IllegalStateException("Pushca connection pool is exhausted");
     }
     return wsPool.get();
+  }
+
+  public void registerDownloadSession(String binaryId, String sessionId) {
+    activeDownloadSessions.putIfAbsent(binaryId, new CopyOnWriteArrayList<>());
+    activeDownloadSessions.computeIfPresent(
+        binaryId,
+        (id, uuids) -> {
+          uuids.add(sessionId);
+          return uuids;
+        }
+    );
+  }
+
+  public void removeDownloadSession(String binaryId, String sessionId) {
+    activeDownloadSessions.computeIfPresent(
+        binaryId,
+        (id, uuids) -> {
+          uuids.remove(sessionId);
+          return uuids.isEmpty() ? null : uuids;
+        }
+    );
+  }
+
+  public List<String> getActiveDownloadSession(String binaryId) {
+    return activeDownloadSessions.getOrDefault(binaryId, List.of());
   }
 
   public <T> ResponseWaiter<T> registerResponseWaiter(String waiterId,
@@ -166,8 +205,6 @@ public class WebsocketPool implements DisposableBean {
     if (waiter != null && !waiter.isDone()) {
       if (waiter.isResponseValid(responseObject)) {
         waiter.complete(responseObject);
-        Optional.ofNullable(waiter.getSuccessHandler())
-            .ifPresent(handler -> handler.accept(responseObject));
         waitingHall.asMap().remove(id);
       }
     }

@@ -1,12 +1,9 @@
 package bmv.pushca.binary.proxy.api;
 
-import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
-
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
+import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
-import java.text.MessageFormat;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
@@ -56,24 +53,37 @@ public class ApiController {
                 dtm -> Mono.fromFuture(
                         binaryProxyService.requestBinaryChunk(
                             workspaceId,
+                            binaryManifest.downloadSessionId(),
                             binaryId,
                             dtm,
                             binaryManifest.datagrams().size() - 1,
                             responseTimeoutMs)
                     )
                     .onErrorResume(throwable -> Mono.error(
-                        new RuntimeException(MessageFormat.format(
-                            "Error fetching chunk: binary id {0}, order {1}",
-                            binaryId, String.valueOf(dtm.order())), throwable)))
+                            new CannotDownloadBinaryChunkException(
+                                binaryId, dtm,
+                                binaryManifest.downloadSessionId()
+                            )
+                        )
+                    )
             )
         )
         .onErrorResume(
             throwable -> {
-              if (throwable instanceof RuntimeException
-                  && throwable.getCause() instanceof TimeoutException) {
-                LOGGER.error("Failed attempt to download binary with id {}", binaryId, throwable);
-                response.setStatusCode(HttpStatus.NOT_FOUND);
-                return Mono.empty();
+              if (throwable instanceof CannotDownloadBinaryChunkException) {
+                binaryProxyService.removeDownloadSession(
+                    ((CannotDownloadBinaryChunkException) throwable).binaryId,
+                    ((CannotDownloadBinaryChunkException) throwable).downloadSessionId
+                );
+                if ((throwable.getCause() != null)
+                    && (throwable.getCause() instanceof TimeoutException)) {
+                  LOGGER.error("Failed by timeout attempt to download binary with id {}", binaryId,
+                      throwable);
+                  response.setStatusCode(HttpStatus.NOT_FOUND);
+                  return Mono.empty();
+                } else {
+                  return Mono.error(throwable);
+                }
               } else {
                 return Mono.error(new RuntimeException("Error fetching binary data", throwable));
               }

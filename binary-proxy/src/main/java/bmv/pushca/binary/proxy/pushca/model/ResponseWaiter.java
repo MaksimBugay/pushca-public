@@ -17,8 +17,8 @@ public class ResponseWaiter<T> extends CompletableFuture<T> {
 
   private final AtomicInteger errorCounter = new AtomicInteger();
 
-  public ResponseWaiter(Function<T, Boolean> validator, Consumer<T> successHandler, Consumer<Throwable> errorHandler,
-      String errorMessage) {
+  public ResponseWaiter(Function<T, Boolean> validator, Consumer<T> successHandler,
+      Consumer<Throwable> errorHandler, String errorMessage) {
     this.validator = validator;
     this.successHandler = successHandler;
     this.errorHandler = errorHandler;
@@ -32,10 +32,6 @@ public class ResponseWaiter<T> extends CompletableFuture<T> {
     this.errorMessage = null;
   }
 
-  public Consumer<T> getSuccessHandler() {
-    return successHandler;
-  }
-
   public boolean isResponseValid(T responseObj) {
     if (validator == null) {
       return true;
@@ -44,6 +40,7 @@ public class ResponseWaiter<T> extends CompletableFuture<T> {
       if (!validator.apply(responseObj)) {
         throw new IllegalArgumentException();
       }
+      Optional.ofNullable(successHandler).ifPresent(handler -> handler.accept(responseObj));
       return true;
     } catch (Exception ex) {
       if (errorCounter.incrementAndGet() < 3) {

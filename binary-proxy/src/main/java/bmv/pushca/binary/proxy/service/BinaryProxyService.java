@@ -4,6 +4,7 @@ import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_UPLOAD_BINARY_AP
 import static bmv.pushca.binary.proxy.pushca.model.Datagram.buildDatagramId;
 import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
 import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.calculateSha256;
+import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.concatParts;
 
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
@@ -43,18 +44,12 @@ public class BinaryProxyService {
     return future;
   }
 
-  public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String binaryId,
-      Datagram datagram, int maxOrder, int responseTimeoutMs) {
+  public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String downloadSessionId,
+      String binaryId, Datagram datagram, int maxOrder, int responseTimeoutMs) {
     final String datagramId = buildDatagramId(binaryId, datagram.order(), pushcaClientHashCode);
     ResponseWaiter<byte[]> responseWaiter = new ResponseWaiter<>(
         (chunk) -> chunk.length == datagram.size() && calculateSha256(chunk).equals(datagram.md5()),
-        (chunk) -> {
-          if (datagram.order() < maxOrder) {
-            sendUploadBinaryAppeal(
-                workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order() + 1)
-            );
-          }
-        },
+        null,
         (ex) -> sendUploadBinaryAppeal(
             workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order())
         ),
@@ -62,8 +57,21 @@ public class BinaryProxyService {
             String.valueOf(datagram.order()), binaryId)
     );
 
+    responseWaiter.whenComplete((bytes, error) -> {
+      if (error == null) {
+        if (datagram.order() < maxOrder) {
+          sendUploadBinaryAppeal(
+              workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order() + 1)
+          );
+        } else {
+          websocketPool.removeDownloadSession(binaryId, downloadSessionId);
+        }
+      }
+    });
+
+    websocketPool.registerDownloadSession(binaryId, downloadSessionId);
     websocketPool.registerResponseWaiter(
-        datagramId, responseWaiter
+        concatParts(datagramId, downloadSessionId), responseWaiter
     );
 
     if (datagram.order() == 0) {
@@ -74,6 +82,10 @@ public class BinaryProxyService {
 
     return responseWaiter
         .orTimeout(responseTimeoutMs, TimeUnit.MILLISECONDS);
+  }
+
+  public void removeDownloadSession(String binaryId, String sessionId) {
+    websocketPool.removeDownloadSession(binaryId, sessionId);
   }
 
   public void sendUploadBinaryAppeal(String workspaceId, String binaryId, int chunkSize,
