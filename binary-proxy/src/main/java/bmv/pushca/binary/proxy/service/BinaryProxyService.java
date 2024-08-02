@@ -63,6 +63,12 @@ public class BinaryProxyService {
           sendUploadBinaryAppeal(
               workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order() + 1)
           );
+          final String nextDatagramId = buildDatagramId(
+              binaryId, datagram.order() + 1, pushcaClientHashCode
+          );
+          websocketPool.runWithDelay(() -> websocketPool.completeWithTimeout(
+              concatParts(nextDatagramId, downloadSessionId)
+          ), responseTimeoutMs);
         } else {
           websocketPool.removeDownloadSession(binaryId, downloadSessionId);
         }
