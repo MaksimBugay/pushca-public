@@ -78,12 +78,14 @@ public class BinaryProxyService {
       }
     });
 
+    final String waiterId = concatParts(datagramId, downloadSessionId);
     websocketPool.registerDownloadSession(binaryId, downloadSessionId);
     websocketPool.registerResponseWaiter(
-        concatParts(datagramId, downloadSessionId), responseWaiter
+        waiterId, responseWaiter
     );
 
     if (datagram.order() == 0) {
+      websocketPool.activateResponseWaiter(waiterId);
       sendUploadBinaryAppeal(
           workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(0)
       );
