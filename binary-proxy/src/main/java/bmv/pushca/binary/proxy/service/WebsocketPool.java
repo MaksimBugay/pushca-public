@@ -81,6 +81,7 @@ public class WebsocketPool implements DisposableBean {
         () -> {
           logHeapMemory();
           wsPool.forEach(ws -> ws.send(buildCommandMessage(null, PING).commandBody));
+          LOGGER.info("Waiting hall size {}", waitingHall.size());
         },
         25, 30, TimeUnit.SECONDS
     );
