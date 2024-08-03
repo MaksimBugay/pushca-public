@@ -44,8 +44,7 @@ public class ApiController {
       ServerHttpResponse response) {
     response.getHeaders().setContentType(MediaType.valueOf(mimeType));
 
-    return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId)
-            .orTimeout(responseTimeoutMs, TimeUnit.MILLISECONDS))
+    return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
         .onErrorResume(throwable -> Mono.error(
             new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
         .flatMapMany(binaryManifest -> Flux.fromIterable(binaryManifest.datagrams())
@@ -56,8 +55,7 @@ public class ApiController {
                             binaryManifest.downloadSessionId(),
                             binaryId,
                             dtm,
-                            binaryManifest.datagrams().size() - 1,
-                            responseTimeoutMs)
+                            binaryManifest.datagrams().size() - 1)
                     )
                     .onErrorResume(throwable -> Mono.error(
                             new CannotDownloadBinaryChunkException(

@@ -6,6 +6,7 @@ import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CH
 import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.calculateSha256;
 import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.concatParts;
 
+import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
@@ -16,7 +17,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -26,16 +26,20 @@ public class BinaryProxyService {
 
   private final int pushcaClientHashCode;
 
+  private final MicroserviceConfiguration microserviceConfiguration;
+
   public BinaryProxyService(WebsocketPool websocketPool,
-      PushcaWsClientFactory pushcaWsClientFactory) {
+      PushcaWsClientFactory pushcaWsClientFactory,
+      MicroserviceConfiguration microserviceConfiguration) {
     this.pushcaClientHashCode = pushcaWsClientFactory.pushcaClient.hashCode();
     this.websocketPool = websocketPool;
+    this.microserviceConfiguration = microserviceConfiguration;
   }
 
   public CompletableFuture<BinaryManifest> requestBinaryManifest(String workspaceId,
       String binaryId) {
     CompletableFuture<BinaryManifest> future = websocketPool.registerResponseWaiter(
-        binaryId
+        binaryId, microserviceConfiguration.responseTimeoutMs
     );
     sendUploadBinaryAppeal(
         workspaceId, binaryId, DEFAULT_CHUNK_SIZE, true, null
@@ -45,31 +49,29 @@ public class BinaryProxyService {
   }
 
   public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String downloadSessionId,
-      String binaryId, Datagram datagram, int maxOrder, int responseTimeoutMs) {
+      String binaryId, Datagram datagram, int maxOrder) {
     final String datagramId = buildDatagramId(binaryId, datagram.order(), pushcaClientHashCode);
     ResponseWaiter<byte[]> responseWaiter = new ResponseWaiter<>(
         (chunk) -> chunk.length == datagram.size()
             && calculateSha256(chunk).equals(datagram.md5()),
         null,
-        (ex) -> sendUploadBinaryAppeal(
+        null,
+        MessageFormat.format("Invalid chunk {0} of binary with id {1} was received",
+            String.valueOf(datagram.order()), binaryId),
+        () -> sendUploadBinaryAppeal(
             workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order())
         ),
-        MessageFormat.format("Invalid chunk {0} of binary with id {1} was received",
-            String.valueOf(datagram.order()), binaryId)
-    );
+        microserviceConfiguration.responseTimeoutMs);
 
     responseWaiter.whenComplete((bytes, error) -> {
       if (error == null) {
         if (datagram.order() < maxOrder) {
+          final String nextDatagramId =
+              buildDatagramId(binaryId, datagram.order() + 1, pushcaClientHashCode);
+          websocketPool.activateResponseWaiter(concatParts(nextDatagramId, downloadSessionId));
           sendUploadBinaryAppeal(
               workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order() + 1)
           );
-          final String nextDatagramId = buildDatagramId(
-              binaryId, datagram.order() + 1, pushcaClientHashCode
-          );
-          websocketPool.runWithDelay(() -> websocketPool.completeWithTimeout(
-              concatParts(nextDatagramId, downloadSessionId)
-          ), responseTimeoutMs);
         } else {
           websocketPool.removeDownloadSession(binaryId, downloadSessionId);
         }
@@ -87,8 +89,7 @@ public class BinaryProxyService {
       );
     }
 
-    return responseWaiter
-        .orTimeout((long) responseTimeoutMs * (datagram.order() + 1), TimeUnit.MILLISECONDS);
+    return responseWaiter;
   }
 
   public void removeDownloadSession(String binaryId, String sessionId) {

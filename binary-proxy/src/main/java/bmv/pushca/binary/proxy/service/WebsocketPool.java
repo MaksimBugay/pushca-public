@@ -78,13 +78,28 @@ public class WebsocketPool implements DisposableBean {
     }, 1000);
 
     delayedExecutor.schedulePeriodically(
-        () -> wsPool.forEach(ws -> ws.send(buildCommandMessage(null, PING).commandBody)),
+        () -> {
+          logHeapMemory();
+          wsPool.forEach(ws -> ws.send(buildCommandMessage(null, PING).commandBody));
+        },
         25, 30, TimeUnit.SECONDS
+    );
+    delayedExecutor.schedulePeriodically(
+        this::runResponseWaiterRepeater,
+        10, 10, TimeUnit.SECONDS
     );
 
     runWithDelay(() -> {
       LOGGER.info("Pushca connection pool: size = {}", wsPool.size());
     }, 10000);
+  }
+
+  private void runResponseWaiterRepeater() {
+    waitingHall.entrySet().stream()
+        .filter(entry -> entry.getValue().isExpired())
+        .forEach(entry -> completeWithTimeout(entry.getKey()));
+
+    waitingHall.values().forEach(ResponseWaiter::runRepeatAction);
   }
 
   private void wsConnectionWasOpenHandler(PushcaWsClient webSocket) {
@@ -166,8 +181,15 @@ public class WebsocketPool implements DisposableBean {
     return responseWaiter;
   }
 
-  public <T> ResponseWaiter<T> registerResponseWaiter(String waiterId) {
-    return registerResponseWaiter(waiterId, new ResponseWaiter<>());
+  public <T> ResponseWaiter<T> registerResponseWaiter(String waiterId, long repeatInterval) {
+    return registerResponseWaiter(waiterId, new ResponseWaiter<>(repeatInterval));
+  }
+
+  public void activateResponseWaiter(String waiterId) {
+    waitingHall.computeIfPresent(waiterId, (wId, waiter) -> {
+      waiter.activate();
+      return waiter;
+    });
   }
 
   public <T> void completeWithResponse(String id, T responseObject) {
@@ -219,5 +241,23 @@ public class WebsocketPool implements DisposableBean {
     if (((1.0 * wsPool.size()) / pushcaConfig.getPushcaConnectionPoolSize()) < 0.7) {
       throw new IllegalStateException("Pushca connection pool is broken");
     }
+  }
+
+  public static void logHeapMemory() {
+    // Get the Java runtime
+    Runtime runtime = Runtime.getRuntime();
+
+    // Calculate the used memory
+    long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+    long freeMemory = runtime.freeMemory();
+    long totalMemory = runtime.totalMemory();
+    long maxMemory = runtime.maxMemory();
+
+    LOGGER.info("Used Memory: {} MB, Free memory: {} MB, Total memory: {} MB, Max memory: {} MB",
+        usedMemory / (1024 * 1024),
+        freeMemory / (1024 * 1024),
+        totalMemory / (1024 * 1024),
+        maxMemory / (1024 * 1024)
+    );
   }
 }
