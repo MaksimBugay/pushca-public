@@ -76,7 +76,11 @@ public class PushcaWsClient extends WebSocketClient {
 
   @Override
   public void onMessage(ByteBuffer data) {
-    Optional.ofNullable(dataConsumer).ifPresent(dataConsumer -> dataConsumer.accept(this, data));
+    try {
+      Optional.ofNullable(dataConsumer).ifPresent(dataConsumer -> dataConsumer.accept(this, data));
+    } finally {
+      data.clear();
+    }
   }
 
   @Override
