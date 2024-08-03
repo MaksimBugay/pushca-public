@@ -194,7 +194,10 @@ public class WebsocketPool implements DisposableBean {
 
   public <T> void completeWithResponse(String id, T responseObject) {
     waitingHall.computeIfPresent(id, (wId, waiter) -> {
-      if ((!waiter.isDone()) && waiter.isResponseValid(responseObject)) {
+      if (waiter.isDone() || waiter.isNotActivated()) {
+        return waiter;
+      }
+      if (waiter.isResponseValid(responseObject)) {
         waiter.complete(responseObject);
         return null;
       } else {
@@ -253,9 +256,9 @@ public class WebsocketPool implements DisposableBean {
     long totalMemory = runtime.totalMemory();
     long maxMemory = runtime.maxMemory();
 
-    LOGGER.info("Used Memory: {} MB, Free memory: {} MB, Total memory: {} MB, Max memory: {} MB",
-        usedMemory / (1024 * 1024),
+    LOGGER.info("Free memory: {} MB, Used Memory: {} MB, Total memory: {} MB, Max memory: {} MB",
         freeMemory / (1024 * 1024),
+        usedMemory / (1024 * 1024),
         totalMemory / (1024 * 1024),
         maxMemory / (1024 * 1024)
     );
