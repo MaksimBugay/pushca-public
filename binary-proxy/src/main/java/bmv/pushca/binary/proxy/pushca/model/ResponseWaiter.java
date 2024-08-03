@@ -10,6 +10,8 @@ import java.util.function.Function;
 
 public class ResponseWaiter<T> extends CompletableFuture<T> {
 
+  private final long creationTime = Instant.now().toEpochMilli();
+
   private final AtomicLong activationTime = new AtomicLong(0);
   private final Function<T, Boolean> validator;
   private final Consumer<T> successHandler;
@@ -17,16 +19,18 @@ public class ResponseWaiter<T> extends CompletableFuture<T> {
   private final String errorMessage;
   private final Runnable repeatAction;
   public final long[] intervals;
+  public final long maxTtl;
 
   public ResponseWaiter(Function<T, Boolean> validator, Consumer<T> successHandler,
       Consumer<Throwable> errorHandler, String errorMessage,
-      Runnable repeatAction, long repeatInterval) {
+      Runnable repeatAction, long repeatInterval, long maxTtl) {
     this.validator = validator;
     this.successHandler = successHandler;
     this.errorHandler = errorHandler;
     this.errorMessage = errorMessage;
     this.repeatAction = repeatAction;
     this.intervals = new long[] {repeatInterval, 2 * repeatInterval, 3 * repeatInterval};
+    this.maxTtl = maxTtl;
   }
 
   public ResponseWaiter(long repeatInterval) {
@@ -37,6 +41,7 @@ public class ResponseWaiter<T> extends CompletableFuture<T> {
     this.repeatAction = null;
     activate();
     this.intervals = new long[] {repeatInterval, 2 * repeatInterval, 3 * repeatInterval};
+    this.maxTtl = 3 * repeatInterval;
   }
 
   public boolean isNotActivated() {
@@ -45,7 +50,7 @@ public class ResponseWaiter<T> extends CompletableFuture<T> {
 
   public boolean isExpired() {
     if (isNotActivated()) {
-      return false;
+      return (Instant.now().toEpochMilli() - creationTime) > maxTtl;
     }
     return (Instant.now().toEpochMilli() - activationTime.get()) > intervals[2];
   }

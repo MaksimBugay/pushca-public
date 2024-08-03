@@ -13,7 +13,8 @@ ${JVM_ARGS} \
 -server \
 -XX:+HeapDumpOnOutOfMemoryError \
 -XX:-OmitStackTraceInFastThrow \
--XX:HeapDumpPath=/var/log/multilogin/heap_dump_${APP_NAME:default}.hprof \
+-XX:HeapDumpPath=/var/log/heap_dump_${APP_NAME:default}.hprof \
+-Xms4g -Xmx12g \
 -jar /app.jar
 
 EXPOSE 8080

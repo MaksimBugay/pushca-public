@@ -1,0 +1,3 @@
+javac C:\mbugai\work\mlx\pushca-public\binary-proxy\src\main\java\bmv\pushca\binary\proxy\agent\ObjectSizeAgent.java
+
+jar cmf C:\mbugai\work\mlx\pushca-public\binary-proxy\src\main\resources\MANIFEST.MF ObjectSizeAgent.jar C:\mbugai\work\mlx\pushca-public\binary-proxy\src\main\java\bmv\pushca\binary\proxy\agent\ObjectSizeAgent.class

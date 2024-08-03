@@ -61,7 +61,9 @@ public class BinaryProxyService {
         () -> sendUploadBinaryAppeal(
             workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order())
         ),
-        microserviceConfiguration.responseTimeoutMs);
+        microserviceConfiguration.responseTimeoutMs,
+        (maxOrder + 1L) * microserviceConfiguration.responseTimeoutMs
+    );
 
     responseWaiter.whenComplete((bytes, error) -> {
       if (error == null) {

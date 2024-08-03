@@ -48,6 +48,8 @@ public class WebsocketPool implements DisposableBean {
   private final Map<String, List<String>> activeDownloadSessions = new ConcurrentHashMap<>();
 
   private final PushcaConfig pushcaConfig;
+  private final PushcaWsClientFactory pushcaWsClientFactory;
+  private final MicroserviceConfiguration microserviceConfiguration;
   private final Scheduler delayedExecutor;
 
   private final ListWithRandomAccess<PushcaWsClient> wsPool =
@@ -57,31 +59,21 @@ public class WebsocketPool implements DisposableBean {
       PushcaConfig pushcaConfig,
       PushcaWsClientFactory pushcaWsClientFactory) {
     this.pushcaConfig = pushcaConfig;
+    this.microserviceConfiguration = configuration;
+    this.pushcaWsClientFactory = pushcaWsClientFactory;
     this.delayedExecutor =
         Schedulers.newBoundedElastic(configuration.delayedExecutorPoolSize, 10_000,
             "delayedExecutionThreads");
 
-    runWithDelay(() -> {
-      pushcaWsClientFactory.createConnectionPool(
-          pushcaConfig.getPushcaConnectionPoolSize(), null,
-          (pusherAddress) -> configuration.dockerized ? pusherAddress.internalAdvertisedUrl()
-              : pusherAddress.externalAdvertisedUrl(),
-          this::wsConnectionMessageWasReceivedHandler,
-          this::wsConnectionDataWasReceivedHandler,
-          this::wsConnectionWasOpenHandler,
-          this::wsConnectionWasClosedHandler).subscribe(pool -> {
-        for (int i = 0; i < pool.size(); i++) {
-          final int index = i;
-          runWithDelay(() -> pool.get(index).connect(), i * 500L);
-        }
-      });
-    }, 1000);
+    reCreateWebsocketPool(false);
 
     delayedExecutor.schedulePeriodically(
         () -> {
           logHeapMemory();
           wsPool.forEach(ws -> ws.send(buildCommandMessage(null, PING).commandBody));
           LOGGER.info("Waiting hall size {}", waitingHall.size());
+          /*LOGGER.info("Websocket pool memory consumption: {} Mb",
+              ObjectSizeAgent.getObjectSize(this.wsPool) / (1024 * 1024));*/
         },
         25, 30, TimeUnit.SECONDS
     );
@@ -92,7 +84,7 @@ public class WebsocketPool implements DisposableBean {
 
     runWithDelay(() -> {
       LOGGER.info("Pushca connection pool: size = {}", wsPool.size());
-    }, 10000);
+    }, 20000);
   }
 
   private void runResponseWaiterRepeater() {
@@ -245,6 +237,29 @@ public class WebsocketPool implements DisposableBean {
     if (((1.0 * wsPool.size()) / pushcaConfig.getPushcaConnectionPoolSize()) < 0.7) {
       throw new IllegalStateException("Pushca connection pool is broken");
     }
+  }
+
+  public void reCreateWebsocketPool(boolean closeBefore) {
+    if (closeBefore) {
+      wsPool.forEach(WebSocketClient::close);
+    }
+
+    runWithDelay(() -> {
+      pushcaWsClientFactory.createConnectionPool(
+          pushcaConfig.getPushcaConnectionPoolSize(), null,
+          (pusherAddress) -> microserviceConfiguration.dockerized
+              ? pusherAddress.internalAdvertisedUrl()
+              : pusherAddress.externalAdvertisedUrl(),
+          this::wsConnectionMessageWasReceivedHandler,
+          this::wsConnectionDataWasReceivedHandler,
+          this::wsConnectionWasOpenHandler,
+          this::wsConnectionWasClosedHandler).subscribe(pool -> {
+        for (int i = 0; i < pool.size(); i++) {
+          final int index = i;
+          runWithDelay(() -> pool.get(index).connect(), i * 500L);
+        }
+      });
+    }, 1000);
   }
 
   public static void logHeapMemory() {

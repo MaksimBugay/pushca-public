@@ -1,10 +1,8 @@
 package bmv.pushca.binary.proxy.api;
 
-import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
@@ -24,15 +23,19 @@ public class ApiController {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WebsocketPool.class);
 
+  private final WebsocketPool websocketPool;
   private final BinaryProxyService binaryProxyService;
-  private final int responseTimeoutMs;
 
   @Autowired
   public ApiController(
-      MicroserviceConfiguration configuration,
-      BinaryProxyService binaryProxyService) {
-    this.responseTimeoutMs = configuration.responseTimeoutMs;
+      WebsocketPool websocketPool, BinaryProxyService binaryProxyService) {
+    this.websocketPool = websocketPool;
     this.binaryProxyService = binaryProxyService;
+  }
+
+  @PostMapping(value = "/binary/admin/recreate-ws-pool")
+  public Mono<Void> reCreateWebsocketPool() {
+    return Mono.fromRunnable(() -> websocketPool.reCreateWebsocketPool(true));
   }
 
   @GetMapping(value = "/binary/{workspaceId}/{binaryId}")
