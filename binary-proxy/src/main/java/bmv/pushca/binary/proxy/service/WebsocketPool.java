@@ -116,8 +116,8 @@ public class WebsocketPool implements DisposableBean {
 
   private void wsConnectionDataWasReceivedHandler(NettyWsClient ws, byte[] data) {
     BinaryWithHeader binaryWithHeader = new BinaryWithHeader(data);
-    /*LOGGER.info("New chunk arrived on {}: {}, {}, {}",
-        ws.getClientId(),
+    /*LOGGER.info("New chunk arrived on connection {}: {}, {}, {}",
+        ws.getIndexInPool(),
         binaryWithHeader.binaryId(),
         binaryWithHeader.order(),
         binaryWithHeader.getPayload().length);*/

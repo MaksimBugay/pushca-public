@@ -28,6 +28,7 @@ public class NettyWsClient {
   private final Logger LOGGER = LoggerFactory.getLogger(getClass());
 
   private final HttpClient httpClient;
+  private final int indexInPool;
   private final WebSocketClient webSocketClient;
   private final Sinks.Many<String> sendBuffer;
   private final Sinks.Many<DataBuffer> receiveBuffer;
@@ -40,12 +41,13 @@ public class NettyWsClient {
   private final Consumer<NettyWsClient> afterOpenListener;
   private final Consumer<NettyWsClient> afterCloseListener;
 
-  public NettyWsClient(URI uri, Consumer<String> messageConsumer,
+  public NettyWsClient(int indexInPool, URI uri, Consumer<String> messageConsumer,
       BiConsumer<NettyWsClient, byte[]> dataConsumer,
       Consumer<NettyWsClient> afterOpenListener,
       Consumer<NettyWsClient> afterCloseListener,
       SslContext sslContext,
       Scheduler scheduler) {
+    this.indexInPool = indexInPool;
     this.scheduler = scheduler;
     this.messageConsumer = messageConsumer;
     this.dataConsumer = dataConsumer;
@@ -66,6 +68,10 @@ public class NettyWsClient {
     sendBuffer = Sinks.many().unicast().onBackpressureBuffer();
     receiveBuffer = Sinks.many().unicast().onBackpressureBuffer();
     this.uri = uri;
+  }
+
+  public int getIndexInPool() {
+    return indexInPool;
   }
 
   public void openConnection() {
@@ -153,12 +159,12 @@ public class NettyWsClient {
   private void onOpen(WebSocketSession session) {
     this.session = session;
     Optional.ofNullable(afterOpenListener).ifPresent(l -> l.accept(this));
-    LOGGER.info("Websocket Session opened");
+    LOGGER.info("Session opened: ws index {}", indexInPool);
   }
 
   private void onClose() {
     session = null;
     Optional.ofNullable(afterCloseListener).ifPresent(l -> l.accept(this));
-    LOGGER.info("Websocket Session closed");
+    LOGGER.info("Session closed: ws index {}", indexInPool);
   }
 }

@@ -94,10 +94,12 @@ public class PushcaWsClientFactory {
                 "Failed attempt to open internal ws connections pool(empty response) " + toJson(
                     pushcaClient)));
           }
+          AtomicInteger indexInPool = new AtomicInteger(0);
           return Flux.fromIterable(openConnectionPoolResponse.addresses())
               .<NettyWsClient>handle((address, sink) -> {
                 try {
                   sink.next(new NettyWsClient(
+                      indexInPool.getAndIncrement(),
                       new URI(wsAuthorizedUrlExtractor.apply(address)),
                       messageConsumer,
                       dataConsumer,
