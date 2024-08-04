@@ -2,7 +2,7 @@ package bmv.pushca.binary.proxy.pushca.security;
 
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
-import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import io.netty.handler.ssl.SslProvider;
 import java.io.FileInputStream;
 import java.security.KeyStore;
 import javax.net.ssl.KeyManagerFactory;
@@ -20,14 +20,24 @@ public class SslContextProvider {
       return null;
     }
     KeyStore keyStore = KeyStore.getInstance("PKCS12");
-    keyStore.load(new FileInputStream(tlsStorePath), tlsStorePassword);
+    try (FileInputStream keyStoreFile = new FileInputStream(tlsStorePath)) {
+      keyStore.load(keyStoreFile, tlsStorePassword);
+    }
 
-    KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-    kmf.init(keyStore, tlsStorePassword);
+    // Initialize the key manager factory
+    KeyManagerFactory keyManagerFactory =
+        KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+    keyManagerFactory.init(keyStore, tlsStorePassword);
 
-    return SslContextBuilder.forClient()
-        .keyManager(kmf)
-        .trustManager(InsecureTrustManagerFactory.INSTANCE) // Replace with a trusted trust manager
+    // Initialize the trust manager factory
+    TrustManagerFactory trustManagerFactory =
+        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+    trustManagerFactory.init(keyStore);
+
+    // Create the SSL context
+    return SslContextBuilder.forServer(keyManagerFactory)
+        .trustManager(trustManagerFactory)
+        .sslProvider(SslProvider.JDK)  // or SslProvider.OPENSSL if you prefer OpenSSL
         .build();
   }
 
