@@ -35,7 +35,10 @@ public class ApiController {
 
   @PostMapping(value = "/binary/admin/recreate-ws-pool")
   public Mono<Void> reCreateWebsocketPool() {
-    return Mono.fromRunnable(() -> websocketPool.reCreateWebsocketPool(true));
+    return Mono.fromRunnable(() -> {
+      websocketPool.closeNettyWebsocketPool();
+      websocketPool.createNettyWebsocketPool();
+    });
   }
 
   @GetMapping(value = "/binary/{workspaceId}/{binaryId}")

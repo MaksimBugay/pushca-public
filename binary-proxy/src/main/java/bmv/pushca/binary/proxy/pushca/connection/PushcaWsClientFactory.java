@@ -31,6 +31,7 @@ import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Scheduler;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 
@@ -62,13 +63,14 @@ public class PushcaWsClientFactory {
     );
   }
 
-  public Mono<List<PushcaWsClient>> createConnectionPool(int poolSize,
+  public Mono<List<NettyWsClient>> createNettyConnectionPool(int poolSize,
       String pusherInstanceId,
       Function<PusherAddress, String> wsAuthorizedUrlExtractor,
       Consumer<String> messageConsumer,
-      BiConsumer<PushcaWsClient, ByteBuffer> dataConsumer,
-      Consumer<PushcaWsClient> afterOpenListener,
-      BiConsumer<PushcaWsClient, Integer> afterCloseListener) {
+      BiConsumer<NettyWsClient, byte[]> dataConsumer,
+      Consumer<NettyWsClient> afterOpenListener,
+      Consumer<NettyWsClient> afterCloseListener,
+      Scheduler scheduler) {
     LOGGER.info("Instance IP: {}", microserviceConfiguration.getInstanceIP());
     return webClient.post()
         .uri(pushcaConfig.getPushcaClusterUrl() + "/open-connection-pool")
@@ -91,21 +93,17 @@ public class PushcaWsClientFactory {
                 "Failed attempt to open internal ws connections pool(empty response) " + toJson(
                     pushcaClient)));
           }
-          AtomicInteger counter = new AtomicInteger();
           return Flux.fromIterable(openConnectionPoolResponse.addresses())
-              .<PushcaWsClient>handle((address, sink) -> {
+              .<NettyWsClient>handle((address, sink) -> {
                 try {
-                  sink.next(new PushcaWsClient(
+                  sink.next(new NettyWsClient(
                       new URI(wsAuthorizedUrlExtractor.apply(address)),
-                      MessageFormat.format("{0}_{1}", pushcaClient.accountId(),
-                          counter.incrementAndGet()),
-                      Math.toIntExact(Duration.ofMinutes(5).toMillis()),
                       messageConsumer,
                       dataConsumer,
                       afterOpenListener,
                       afterCloseListener,
-                      pushcaConfig.getSslContext(),
-                      microserviceConfiguration.getInstanceIP()
+                      pushcaConfig.getNettySslContext(),
+                      scheduler
                   ));
                 } catch (URISyntaxException e) {
                   sink.error(new RuntimeException(e));
@@ -113,6 +111,7 @@ public class PushcaWsClientFactory {
               })
               .collectList();
         })
+        .subscribeOn(scheduler)
         .onErrorResume(throwable -> {
           LOGGER.error("Failed attempt to get authorized websocket urls from Pushca", throwable);
           return Mono.empty();

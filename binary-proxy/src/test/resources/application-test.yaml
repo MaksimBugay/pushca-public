@@ -27,6 +27,8 @@ binary-proxy:
     size: 20
   delayed-executor-pool:
     size: 10
+  websocket-executor-pool:
+    size: 5
   pushca:
     cluster:
       url: http://vasilii.prodpushca.com:8070

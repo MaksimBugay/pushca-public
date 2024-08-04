@@ -1,6 +1,7 @@
 package bmv.pushca.binary.proxy.config;
 
 import bmv.pushca.binary.proxy.pushca.security.SslContextProvider;
+import io.netty.handler.ssl.SslContext;
 import java.util.Optional;
 import javax.net.ssl.SSLContext;
 import org.slf4j.Logger;
@@ -26,6 +27,8 @@ public class PushcaConfig {
 
   private final SslContextProvider sslContextProvider;
 
+  private final SslContext nettySslContext;
+
   public PushcaConfig(Environment env) {
     String tlsStorePath = env.getProperty("PUSHCA_TLS_STORE_PATH");
     char[] tlsStorePassword =
@@ -36,10 +39,17 @@ public class PushcaConfig {
           tlsStorePath,
           tlsStorePassword
       );
+      nettySslContext = SslContextProvider.buildSslContext(
+          tlsStorePath, tlsStorePassword
+      );
     } catch (Exception ex) {
       LOGGER.error("Cannot initialize tls context: {}", tlsStorePath, ex);
       throw new RuntimeException(ex);
     }
+  }
+
+  public SslContext getNettySslContext() {
+    return nettySslContext;
   }
 
   public SSLContext getSslContext() {

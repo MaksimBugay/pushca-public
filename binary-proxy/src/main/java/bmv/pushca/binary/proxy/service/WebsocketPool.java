@@ -15,7 +15,7 @@ import bmv.pushca.binary.proxy.pushca.PushcaMessageFactory;
 import bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.CommandWithId;
 import bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType;
 import bmv.pushca.binary.proxy.pushca.connection.ListWithRandomAccess;
-import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClient;
+import bmv.pushca.binary.proxy.pushca.connection.NettyWsClient;
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.connection.model.BinaryWithHeader;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
@@ -30,7 +30,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.java_websocket.client.WebSocketClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -50,9 +49,10 @@ public class WebsocketPool implements DisposableBean {
   private final PushcaConfig pushcaConfig;
   private final PushcaWsClientFactory pushcaWsClientFactory;
   private final MicroserviceConfiguration microserviceConfiguration;
-  private final Scheduler delayedExecutor;
 
-  private final ListWithRandomAccess<PushcaWsClient> wsPool =
+  private final Scheduler websocketScheduler;
+  private final Scheduler delayedExecutor;
+  private final ListWithRandomAccess<NettyWsClient> wsNettyPool =
       new ListWithRandomAccess<>(new CopyOnWriteArrayList<>());
 
   public WebsocketPool(MicroserviceConfiguration configuration,
@@ -61,19 +61,21 @@ public class WebsocketPool implements DisposableBean {
     this.pushcaConfig = pushcaConfig;
     this.microserviceConfiguration = configuration;
     this.pushcaWsClientFactory = pushcaWsClientFactory;
+    this.websocketScheduler =
+        Schedulers.newBoundedElastic(configuration.websocketExecutorPoolSize, 10_000,
+            "doRateLimitCheckThreads");
     this.delayedExecutor =
         Schedulers.newBoundedElastic(configuration.delayedExecutorPoolSize, 10_000,
             "delayedExecutionThreads");
 
-    reCreateWebsocketPool(false);
+    createNettyWebsocketPool();
 
     delayedExecutor.schedulePeriodically(
         () -> {
           logHeapMemory();
-          wsPool.forEach(ws -> ws.send(buildCommandMessage(null, PING).commandBody));
+          wsNettyPool.forEach(ws -> ws.send(buildCommandMessage(null, PING).commandBody));
           LOGGER.info("Waiting hall size {}", waitingHall.size());
-          /*LOGGER.info("Websocket pool memory consumption: {} Mb",
-              ObjectSizeAgent.getObjectSize(this.wsPool) / (1024 * 1024));*/
+          LOGGER.info("Websocket pool size: {}", this.wsNettyPool.size());
         },
         25, 30, TimeUnit.SECONDS
     );
@@ -81,10 +83,6 @@ public class WebsocketPool implements DisposableBean {
         this::runResponseWaiterRepeater,
         10, 10, TimeUnit.SECONDS
     );
-
-    runWithDelay(() -> {
-      LOGGER.info("Pushca connection pool: size = {}", wsPool.size());
-    }, 20000);
   }
 
   private void runResponseWaiterRepeater() {
@@ -95,12 +93,12 @@ public class WebsocketPool implements DisposableBean {
     waitingHall.values().forEach(ResponseWaiter::runRepeatAction);
   }
 
-  private void wsConnectionWasOpenHandler(PushcaWsClient webSocket) {
-    wsPool.add(webSocket);
+  private void wsNettyConnectionWasOpenHandler(NettyWsClient webSocket) {
+    wsNettyPool.add(webSocket);
   }
 
-  private void wsConnectionWasClosedHandler(PushcaWsClient webSocket, int code) {
-    wsPool.remove(webSocket);
+  private void wsNettyConnectionWasClosedHandler(NettyWsClient webSocket) {
+    wsNettyPool.remove(webSocket);
   }
 
   private void wsConnectionMessageWasReceivedHandler(String message) {
@@ -116,9 +114,8 @@ public class WebsocketPool implements DisposableBean {
     }
   }
 
-  private void wsConnectionDataWasReceivedHandler(PushcaWsClient ws, ByteBuffer data) {
-    //LOGGER.info("New portion of data arrived: {}", data.array().length);
-    BinaryWithHeader binaryWithHeader = new BinaryWithHeader(data.array());
+  private void wsConnectionDataWasReceivedHandler(NettyWsClient ws, byte[] data) {
+    BinaryWithHeader binaryWithHeader = new BinaryWithHeader(data);
     /*LOGGER.info("New chunk arrived on {}: {}, {}, {}",
         ws.getClientId(),
         binaryWithHeader.binaryId(),
@@ -136,11 +133,11 @@ public class WebsocketPool implements DisposableBean {
     }
   }
 
-  public PushcaWsClient getConnection() {
-    if (wsPool.isEmpty()) {
+  public NettyWsClient getConnection() {
+    if (wsNettyPool.isEmpty()) {
       throw new IllegalStateException("Pushca connection pool is exhausted");
     }
-    return wsPool.get();
+    return wsNettyPool.get();
   }
 
   public void registerDownloadSession(String binaryId, String sessionId) {
@@ -229,37 +226,42 @@ public class WebsocketPool implements DisposableBean {
 
   @Override
   public void destroy() {
-    wsPool.forEach(WebSocketClient::close);
+    closeNettyWebsocketPool();
     Optional.ofNullable(delayedExecutor).ifPresent(Scheduler::dispose);
+    Optional.ofNullable(websocketScheduler).ifPresent(Scheduler::dispose);
   }
 
   public void isHealthy() {
-    if (((1.0 * wsPool.size()) / pushcaConfig.getPushcaConnectionPoolSize()) < 0.7) {
+    if (((1.0 * wsNettyPool.size()) / pushcaConfig.getPushcaConnectionPoolSize()) < 0.7) {
       throw new IllegalStateException("Pushca connection pool is broken");
     }
   }
 
-  public void reCreateWebsocketPool(boolean closeBefore) {
-    if (closeBefore) {
-      wsPool.forEach(WebSocketClient::close);
-    }
+  public void closeNettyWebsocketPool() {
+    wsNettyPool.forEach(NettyWsClient::disconnect);
+  }
 
+  public void createNettyWebsocketPool() {
     runWithDelay(() -> {
-      pushcaWsClientFactory.createConnectionPool(
-          pushcaConfig.getPushcaConnectionPoolSize(), null,
-          (pusherAddress) -> microserviceConfiguration.dockerized
-              ? pusherAddress.internalAdvertisedUrl()
-              : pusherAddress.externalAdvertisedUrl(),
-          this::wsConnectionMessageWasReceivedHandler,
-          this::wsConnectionDataWasReceivedHandler,
-          this::wsConnectionWasOpenHandler,
-          this::wsConnectionWasClosedHandler).subscribe(pool -> {
-        for (int i = 0; i < pool.size(); i++) {
-          final int index = i;
-          runWithDelay(() -> pool.get(index).connect(), i * 500L);
-        }
-      });
-    }, 1000);
+      pushcaWsClientFactory.createNettyConnectionPool(
+              pushcaConfig.getPushcaConnectionPoolSize(), null,
+              (pusherAddress) -> microserviceConfiguration.dockerized
+                  ? pusherAddress.internalAdvertisedUrl()
+                  : pusherAddress.externalAdvertisedUrl(),
+              this::wsConnectionMessageWasReceivedHandler,
+              this::wsConnectionDataWasReceivedHandler,
+              this::wsNettyConnectionWasOpenHandler,
+              this::wsNettyConnectionWasClosedHandler,
+              websocketScheduler)
+          .subscribeOn(websocketScheduler)
+          .subscribe(pool -> {
+            for (int i = 0; i < pool.size(); i++) {
+              final int index = i;
+              runWithDelay(() -> pool.get(index).openConnection(), 500L * i);
+            }
+            LOGGER.info("Netty pool size: {}", pool.size());
+          });
+    }, 5000);
   }
 
   public static void logHeapMemory() {

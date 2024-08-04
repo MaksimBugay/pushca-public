@@ -1,5 +1,8 @@
 package bmv.pushca.binary.proxy.pushca.security;
 
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import java.io.FileInputStream;
 import java.security.KeyStore;
 import javax.net.ssl.KeyManagerFactory;
@@ -10,6 +13,23 @@ import org.apache.commons.lang3.StringUtils;
 public class SslContextProvider {
 
   private final SSLContext sslContext;
+
+  public static SslContext buildSslContext(String tlsStorePath, char[] tlsStorePassword)
+      throws Exception {
+    if (StringUtils.isEmpty(tlsStorePath)) {
+      return null;
+    }
+    KeyStore keyStore = KeyStore.getInstance("PKCS12");
+    keyStore.load(new FileInputStream(tlsStorePath), tlsStorePassword);
+
+    KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+    kmf.init(keyStore, tlsStorePassword);
+
+    return SslContextBuilder.forClient()
+        .keyManager(kmf)
+        .trustManager(InsecureTrustManagerFactory.INSTANCE) // Replace with a trusted trust manager
+        .build();
+  }
 
   public SslContextProvider(String tlsStorePath, char[] tlsStorePassword) {
     SSLContext sslContext = null;

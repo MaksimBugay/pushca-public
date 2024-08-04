@@ -54,7 +54,7 @@ class BinaryProxyIT {
 
   @Test
   void binaryProxyTest() throws InterruptedException {
-    Thread.sleep(2000);
+    Thread.sleep(5000);
     final String workspaceId = "cec7abf69bab9f5aa793bd1c0c101e99";
     final String binaryId = "a9be54a5-5203-4fa6-9515-eda2341f5890";
     String mimeType = "video/mp4";

@@ -28,6 +28,8 @@ public class MicroserviceConfiguration {
   public int webServerSelectorsPoolSize;
   @Value("${binary-proxy.workers-threads-pool.size:500}")
   public int webServerWorkersPoolSize;
+  @Value("${binary-proxy.websocket-executor-pool.size:100}")
+  public int websocketExecutorPoolSize;
   @Value("${binary-proxy.delayed-executor-pool.size:100}")
   public int delayedExecutorPoolSize;
 

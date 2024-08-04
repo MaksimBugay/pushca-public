@@ -22,13 +22,15 @@ binary-proxy:
     timeout:
       ms: 5000
   selectors-threads-pool:
-    size: 2
+    size: 5
   workers-threads-pool:
-    size: 20
+    size: 300
   delayed-executor-pool:
-    size: 10
+    size: 200
+  websocket-executor-pool:
+    size: 200
   pushca:
     cluster:
       url: http://vasilii.prodpushca.com:8070
     connection-pool:
-      size: 10
+      size: 5
