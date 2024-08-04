@@ -55,10 +55,6 @@
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.java-websocket</groupId>
-      <artifactId>Java-WebSocket</artifactId>
-    </dependency>
-    <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
@@ -109,13 +105,50 @@
     </dependency>
   </dependencies>
 
-  <build>
+    <build>
+    <plugins>
+      <plugin>
+        <groupId>org.graalvm.buildtools</groupId>
+        <artifactId>native-maven-plugin</artifactId>
+        <version>0.9.28</version>
+        <configuration>
+          <imageName>binary-proxy</imageName>
+          <jvmArgs>
+            <arg>-Xss512k</arg>
+            <arg>-XX:MaxRAMPercentage=80</arg>
+            <arg>-Djava.security.egd=file:/dev/./urandom</arg>
+          </jvmArgs>
+          <buildArgs>
+            <buildArg>-H:IncludeResources=".*.yaml|.*.yml|.*.sh|.*.properties"</buildArg>
+            <buildArg>-H:+ReportUnsupportedElementsAtRuntime</buildArg>
+            <buildArg>-H:TraceClassInitialization=true</buildArg>
+            <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+            <buildArg>--verbose</buildArg>
+            <buildArg>--enable-http</buildArg>
+            <buildArg>--enable-https</buildArg>
+            <buildArg>--enable-url-protocols=http,https</buildArg>
+            <buildArg>-H:ReflectionConfigurationFiles=src/main/resources/reflection-config.json</buildArg>
+            <buildArg>
+              --initialize-at-build-time=redis.clients.jedis.Jedis,redis.clients.jedis.util.JedisMetaInfo,redis.clients.jedis.JedisMetaInfo,ch.qos.logback,org.slf4j,com.ctc.wstx
+            </buildArg>
+          </buildArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+    <finalName>binary-proxy</finalName>
+  </build>
+
+  <!--<build>
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
     </plugins>
-  </build>
+  </build>-->
 
 </project>

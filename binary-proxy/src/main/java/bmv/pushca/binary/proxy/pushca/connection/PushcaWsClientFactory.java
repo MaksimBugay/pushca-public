@@ -75,6 +75,7 @@ public class PushcaWsClientFactory {
     return webClient.post()
         .uri(pushcaConfig.getPushcaClusterUrl() + "/open-connection-pool")
         .header("X-Real-IP", microserviceConfiguration.getInstanceIP())
+        .contentType(MediaType.APPLICATION_JSON)
         .body(Mono.just(new OpenConnectionPoolRequest(pushcaClient, pusherInstanceId, poolSize)),
             OpenConnectionPoolRequest.class)
         .accept(MediaType.APPLICATION_JSON)
