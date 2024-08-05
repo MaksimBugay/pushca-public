@@ -4,45 +4,63 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslProvider;
 import java.io.FileInputStream;
+import java.net.Socket;
 import java.security.KeyStore;
+import java.security.cert.X509Certificate;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509ExtendedTrustManager;
 import org.apache.commons.lang3.StringUtils;
 
 public class SslContextProvider {
 
   private final SSLContext sslContext;
 
-  public static SslContext buildSslContext(String tlsStorePath, char[] tlsStorePassword)
-      throws Exception {
-    if (StringUtils.isEmpty(tlsStorePath)) {
-      return null;
-    }
-    KeyStore keyStore = KeyStore.getInstance("PKCS12");
-    try (FileInputStream keyStoreFile = new FileInputStream(tlsStorePath)) {
-      keyStore.load(keyStoreFile, tlsStorePassword);
+  private final SslContext nettySslContext;
+
+  private static final TrustManager MOCK_TRUST_MANAGER = new X509ExtendedTrustManager() {
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket) {
+
     }
 
-    // Initialize the key manager factory
-    KeyManagerFactory keyManagerFactory =
-        KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-    keyManagerFactory.init(keyStore, tlsStorePassword);
+    @Override
+    public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket) {
 
-    // Initialize the trust manager factory
-    TrustManagerFactory trustManagerFactory =
-        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-    trustManagerFactory.init(keyStore);
+    }
 
-    // Create the SSL context
-    return SslContextBuilder.forServer(keyManagerFactory)
-        .trustManager(trustManagerFactory)
-        .sslProvider(SslProvider.JDK)  // or SslProvider.OPENSSL if you prefer OpenSSL
-        .build();
-  }
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine) {
+
+    }
+
+    @Override
+    public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine) {
+
+    }
+
+    @Override
+    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+      return new java.security.cert.X509Certificate[0];
+    }
+
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType) {
+
+    }
+
+    @Override
+    public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+      // empty method
+    }
+  };
 
   public SslContextProvider(String tlsStorePath, char[] tlsStorePassword) {
     SSLContext sslContext = null;
+    SslContext nettySslContext = null;
     if (StringUtils.isNotEmpty(tlsStorePath)) {
       try (
           FileInputStream pkcs12InputStream = new FileInputStream(tlsStorePath)) {
@@ -57,15 +75,25 @@ public class SslContextProvider {
         sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
         sslContext.getServerSessionContext().setSessionTimeout(30);
         sslContext.getClientSessionContext().setSessionTimeout(30);
+
+        nettySslContext = SslContextBuilder.forClient()
+            .keyManager(kmf)
+            .trustManager(MOCK_TRUST_MANAGER)
+            .sslProvider(SslProvider.JDK)  // or SslProvider.OPENSSL if you prefer OpenSSL
+            .build();
       } catch (Exception ex) {
         throw new RuntimeException(ex);
       }
     }
     this.sslContext = sslContext;
+    this.nettySslContext = nettySslContext;
   }
 
   public SSLContext getSslContext() {
     return sslContext;
   }
 
+  public SslContext getNettySslContext() {
+    return nettySslContext;
+  }
 }

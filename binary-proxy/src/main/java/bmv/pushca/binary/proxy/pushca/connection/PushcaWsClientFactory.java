@@ -100,6 +100,7 @@ public class PushcaWsClientFactory {
                 try {
                   sink.next(new NettyWsClient(
                       indexInPool.getAndIncrement(),
+                      microserviceConfiguration.getInstanceIP(),
                       new URI(wsAuthorizedUrlExtractor.apply(address)),
                       messageConsumer,
                       dataConsumer,

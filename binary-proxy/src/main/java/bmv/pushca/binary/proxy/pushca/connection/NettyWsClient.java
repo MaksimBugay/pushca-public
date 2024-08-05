@@ -4,12 +4,14 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.ssl.SslContext;
 import io.netty.util.ReferenceCountUtil;
 import java.net.URI;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.reactive.socket.WebSocketMessage;
 import org.springframework.web.reactive.socket.WebSocketMessage.Type;
 import org.springframework.web.reactive.socket.WebSocketSession;
@@ -22,6 +24,7 @@ import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Scheduler;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.http.client.WebsocketClientSpec;
+import reactor.netty.tcp.SslProvider;
 
 public class NettyWsClient {
 
@@ -29,6 +32,7 @@ public class NettyWsClient {
 
   private final HttpClient httpClient;
   private final int indexInPool;
+  private final String clientIP;
   private final WebSocketClient webSocketClient;
   private final Sinks.Many<String> sendBuffer;
   private final Sinks.Many<DataBuffer> receiveBuffer;
@@ -41,13 +45,17 @@ public class NettyWsClient {
   private final Consumer<NettyWsClient> afterOpenListener;
   private final Consumer<NettyWsClient> afterCloseListener;
 
-  public NettyWsClient(int indexInPool, URI uri, Consumer<String> messageConsumer,
+  public NettyWsClient(int indexInPool,
+      String clientIP,
+      URI uri,
+      Consumer<String> messageConsumer,
       BiConsumer<NettyWsClient, byte[]> dataConsumer,
       Consumer<NettyWsClient> afterOpenListener,
       Consumer<NettyWsClient> afterCloseListener,
       SslContext sslContext,
       Scheduler scheduler) {
     this.indexInPool = indexInPool;
+    this.clientIP = clientIP;
     this.scheduler = scheduler;
     this.messageConsumer = messageConsumer;
     this.dataConsumer = dataConsumer;
@@ -57,9 +65,11 @@ public class NettyWsClient {
     WebsocketClientSpec.Builder builder =
         WebsocketClientSpec.builder().maxFramePayloadLength(5 * 1024 * 1024);
     this.httpClient = sslContext == null ? HttpClient.newConnection()
-        : HttpClient.newConnection().tcpConfiguration(
-            tcpClient -> tcpClient.secure(spec -> spec.sslContext(sslContext))
-        );
+        : HttpClient.newConnection()
+            .tcpConfiguration(
+                tcpClient -> tcpClient.secure(spec -> spec.sslContext(sslContext)
+                )
+            );
     this.webSocketClient = new ReactorNettyWebSocketClient(
         httpClient,
         () -> builder
@@ -75,8 +85,10 @@ public class NettyWsClient {
   }
 
   public void openConnection() {
+    HttpHeaders headers = new HttpHeaders();
+    headers.add("X-Real-IP", clientIP);
     subscription = webSocketClient
-        .execute(this.uri, this::handleSession)
+        .execute(this.uri, headers, this::handleSession)
         .then(Mono.fromRunnable(this::onClose))
         .subscribeOn(scheduler)
         .subscribe();
