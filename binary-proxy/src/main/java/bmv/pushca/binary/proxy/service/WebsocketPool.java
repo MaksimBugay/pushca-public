@@ -182,6 +182,10 @@ public class WebsocketPool implements DisposableBean {
     });
   }
 
+  public void removeResponseWaiter(String waiterId) {
+    waitingHall.remove(waiterId);
+  }
+
   public <T> void completeWithResponse(String id, T responseObject) {
     waitingHall.computeIfPresent(id, (wId, waiter) -> {
       if (waiter.isDone() || waiter.isNotActivated()) {

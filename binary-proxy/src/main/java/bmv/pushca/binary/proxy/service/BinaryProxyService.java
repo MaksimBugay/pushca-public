@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -49,7 +50,8 @@ public class BinaryProxyService {
   }
 
   public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String downloadSessionId,
-      String binaryId, Datagram datagram, int maxOrder) {
+      String binaryId, Datagram datagram, int maxOrder,
+      ConcurrentLinkedQueue<String> pendingChunks) {
     final String datagramId = buildDatagramId(binaryId, datagram.order(), pushcaClientHashCode);
     ResponseWaiter<byte[]> responseWaiter = new ResponseWaiter<>(
         (chunk) -> chunk.length == datagram.size()
@@ -65,8 +67,11 @@ public class BinaryProxyService {
         (maxOrder + 1L) * microserviceConfiguration.responseTimeoutMs
     );
 
+    final String waiterId = concatParts(datagramId, downloadSessionId);
+
     responseWaiter.whenComplete((bytes, error) -> {
       if (error == null) {
+        pendingChunks.remove(waiterId);
         if (datagram.order() < maxOrder) {
           final String nextDatagramId =
               buildDatagramId(binaryId, datagram.order() + 1, pushcaClientHashCode);
@@ -80,13 +85,13 @@ public class BinaryProxyService {
       }
     });
 
-    final String waiterId = concatParts(datagramId, downloadSessionId);
-    websocketPool.registerDownloadSession(binaryId, downloadSessionId);
     websocketPool.registerResponseWaiter(
         waiterId, responseWaiter
     );
+    pendingChunks.add(waiterId);
 
     if (datagram.order() == 0) {
+      websocketPool.registerDownloadSession(binaryId, downloadSessionId);
       websocketPool.activateResponseWaiter(waiterId);
       sendUploadBinaryAppeal(
           workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(0)

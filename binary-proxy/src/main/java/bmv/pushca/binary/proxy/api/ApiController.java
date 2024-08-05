@@ -3,6 +3,7 @@ package bmv.pushca.binary.proxy.api;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +50,7 @@ public class ApiController {
       String mimeType,
       ServerHttpResponse response) {
     response.getHeaders().setContentType(MediaType.valueOf(mimeType));
-
+    final ConcurrentLinkedQueue<String> pendingChunks = new ConcurrentLinkedQueue<>();
     return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
         .onErrorResume(throwable -> Mono.error(
             new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
@@ -61,7 +62,8 @@ public class ApiController {
                             binaryManifest.downloadSessionId(),
                             binaryId,
                             dtm,
-                            binaryManifest.datagrams().size() - 1)
+                            binaryManifest.datagrams().size() - 1,
+                            pendingChunks)
                     )
                     .onErrorResume(throwable -> Mono.error(
                             new CannotDownloadBinaryChunkException(
@@ -92,9 +94,13 @@ public class ApiController {
               } else {
                 return Mono.error(new RuntimeException("Error fetching binary data", throwable));
               }
-            });
+            })
+        .doFinally((signalType) -> {
+          pendingChunks.forEach(websocketPool::removeResponseWaiter);
+          pendingChunks.clear();
+        })
         /*.doOnCancel(() -> {
-
-        });*/
+          System.out.println("!!!");
+        })*/;
   }
 }
