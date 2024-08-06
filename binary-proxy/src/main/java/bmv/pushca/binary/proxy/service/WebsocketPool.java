@@ -21,7 +21,6 @@ import bmv.pushca.binary.proxy.pushca.connection.model.BinaryWithHeader;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.Command;
 import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -261,7 +260,7 @@ public class WebsocketPool implements DisposableBean {
           .subscribe(pool -> {
             for (int i = 0; i < pool.size(); i++) {
               final int index = i;
-              runWithDelay(() -> pool.get(index).openConnection(), 500L * i);
+              runWithDelay(() -> pool.get(index).openConnection(), 1500L * i);
             }
             LOGGER.info("Netty pool size: {}", pool.size());
           });
