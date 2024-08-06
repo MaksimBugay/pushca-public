@@ -41,8 +41,12 @@ RUN mvn clean -Pnative native:compile
 # The deployment Image
 FROM ubuntu:rolling
 
+# Install prerequisites
+RUN apt-get update && apt-get install -y \
+curl
+
 # Copy the native executable into the containers
 COPY --from=builder /build/target/binary-proxy .
 ENTRYPOINT ["/binary-proxy"]
 
-#HEALTHCHECK --start-period=60s --interval=10s --timeout=5s CMD curl -f http://localhost:8080/actuator/health || exit 1
+HEALTHCHECK --start-period=60s --interval=10s --timeout=5s CMD curl -f http://localhost:8080/actuator/health || exit 1

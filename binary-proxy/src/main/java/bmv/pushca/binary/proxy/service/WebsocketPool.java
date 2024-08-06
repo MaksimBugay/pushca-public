@@ -256,7 +256,6 @@ public class WebsocketPool implements DisposableBean {
               this::wsNettyConnectionWasOpenHandler,
               this::wsNettyConnectionWasClosedHandler,
               websocketScheduler)
-          .subscribeOn(websocketScheduler)
           .subscribe(pool -> {
             for (int i = 0; i < pool.size(); i++) {
               final int index = i;
