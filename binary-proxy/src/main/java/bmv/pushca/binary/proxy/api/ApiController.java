@@ -8,6 +8,7 @@ import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
@@ -54,26 +55,37 @@ public class ApiController {
     return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
         .onErrorResume(throwable -> Mono.error(
             new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
-        .flatMapMany(binaryManifest -> Flux.fromIterable(binaryManifest.datagrams())
-            .flatMap(
-                dtm -> Mono.fromFuture(
-                        binaryProxyService.requestBinaryChunk(
-                            workspaceId,
-                            binaryManifest.downloadSessionId(),
-                            binaryId,
-                            dtm,
-                            binaryManifest.datagrams().size() - 1,
-                            pendingChunks)
-                    )
-                    .onErrorResume(throwable -> Mono.error(
-                            new CannotDownloadBinaryChunkException(
-                                binaryId, dtm,
-                                binaryManifest.downloadSessionId(),
-                                throwable
-                            )
-                        )
-                    )
-            )
+        .flatMapMany(binaryManifest -> {
+              // Set the Content-Disposition header to suggest the filename for the download
+              response.getHeaders().setContentDisposition(ContentDisposition.builder("attachment")
+                  .filename(binaryManifest.name())
+                  .build());
+              // Set the Content-Length header if the total size is known
+              response.getHeaders()
+                  .setContentLength(binaryManifest.getTotalSize()); // Assuming totalSize is available
+              // Set the Content-Type header
+              //response.getHeaders().setContentType(MediaType.valueOf(mimeType));
+              return Flux.fromIterable(binaryManifest.datagrams())
+                  .flatMap(
+                      dtm -> Mono.fromFuture(
+                              binaryProxyService.requestBinaryChunk(
+                                  workspaceId,
+                                  binaryManifest.downloadSessionId(),
+                                  binaryId,
+                                  dtm,
+                                  binaryManifest.datagrams().size() - 1,
+                                  pendingChunks)
+                          )
+                          .onErrorResume(throwable -> Mono.error(
+                                  new CannotDownloadBinaryChunkException(
+                                      binaryId, dtm,
+                                      binaryManifest.downloadSessionId(),
+                                      throwable
+                                  )
+                              )
+                          )
+                  );
+            }
         )
         .onErrorResume(
             throwable -> {
@@ -84,8 +96,8 @@ public class ApiController {
                 );
                 if ((throwable.getCause() != null)
                     && (throwable.getCause() instanceof TimeoutException)) {
-                  LOGGER.error("Failed by timeout attempt to download binary with id {}", binaryId,
-                      throwable);
+                  LOGGER.error("Failed by timeout attempt to download binary with id {}",
+                      binaryId, throwable);
                   response.setStatusCode(HttpStatus.NOT_FOUND);
                   return Mono.empty();
                 } else {

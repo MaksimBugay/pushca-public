@@ -4,7 +4,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.ssl.SslContext;
 import io.netty.util.ReferenceCountUtil;
 import java.net.URI;
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -24,15 +23,17 @@ import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Scheduler;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.http.client.WebsocketClientSpec;
-import reactor.netty.tcp.SslProvider;
 
 public class NettyWsClient {
 
   private final Logger LOGGER = LoggerFactory.getLogger(getClass());
 
+  public static final String CLUSTER_SECRET_HEADER_NAME = "X-Cluster-Secret";
+
   private final HttpClient httpClient;
   private final int indexInPool;
   private final String clientIP;
+  private final String pushcaClusterSecret;
   private final WebSocketClient webSocketClient;
   private final Sinks.Many<String> sendBuffer;
   private final Sinks.Many<DataBuffer> receiveBuffer;
@@ -47,6 +48,7 @@ public class NettyWsClient {
 
   public NettyWsClient(int indexInPool,
       String clientIP,
+      String pushcaClusterSecret,
       URI uri,
       Consumer<String> messageConsumer,
       BiConsumer<NettyWsClient, byte[]> dataConsumer,
@@ -56,6 +58,7 @@ public class NettyWsClient {
       Scheduler scheduler) {
     this.indexInPool = indexInPool;
     this.clientIP = clientIP;
+    this.pushcaClusterSecret = pushcaClusterSecret;
     this.scheduler = scheduler;
     this.messageConsumer = messageConsumer;
     this.dataConsumer = dataConsumer;
@@ -87,6 +90,7 @@ public class NettyWsClient {
   public void openConnection() {
     HttpHeaders headers = new HttpHeaders();
     headers.add("X-Real-IP", clientIP);
+    headers.add(CLUSTER_SECRET_HEADER_NAME, pushcaClusterSecret);
     subscription = webSocketClient
         .execute(this.uri, headers, this::handleSession)
         .then(Mono.fromRunnable(this::onClose))

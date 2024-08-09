@@ -27,4 +27,8 @@ public record BinaryManifest(String id, String name, String mimeType,
       PClient sender, String pusherInstanceId) {
     this(id, name, mimeType, datagrams, sender, pusherInstanceId, null);
   }
+
+  public long getTotalSize() {
+    return datagrams.stream().map(Datagram::size).reduce(Integer::sum).orElse(0);
+  }
 }

@@ -11,8 +11,6 @@ import bmv.pushca.binary.proxy.pushca.model.PClient;
 import io.netty.channel.ChannelOption;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.ByteBuffer;
-import java.text.MessageFormat;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -101,6 +99,7 @@ public class PushcaWsClientFactory {
                   sink.next(new NettyWsClient(
                       indexInPool.getAndIncrement(),
                       microserviceConfiguration.getInstanceIP(),
+                      pushcaConfig.getPushcaClusterSecret(),
                       new URI(wsAuthorizedUrlExtractor.apply(address)),
                       messageConsumer,
                       dataConsumer,

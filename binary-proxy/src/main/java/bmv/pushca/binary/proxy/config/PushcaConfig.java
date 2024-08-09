@@ -3,7 +3,6 @@ package bmv.pushca.binary.proxy.config;
 import bmv.pushca.binary.proxy.pushca.security.SslContextProvider;
 import io.netty.handler.ssl.SslContext;
 import java.util.Optional;
-import javax.net.ssl.SSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +20,9 @@ public class PushcaConfig {
 
   @Value("${binary-proxy.pushca.cluster.url:}")
   private String pushcaClusterUrl;
+
+  @Value("${binary-proxy.pushca.internal-cluster-secret:}")
+  private String pushcaClusterSecret;
 
   @Value("${binary-proxy.pushca.connection-pool.size:10}")
   private int pushcaConnectionPoolSize;
@@ -52,6 +54,10 @@ public class PushcaConfig {
       return pushcaClusterUrlEnv;
     }
     return pushcaClusterUrl;
+  }
+
+  public String getPushcaClusterSecret() {
+    return pushcaClusterSecret;
   }
 
   public int getPushcaConnectionPoolSize() {
