@@ -29,6 +29,10 @@ public record BinaryManifest(String id, String name, String mimeType,
   }
 
   public long getTotalSize() {
-    return datagrams.stream().map(Datagram::size).reduce(Integer::sum).orElse(0);
+    long totalSize = 0;
+    for (Datagram datagram : this.datagrams) {
+      totalSize += datagram.size();
+    }
+    return totalSize;
   }
 }
