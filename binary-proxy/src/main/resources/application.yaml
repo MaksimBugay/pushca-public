@@ -32,5 +32,6 @@ binary-proxy:
   pushca:
     cluster:
       url: http://vasilii.prodpushca.com:8070
+      secret: QHqVav6Ope7vhGjHh2h8
     connection-pool:
       size: 5

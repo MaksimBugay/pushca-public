@@ -5,6 +5,7 @@ import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +16,6 @@ import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -47,10 +47,7 @@ public class ApiController {
   public Flux<byte[]> serveBinaryAsStream(
       @PathVariable String workspaceId,
       @PathVariable String binaryId,
-      @RequestParam(value = "mimeType", defaultValue = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-      String mimeType,
       ServerHttpResponse response) {
-    response.getHeaders().setContentType(MediaType.valueOf(mimeType));
     final ConcurrentLinkedQueue<String> pendingChunks = new ConcurrentLinkedQueue<>();
     return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
         .onErrorResume(throwable -> Mono.error(
@@ -64,7 +61,11 @@ public class ApiController {
               response.getHeaders()
                   .setContentLength(binaryManifest.getTotalSize()); // Assuming totalSize is available
               // Set the Content-Type header
-              //response.getHeaders().setContentType(MediaType.valueOf(mimeType));
+              if (StringUtils.isNotEmpty(binaryManifest.mimeType())) {
+                response.getHeaders().setContentType(MediaType.valueOf(binaryManifest.mimeType()));
+              } else {
+                response.getHeaders().setContentType(MediaType.APPLICATION_OCTET_STREAM);
+              }
               return Flux.fromIterable(binaryManifest.datagrams())
                   .flatMap(
                       dtm -> Mono.fromFuture(

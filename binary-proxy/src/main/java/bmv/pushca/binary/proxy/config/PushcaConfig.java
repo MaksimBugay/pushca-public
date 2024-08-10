@@ -21,7 +21,7 @@ public class PushcaConfig {
   @Value("${binary-proxy.pushca.cluster.url:}")
   private String pushcaClusterUrl;
 
-  @Value("${binary-proxy.pushca.internal-cluster-secret:}")
+  @Value("${binary-proxy.pushca.cluster.secret:}")
   private String pushcaClusterSecret;
 
   @Value("${binary-proxy.pushca.connection-pool.size:10}")
