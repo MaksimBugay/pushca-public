@@ -16,6 +16,7 @@ import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -47,6 +48,7 @@ public class ApiController {
   public Flux<byte[]> serveBinaryAsStream(
       @PathVariable String workspaceId,
       @PathVariable String binaryId,
+      @RequestParam(value = "canPlayType", defaultValue = "") String canPlayType,
       ServerHttpResponse response) {
     final ConcurrentLinkedQueue<String> pendingChunks = new ConcurrentLinkedQueue<>();
     return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
@@ -54,12 +56,19 @@ public class ApiController {
             new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
         .flatMapMany(binaryManifest -> {
               // Set the Content-Disposition header to suggest the filename for the download
-              response.getHeaders().setContentDisposition(ContentDisposition.builder("attachment")
-                  .filename(binaryManifest.name())
-                  .build());
+              if (!"probably".equals(canPlayType)) {
+                response.getHeaders().setContentDisposition(
+                    ContentDisposition.builder("attachment")
+                        .filename(binaryManifest.name())
+                        .build()
+                );
+              }
               // Set the Content-Length header if the total size is known
-              response.getHeaders()
-                  .setContentLength(binaryManifest.getTotalSize()); // Assuming totalSize is available
+              if (binaryManifest.getTotalSize() < Integer.MAX_VALUE) {
+                response.getHeaders().setContentLength(
+                    binaryManifest.getTotalSize()
+                );
+              }
               // Set the Content-Type header
               if (StringUtils.isNotEmpty(binaryManifest.mimeType())) {
                 response.getHeaders().setContentType(MediaType.valueOf(binaryManifest.mimeType()));
