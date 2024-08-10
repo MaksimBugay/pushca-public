@@ -64,7 +64,7 @@ public class ApiController {
                 );
               }
               // Set the Content-Length header if the total size is known
-              if (binaryManifest.getTotalSize() < Integer.MAX_VALUE) {
+              if (binaryManifest.getTotalSize() < 1431655764) {
                 response.getHeaders().setContentLength(
                     binaryManifest.getTotalSize()
                 );
