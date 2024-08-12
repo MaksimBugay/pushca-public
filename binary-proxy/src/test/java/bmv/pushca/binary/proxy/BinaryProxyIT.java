@@ -1,19 +1,25 @@
 package bmv.pushca.binary.proxy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
+import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
+import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -39,6 +45,9 @@ class BinaryProxyIT {
   @LocalServerPort
   private String port;
 
+  @Autowired
+  private EncryptionService encryptionService;
+
   @DynamicPropertySource
   static void customProperties(DynamicPropertyRegistry registry) {
   }
@@ -50,6 +59,33 @@ class BinaryProxyIT {
         .baseUrl("http://localhost:" + port + contextPath)
         .responseTimeout(Duration.of(1, ChronoUnit.MINUTES))
         .build();
+  }
+
+  @Test
+  void createPrivateUrlSuffixTest() throws Exception {
+    CreatePrivateUrlSuffixRequest request = new CreatePrivateUrlSuffixRequest(
+        "cec7abf69bab9f5aa793bd1c0c101e99",
+        "aba62189-9876-4001-9ba2-d3a80bd28f0c"
+    );
+
+    AtomicReference<String> urlSuffix = new AtomicReference<>();
+    client.post()
+        .uri("/binary/private/create-url-suffix")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(request)
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody(String.class)
+        .value(response -> {
+          assertNotNull(response);
+          urlSuffix.set(response);
+        });
+
+    CreatePrivateUrlSuffixRequest decryptedRequest = encryptionService.decrypt(
+        urlSuffix.get(),
+        CreatePrivateUrlSuffixRequest.class
+    );
+    assertEquals(request, decryptedRequest);
   }
 
   @Test

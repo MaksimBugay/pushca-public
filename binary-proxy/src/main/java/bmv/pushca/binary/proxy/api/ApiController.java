@@ -1,5 +1,7 @@
 package bmv.pushca.binary.proxy.api;
 
+import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
+import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
@@ -16,6 +18,7 @@ import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
@@ -29,11 +32,15 @@ public class ApiController {
   private final WebsocketPool websocketPool;
   private final BinaryProxyService binaryProxyService;
 
+  private final EncryptionService encryptionService;
+
   @Autowired
   public ApiController(
-      WebsocketPool websocketPool, BinaryProxyService binaryProxyService) {
+      WebsocketPool websocketPool, BinaryProxyService binaryProxyService,
+      EncryptionService encryptionService) {
     this.websocketPool = websocketPool;
     this.binaryProxyService = binaryProxyService;
+    this.encryptionService = encryptionService;
   }
 
   @PostMapping(value = "/binary/admin/recreate-ws-pool")
@@ -42,6 +49,12 @@ public class ApiController {
       websocketPool.closeNettyWebsocketPool();
       websocketPool.createNettyWebsocketPool();
     });
+  }
+
+  @PostMapping(value = "/binary/private/create-url-suffix")
+  public Mono<String> createPrivateUrlSuffix(@RequestBody CreatePrivateUrlSuffixRequest request) {
+    return Mono.just(encryptionService.encrypt(request, RuntimeException::new))
+        .onErrorResume(Mono::error);
   }
 
   @GetMapping(value = "/binary/{workspaceId}/{binaryId}")

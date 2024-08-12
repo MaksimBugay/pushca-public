@@ -11,30 +11,29 @@ import java.security.PublicKey;
 
 public class ECCService {
 
-    private final PrivateKey privateKey;
+  private final PrivateKey privateKey;
 
-    private final PublicKey publicKey;
+  private final PublicKey publicKey;
 
-    public ECCService(PrivateKey privateKey, PublicKey publicKey) {
-        this.privateKey = privateKey;
-        this.publicKey = publicKey;
-    }
+  public ECCService(PrivateKey privateKey, PublicKey publicKey) {
+    this.privateKey = privateKey;
+    this.publicKey = publicKey;
+  }
 
-    public <T> String encrypt(T input) throws Exception {
-        return encodeBase64URLSafeString(encryptToBinary(input));
-    }
+  public <T> String encrypt(T input) throws Exception {
+    return encodeBase64URLSafeString(encryptToBinary(input));
+  }
 
-    public <T> byte[] encryptToBinary(T input) throws Exception {
-        return encodeData(publicKey, CBorUtility.toCBOR(input));
-    }
+  public <T> byte[] encryptToBinary(T input) throws Exception {
+    return encodeData(publicKey, CBorUtility.toCBOR(input));
+  }
 
-    public <T> T decrypt(String encString, Class<T> clazz) throws Exception {
-        return decryptFromBinary(decodeBase64(encString), clazz);
-    }
+  public <T> T decrypt(String encString, Class<T> clazz) throws Exception {
+    return decryptFromBinary(decodeBase64(encString), clazz);
+  }
 
-    public <T> T decryptFromBinary(byte[] input, Class<T> clazz)
-            throws Exception {
-        byte[] decrypted = decodeData(privateKey, input);
-        return CBorUtility.fromCBOR(decrypted, clazz);
-    }
+  public <T> T decryptFromBinary(byte[] input, Class<T> clazz) throws Exception {
+    byte[] decrypted = decodeData(privateKey, input);
+    return CBorUtility.fromCBOR(decrypted, clazz);
+  }
 }

@@ -31,6 +31,13 @@ binary-proxy:
     size: 5
   pushca:
     cluster:
-      url: http://vasilii.prodpushca.com:8070
+      url: https://vasilii.prodpushca.com:30443/pushca
     connection-pool:
       size: 2
+
+
+  encryption:
+    keys:
+      path: C:\mbugai\work\mlx\pushca-public\binary-proxy\src\test\resources\
+    private-key:
+      pwd: password123

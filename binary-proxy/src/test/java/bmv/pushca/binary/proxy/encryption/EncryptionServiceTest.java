@@ -35,8 +35,6 @@ public class EncryptionServiceTest {
         .toString();
     String keysPath = path.replace("application-test.yaml", "");
 
-    keysPath = "C:\\mbugai\\work\\mlx\\pushca-public\\binary-proxy\\src\\test\\resources\\";
-
     encryptionECService =
         new EncryptionECService(keysPath, "password123");
     executorService = newFixedThreadPool(N_THREADS);
@@ -62,7 +60,7 @@ public class EncryptionServiceTest {
             final String encJwt;
             try {
               String tmpEncJwt =
-                  encryptionECService.encrypt(jwtClaims);
+                  encryptionECService.encryptJwt(jwtClaims);
               encJwt = URLEncoder
                   .encode(tmpEncJwt, StandardCharsets.UTF_8);
             } catch (Exception ex) {
@@ -105,7 +103,7 @@ public class EncryptionServiceTest {
   void encryptDecryptJwtECTest() throws Exception {
     JWTClaimsSet jwtClaims = getJwtClaimsSet();
 
-    String encJwt = encryptionECService.encrypt(jwtClaims);
+    String encJwt = encryptionECService.encryptJwt(jwtClaims);
     System.out.println("token size = " + encJwt.length());
     JWTClaimsSet decryptedJwtClaims =
         encryptionECService.decryptAsClaims(encJwt);
