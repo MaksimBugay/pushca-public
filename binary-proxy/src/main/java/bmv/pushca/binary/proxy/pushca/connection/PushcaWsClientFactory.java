@@ -1,5 +1,6 @@
 package bmv.pushca.binary.proxy.pushca.connection;
 
+import static bmv.pushca.binary.proxy.pushca.connection.NettyWsClient.CLUSTER_SECRET_HEADER_NAME;
 import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.toJson;
 
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
@@ -73,6 +74,7 @@ public class PushcaWsClientFactory {
     return webClient.post()
         .uri(pushcaConfig.getPushcaClusterUrl() + "/open-connection-pool")
         .header("X-Real-IP", microserviceConfiguration.getInstanceIP())
+        .header(CLUSTER_SECRET_HEADER_NAME, pushcaConfig.getPushcaClusterSecret())
         .contentType(MediaType.APPLICATION_JSON)
         .body(Mono.just(new OpenConnectionPoolRequest(pushcaClient, pusherInstanceId, poolSize)),
             OpenConnectionPoolRequest.class)
