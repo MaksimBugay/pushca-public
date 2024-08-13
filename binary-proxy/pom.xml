@@ -98,6 +98,11 @@
       <version>9.40</version>
     </dependency>
     <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <version>1.78.1</version>
+    </dependency>
+    <dependency>
       <groupId>commons-codec</groupId>
       <artifactId>commons-codec</artifactId>
       <version>1.17.1</version>
@@ -136,12 +141,16 @@
             <arg>-Xss512k</arg>
             <arg>-XX:MaxRAMPercentage=80</arg>
             <arg>-Djava.security.egd=file:/dev/./urandom</arg>
+            <arg>-Djava.security.properties=file:src/main/resources/security/java.security</arg>
           </jvmArgs>
           <buildArgs>
-            <buildArg>-H:IncludeResources=".*.yaml|.*.yml|.*.sh|.*.properties"</buildArg>
+            <buildArg>-H:IncludeResources=".*.yaml|.*.yml|.*.sh|.*.properties|.*.security"
+            </buildArg>
             <buildArg>-H:+ReportUnsupportedElementsAtRuntime</buildArg>
             <buildArg>-H:TraceClassInitialization=true</buildArg>
             <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+            <buildArg>-H:Path=/usr/bin/openssl</buildArg>
+            <buildArg>--allow-incomplete-classpath</buildArg>
             <buildArg>--verbose</buildArg>
             <buildArg>--enable-http</buildArg>
             <buildArg>--enable-https</buildArg>
@@ -149,9 +158,22 @@
             <buildArg>-H:ReflectionConfigurationFiles=src/main/resources/reflection-config.json
             </buildArg>
             <buildArg>
-              --initialize-at-build-time=redis.clients.jedis.Jedis,redis.clients.jedis.util.JedisMetaInfo,redis.clients.jedis.JedisMetaInfo,ch.qos.logback,org.slf4j,com.ctc.wstx
+              --initialize-at-build-time=redis.clients.jedis.Jedis,redis.clients.jedis.util.JedisMetaInfo,redis.clients.jedis.JedisMetaInfo,ch.qos.logback,org.slf4j,com.ctc.wstx,org.bouncycastle
+            </buildArg>
+            <buildArg>
+              --initialize-at-run-time=bmv.pushca.binary.proxy.encryption,org.bouncycastle.jcajce.provider.drbg.DRBG$Default,org.bouncycastle.jcajce.provider.drbg.DRBG$NonceAndIV
+            </buildArg>
+            <buildArg>
+              --trace-object-instantiation=org.bouncycastle.crypto.prng.SP800SecureRandom
             </buildArg>
           </buildArgs>
+          <resourceIncludedPatterns>
+            <include>**/*.properties</include>
+            <include>**/*.xml</include>
+            <include>**/*.yaml</include>
+            <include>**/*.yml</include>
+            <include>security/java.security</include>
+          </resourceIncludedPatterns>
         </configuration>
       </plugin>
       <plugin>
