@@ -70,7 +70,7 @@ public class ApiController {
       params = encryptionService.decrypt(request.suffix(), CreatePrivateUrlSuffixRequest.class);
     } catch (Exception ex) {
       response.setStatusCode(HttpStatus.FORBIDDEN);
-      return Flux.error(ex);
+      return Flux.empty();
     }
     return serveBinaryAsStream(params.workspaceId(), params.binaryId(), request.canPlayType(),
         response);
