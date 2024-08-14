@@ -1,6 +1,7 @@
 package bmv.pushca.binary.proxy.api;
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
+import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
@@ -15,6 +16,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -51,17 +53,40 @@ public class ApiController {
     });
   }
 
+  @CrossOrigin(origins = "*")
   @PostMapping(value = "/binary/private/create-url-suffix")
   public Mono<String> createPrivateUrlSuffix(@RequestBody CreatePrivateUrlSuffixRequest request) {
     return Mono.just(encryptionService.encrypt(request, RuntimeException::new))
         .onErrorResume(Mono::error);
   }
 
+  @PostMapping(value = "/binary/protected")
+  public Flux<byte[]> serveProtectedBinaryAsStream(
+      ServerHttpResponse response,
+      @RequestBody DownloadProtectedBinaryRequest request) {
+
+    CreatePrivateUrlSuffixRequest params;
+    try {
+      params = encryptionService.decrypt(request.suffix(), CreatePrivateUrlSuffixRequest.class);
+    } catch (Exception ex) {
+      response.setStatusCode(HttpStatus.FORBIDDEN);
+      return Flux.error(ex);
+    }
+    return serveBinaryAsStream(params.workspaceId(), params.binaryId(), request.canPlayType(),
+        response);
+  }
+
+
   @GetMapping(value = "/binary/{workspaceId}/{binaryId}")
-  public Flux<byte[]> serveBinaryAsStream(
+  public Flux<byte[]> servePublicBinaryAsStream(
       @PathVariable String workspaceId,
       @PathVariable String binaryId,
       @RequestParam(value = "canPlayType", defaultValue = "") String canPlayType,
+      ServerHttpResponse response) {
+    return serveBinaryAsStream(workspaceId, binaryId, canPlayType, response);
+  }
+
+  private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId, String canPlayType,
       ServerHttpResponse response) {
     final ConcurrentLinkedQueue<String> pendingChunks = new ConcurrentLinkedQueue<>();
     return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
@@ -131,9 +156,6 @@ public class ApiController {
         .doFinally((signalType) -> {
           pendingChunks.forEach(websocketPool::removeResponseWaiter);
           pendingChunks.clear();
-        })
-        /*.doOnCancel(() -> {
-          System.out.println("!!!");
-        })*/;
+        });
   }
 }

@@ -5,9 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
+import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import java.text.MessageFormat;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -89,13 +91,49 @@ class BinaryProxyIT {
   }
 
   @Test
-  void binaryProxyTest() throws InterruptedException {
+  void protectedBinaryTest() throws Exception {
+    Thread.sleep(5000);
+    final String workspaceId = "cec7abf69bab9f5aa793bd1c0c101e99";
+    final String binaryId = "aba62189-9876-4001-9ba2-d3a80bd28f0c";
+    String canPlayType = "probably";
+    String mimeType = "video/mp4";
+    DownloadProtectedBinaryRequest request = new DownloadProtectedBinaryRequest(
+        encryptionService.encrypt(new CreatePrivateUrlSuffixRequest(workspaceId, binaryId)),
+        Instant.now().toEpochMilli() + 5000L,
+        canPlayType,
+        "signature"
+    );
+
+    Flux<byte[]> responseBody = client.post().uri("/binary/protected")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(request)
+        .exchange()
+        .expectStatus().isOk()
+        .expectHeader().contentType(mimeType)
+        .returnResult(byte[].class)
+        .getResponseBody();
+    Map<Integer, byte[]> binary = new ConcurrentHashMap<>();
+    AtomicInteger order = new AtomicInteger();
+    StepVerifier.create(responseBody)
+        .thenConsumeWhile(chunk -> {
+          binary.put(order.getAndIncrement(), chunk);
+          return true;
+        })
+        .verifyComplete();
+    long totalSize = binary.values().stream()
+        .map(chunk -> chunk.length)
+        .reduce(Integer::sum).orElse(0);
+    assertEquals(5736579, totalSize);
+  }
+
+  @Test
+  void binaryProxyTest() throws Exception {
     Thread.sleep(5000);
     final String workspaceId = "cec7abf69bab9f5aa793bd1c0c101e99";
     final String binaryId = "aba62189-9876-4001-9ba2-d3a80bd28f0c";
     String mimeType = "video/mp4";
     Flux<byte[]> responseBody = client.get().uri(MessageFormat.format(
-            "/binary/{0}/{1}?mimeType=" + mimeType,
+            "/binary/{0}/{1}?canPlayType=probably",
             workspaceId,
             binaryId
         ))
