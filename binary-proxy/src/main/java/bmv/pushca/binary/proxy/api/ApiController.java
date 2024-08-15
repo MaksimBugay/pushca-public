@@ -1,11 +1,16 @@
 package bmv.pushca.binary.proxy.api;
 
+import static org.springframework.http.HttpStatus.NOT_FOUND;
+
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
 import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
+import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
 import org.apache.commons.lang3.StringUtils;
@@ -72,8 +77,20 @@ public class ApiController {
       response.setStatusCode(HttpStatus.FORBIDDEN);
       return Flux.empty();
     }
+    final ClientSearchData ownerFilter = new ClientSearchData(
+        params.workspaceId(),
+        null,
+        null,
+        "ultimate-file-sharing-listener",
+        true,
+        List.of()
+    );
+    CompletableFuture<Boolean> verifyBinarySignature = binaryProxyService.verifyBinarySignature(
+        ownerFilter,
+        request
+    );
     return serveBinaryAsStream(params.workspaceId(), params.binaryId(), request.canPlayType(),
-        response);
+        response, verifyBinarySignature);
   }
 
 
@@ -84,6 +101,28 @@ public class ApiController {
       @RequestParam(value = "canPlayType", defaultValue = "") String canPlayType,
       ServerHttpResponse response) {
     return serveBinaryAsStream(workspaceId, binaryId, canPlayType, response);
+  }
+
+  private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId, String canPlayType,
+      ServerHttpResponse response, CompletableFuture<Boolean> verifyBinarySignature) {
+    return Mono.fromFuture(verifyBinarySignature)
+        .flatMapMany(isValid -> {
+          if (isValid) {
+            return serveBinaryAsStream(workspaceId, binaryId, canPlayType, response);
+          } else {
+            response.setStatusCode(HttpStatus.FORBIDDEN);
+            return Mono.empty();
+          }
+        })
+        .onErrorResume(throwable -> {
+          if (throwable instanceof TimeoutException) {
+            response.setStatusCode(NOT_FOUND);
+          } else {
+            LOGGER.warn("Tampered signature for binary with id: {}", binaryId, throwable);
+            response.setStatusCode(HttpStatus.FORBIDDEN);
+          }
+          return Mono.empty();
+        });
   }
 
   private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId, String canPlayType,

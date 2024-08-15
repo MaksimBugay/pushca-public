@@ -1,18 +1,22 @@
 package bmv.pushca.binary.proxy.service;
 
+import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_GATEWAY_REQUEST;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_UPLOAD_BINARY_APPEAL;
 import static bmv.pushca.binary.proxy.pushca.model.Datagram.buildDatagramId;
 import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
 import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.calculateSha256;
 import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.concatParts;
 
+import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
+import bmv.pushca.binary.proxy.util.serialisation.JsonUtility;
 import java.text.MessageFormat;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +39,15 @@ public class BinaryProxyService {
     this.pushcaClientHashCode = pushcaWsClientFactory.pushcaClient.hashCode();
     this.websocketPool = websocketPool;
     this.microserviceConfiguration = microserviceConfiguration;
+  }
+
+  public CompletableFuture<Boolean> verifyBinarySignature(
+      ClientSearchData ownerFilter, DownloadProtectedBinaryRequest signedRequest) {
+
+    String id = sendVerifySignatureRequest(ownerFilter, signedRequest);
+    return websocketPool.registerResponseWaiter(
+        id, microserviceConfiguration.responseTimeoutMs
+    );
   }
 
   public CompletableFuture<BinaryManifest> requestBinaryManifest(String workspaceId,
@@ -103,6 +116,28 @@ public class BinaryProxyService {
 
   public void removeDownloadSession(String binaryId, String sessionId) {
     websocketPool.removeDownloadSession(binaryId, sessionId);
+  }
+
+  public String sendVerifySignatureRequest(ClientSearchData dest,
+      DownloadProtectedBinaryRequest signedRequest) {
+    return sendGatewayRequest(
+        dest,
+        false,
+        "verify-binary-signature",
+        JsonUtility.toJsonAsBytes(signedRequest)
+    );
+  }
+
+  public String sendGatewayRequest(ClientSearchData dest,
+      boolean preserveOrder, String path, byte[] requestPayload) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("receiver", dest);
+    metaData.put("preserveOrder", preserveOrder);
+    metaData.put("path", path);
+    byte[] payload = requestPayload == null ? new byte[0] : requestPayload;
+    metaData.put("payload", Base64.getEncoder().encodeToString(payload));
+
+    return websocketPool.sendCommand(null, SEND_GATEWAY_REQUEST, metaData);
   }
 
   public void sendUploadBinaryAppeal(String workspaceId, String binaryId, int chunkSize,

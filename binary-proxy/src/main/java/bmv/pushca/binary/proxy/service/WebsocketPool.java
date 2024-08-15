@@ -101,7 +101,7 @@ public class WebsocketPool implements DisposableBean {
   }
 
   private void wsConnectionMessageWasReceivedHandler(String message) {
-    //LOGGER.info("New ws message: {}", message);
+    LOGGER.info("New ws message: {}", message);
     String[] parts = message.split(MESSAGE_PARTS_DELIMITER);
     if ((parts.length > 1) && isValidMessageType(parts[1])) {
       MessageType type = MessageType.valueOf(parts[1]);
@@ -216,10 +216,11 @@ public class WebsocketPool implements DisposableBean {
     sendCommand(null, ACKNOWLEDGE, metaData);
   }
 
-  public void sendCommand(String id, Command command, Map<String, Object> metaData) {
+  public String sendCommand(String id, Command command, Map<String, Object> metaData) {
     CommandWithId cmd = (metaData == null) ? PushcaMessageFactory.buildCommandMessage(id, command) :
         PushcaMessageFactory.buildCommandMessage(id, command, metaData);
     getConnection().send(cmd.commandBody);
+    return cmd.id;
     //LOGGER.info("Send pushca command: {}", cmd.commandBody);
   }
 
