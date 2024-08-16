@@ -99,9 +99,9 @@ class BinaryProxyIT {
     String mimeType = "video/mp4";
     DownloadProtectedBinaryRequest request = new DownloadProtectedBinaryRequest(
         encryptionService.encrypt(new CreatePrivateUrlSuffixRequest(workspaceId, binaryId)),
-        Instant.now().toEpochMilli() + 5000L,
+        1723826605070L,
         canPlayType,
-        "x4rPGkbLxKg43jTvakvqx1et5F1A21/b3W6tY6M1iPs="
+        "m83CkAldIu2+ZQAH/KK4fpC1iYA5j7OziDbSx8OXAU0="
     );
 
     Flux<byte[]> responseBody = client.post().uri("/binary/protected")
