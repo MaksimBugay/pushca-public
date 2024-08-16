@@ -101,7 +101,7 @@ class BinaryProxyIT {
         encryptionService.encrypt(new CreatePrivateUrlSuffixRequest(workspaceId, binaryId)),
         Instant.now().toEpochMilli() + 5000L,
         canPlayType,
-        "signature"
+        "x4rPGkbLxKg43jTvakvqx1et5F1A21/b3W6tY6M1iPs="
     );
 
     Flux<byte[]> responseBody = client.post().uri("/binary/protected")
