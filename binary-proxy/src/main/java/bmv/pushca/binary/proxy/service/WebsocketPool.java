@@ -2,6 +2,7 @@ package bmv.pushca.binary.proxy.service;
 
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.BINARY_MANIFEST;
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.RESPONSE;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.buildCommandMessage;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.isValidMessageType;
 import static bmv.pushca.binary.proxy.pushca.model.Command.ACKNOWLEDGE;
@@ -9,6 +10,7 @@ import static bmv.pushca.binary.proxy.pushca.model.Command.PING;
 import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.concatParts;
 import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.fromJson;
 
+import bmv.pushca.binary.proxy.api.response.BooleanResponse;
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.pushca.PushcaMessageFactory;
@@ -18,9 +20,12 @@ import bmv.pushca.binary.proxy.pushca.connection.ListWithRandomAccess;
 import bmv.pushca.binary.proxy.pushca.connection.NettyWsClient;
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.connection.model.BinaryWithHeader;
+import bmv.pushca.binary.proxy.pushca.connection.model.SimpleWsResponse;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.Command;
 import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -101,7 +106,7 @@ public class WebsocketPool implements DisposableBean {
   }
 
   private void wsConnectionMessageWasReceivedHandler(String message) {
-    LOGGER.info("New ws message: {}", message);
+    //LOGGER.info("New ws message: {}", message);
     String[] parts = message.split(MESSAGE_PARTS_DELIMITER);
     if ((parts.length > 1) && isValidMessageType(parts[1])) {
       MessageType type = MessageType.valueOf(parts[1]);
@@ -109,6 +114,21 @@ public class WebsocketPool implements DisposableBean {
         BinaryManifest manifest = fromJson(parts[2], BinaryManifest.class);
         completeWithResponse(manifest.id(), manifest);
         sendAcknowledge(parts[0]);
+      }
+      if (RESPONSE == type) {
+        Boolean result = Boolean.FALSE;
+        if (parts.length > 2) {
+          try {
+            SimpleWsResponse wsResponse = fromJson(parts[2], SimpleWsResponse.class);
+            byte[] rawResponse = Base64.getDecoder().decode(wsResponse.body());
+            String json = new String(rawResponse, StandardCharsets.UTF_8);
+            BooleanResponse response = fromJson(json, BooleanResponse.class);
+            result = response.result();
+          } catch (Exception ex) {
+            LOGGER.warn("Invalid response format for id = {}: {}", parts[0], parts[2]);
+          }
+        }
+        completeWithResponse(parts[0], result);
       }
     }
   }
