@@ -77,6 +77,7 @@ public class ApiController {
       response.setStatusCode(HttpStatus.FORBIDDEN);
       return Flux.empty();
     }
+
     final ClientSearchData ownerFilter = new ClientSearchData(
         params.workspaceId(),
         null,
@@ -85,12 +86,30 @@ public class ApiController {
         true,
         List.of()
     );
-    CompletableFuture<Boolean> verifyBinarySignature = binaryProxyService.verifyBinarySignature(
+    CompletableFuture<Boolean> verificationFuture = binaryProxyService.verifyBinarySignature(
         ownerFilter,
         request
     );
-    return serveBinaryAsStream(params.workspaceId(), params.binaryId(), request.canPlayType(),
-        response, verifyBinarySignature);
+
+    return Mono.fromFuture(verificationFuture)
+        .flatMapMany(isValid -> {
+          if (isValid) {
+            return serveBinaryAsStream(params.workspaceId(), params.binaryId(),
+                request.canPlayType(), response);
+          } else {
+            response.setStatusCode(HttpStatus.FORBIDDEN);
+            return Mono.empty();
+          }
+        })
+        .onErrorResume(throwable -> {
+          if (throwable instanceof TimeoutException) {
+            response.setStatusCode(NOT_FOUND);
+          } else {
+            LOGGER.warn("Tampered signature for binary with id: {}", params.binaryId(), throwable);
+            response.setStatusCode(HttpStatus.FORBIDDEN);
+          }
+          return Mono.empty();
+        });
   }
 
 
@@ -101,28 +120,6 @@ public class ApiController {
       @RequestParam(value = "canPlayType", defaultValue = "") String canPlayType,
       ServerHttpResponse response) {
     return serveBinaryAsStream(workspaceId, binaryId, canPlayType, response);
-  }
-
-  private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId, String canPlayType,
-      ServerHttpResponse response, CompletableFuture<Boolean> verifyBinarySignature) {
-    return Mono.fromFuture(verifyBinarySignature)
-        .flatMapMany(isValid -> {
-          if (isValid) {
-            return serveBinaryAsStream(workspaceId, binaryId, canPlayType, response);
-          } else {
-            response.setStatusCode(HttpStatus.FORBIDDEN);
-            return Mono.empty();
-          }
-        })
-        .onErrorResume(throwable -> {
-          if (throwable instanceof TimeoutException) {
-            response.setStatusCode(NOT_FOUND);
-          } else {
-            LOGGER.warn("Tampered signature for binary with id: {}", binaryId, throwable);
-            response.setStatusCode(HttpStatus.FORBIDDEN);
-          }
-          return Mono.empty();
-        });
   }
 
   private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId, String canPlayType,
