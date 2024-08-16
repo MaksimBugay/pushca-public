@@ -9,7 +9,6 @@ import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import java.text.MessageFormat;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -97,11 +96,12 @@ class BinaryProxyIT {
     final String binaryId = "aba62189-9876-4001-9ba2-d3a80bd28f0c";
     String canPlayType = "probably";
     String mimeType = "video/mp4";
+
     DownloadProtectedBinaryRequest request = new DownloadProtectedBinaryRequest(
-        encryptionService.encrypt(new CreatePrivateUrlSuffixRequest(workspaceId, binaryId)),
+        "AjmezYTmwHHEmDNLsqRR7pgWzptPnaCiTTdAEFjG7BhUOuPNuwZZBUlRmVfONAQa5kn3f2z8Njs36ngn1qtfjNSlpo6NYWiSR6_ZU8VXdmW73q2xhQXA91nATxxwhMo42poKviicLVnMeRMB4vplhsV7GTrybHn1RjLa2Bzn6_xFWHLIqKIGwBBe-DXcGBDEyN7i01I6tZDtc0bxiap4fxl3v2v4",
         1723826605070L,
         canPlayType,
-        "m83CkAldIu2+ZQAH/KK4fpC1iYA5j7OziDbSx8OXAU0="
+        "ErJL+RDlzU/yNKvJoMseKICZyy0TdG5XXzgmixLfxsw="
     );
 
     Flux<byte[]> responseBody = client.post().uri("/binary/protected")

@@ -36,12 +36,22 @@ public class SecurityConfig {
         }
 
         @Override
+        public String encryptString(String inputStr) throws Exception {
+          throw new IllegalStateException("Encryption service is not initialised");
+        }
+
+        @Override
         public <T> byte[] encryptToBinary(T input) throws Exception {
           throw new IllegalStateException("Encryption service is not initialised");
         }
 
         @Override
         public <T> T decrypt(String encString, Class<T> clazz) throws Exception {
+          throw new IllegalStateException("Encryption service is not initialised");
+        }
+
+        @Override
+        public String decryptString(String encString) {
           throw new IllegalStateException("Encryption service is not initialised");
         }
 

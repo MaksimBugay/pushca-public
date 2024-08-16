@@ -40,9 +40,11 @@ public class EncUtil {
   static {
     LOGGER.debug("Encryption utility initialization");
 
-    byte[] nonce = new byte[16];
-    SecureRandom secureRandom = SRND.get();
-    secureRandom.nextBytes(nonce);
+    byte[] nonce =
+        new byte[] {13, -117, -10, -78, -10, -55, 117, -71, 91, 52, -124, 105, 89, 87, -73, -16};
+    //byte[] nonce = new byte[16];
+    //SecureRandom secureRandom = SRND.get();
+    //secureRandom.nextBytes(nonce);
 
     EC_PARAM_SPEC = new IESParameterSpec(null, null, 128, 128, nonce, true);
 

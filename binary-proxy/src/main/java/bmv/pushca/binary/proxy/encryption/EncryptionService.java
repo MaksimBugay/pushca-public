@@ -7,6 +7,8 @@ public interface EncryptionService {
 
   <T> String encrypt(T input) throws Exception;
 
+  String encryptString(String inputStr) throws Exception;
+
   default <T> String encrypt(T input, Function<Exception, RuntimeException> exceptionBuilder) {
     try {
       return encrypt(input);
@@ -18,6 +20,8 @@ public interface EncryptionService {
   <T> byte[] encryptToBinary(T input) throws Exception;
 
   <T> T decrypt(String encString, Class<T> clazz) throws Exception;
+
+  String decryptString(String encString) throws Exception;
 
   <T> T decryptFromBinary(byte[] input, Class<T> clazz) throws Exception;
 

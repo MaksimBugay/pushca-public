@@ -6,6 +6,7 @@ import static org.apache.commons.codec.binary.Base64.decodeBase64;
 import static org.apache.commons.codec.binary.Base64.encodeBase64URLSafeString;
 
 import bmv.pushca.binary.proxy.util.serialisation.CBorUtility;
+import java.nio.charset.StandardCharsets;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 
@@ -24,12 +25,21 @@ public class ECCService {
     return encodeBase64URLSafeString(encryptToBinary(input));
   }
 
+  String encryptString(String inputStr) throws Exception {
+    return encodeBase64URLSafeString(
+        encodeData(publicKey, inputStr.getBytes(StandardCharsets.UTF_8)));
+  }
+
   public <T> byte[] encryptToBinary(T input) throws Exception {
     return encodeData(publicKey, CBorUtility.toCBOR(input));
   }
 
   public <T> T decrypt(String encString, Class<T> clazz) throws Exception {
     return decryptFromBinary(decodeBase64(encString), clazz);
+  }
+
+  public String decryptString(String encString) throws Exception {
+    return new String(decodeData(privateKey, decodeBase64(encString)), StandardCharsets.UTF_8);
   }
 
   public <T> T decryptFromBinary(byte[] input, Class<T> clazz) throws Exception {
