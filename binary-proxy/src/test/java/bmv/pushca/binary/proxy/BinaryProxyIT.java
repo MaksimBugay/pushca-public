@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
-import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import java.text.MessageFormat;
 import java.time.Duration;
@@ -95,18 +94,17 @@ class BinaryProxyIT {
     final String workspaceId = "cec7abf69bab9f5aa793bd1c0c101e99";
     final String binaryId = "aba62189-9876-4001-9ba2-d3a80bd28f0c";
     String canPlayType = "probably";
-    String mimeType = "video/mp4";
+    String mimeType = "image/jpeg";
 
-    DownloadProtectedBinaryRequest request = new DownloadProtectedBinaryRequest(
-        "AjmezYTmwHHEmDNLsqRR7pgWzptPnaCiTTdAEFjG7BhUOuPNuwZZBUlRmVfONAQa5kn3f2z8Njs36ngn1qtfjNSlpo6NYWiSR6_ZU8VXdmW73q2xhQXA91nATxxwhMo42poKviicLVnMeRMB4vplhsV7GTrybHn1RjLa2Bzn6_xFWHLIqKIGwBBe-DXcGBDEyN7i01I6tZDtc0bxiap4fxl3v2v4",
-        1723826605070L,
-        canPlayType,
-        "ErJL+RDlzU/yNKvJoMseKICZyy0TdG5XXzgmixLfxsw="
-    );
-
-    Flux<byte[]> responseBody = client.post().uri("/binary/protected")
-        .contentType(MediaType.APPLICATION_JSON)
-        .bodyValue(request)
+    Flux<byte[]> responseBody = client.get()
+        .uri(
+            MessageFormat.format("/binary/protected/{0}?exp={1}&canPlayType={2}&sgn={3}",
+                "AkH46_jGAZwHSyFS0WSM8aFbW3hHguBj2XWiMsAOzLH3gHmokmnUejRaSHcezpMf6r-BgC8d82GScHVEMSucS8vW8cyU9ds7LQiuhj-jx86qxq_PjJ3EUU9KlH-eoqHXk8-dbQ2Sw6Xc8GtoeWTekd_NmyPfgRPbNJc35PqjQdsdIKl84nXcUdkV_limcBUxovA9tiq0N4avpJIAGKEf4ArpsXXx",
+                Long.valueOf(30018L).toString(),
+                canPlayType,
+                "ywUHMgMZgmrh7rvHWiawiHzWguXCOHfrmEkvYqoe0D4"
+            )
+        )
         .exchange()
         .expectStatus().isOk()
         .expectHeader().contentType(mimeType)
@@ -123,7 +121,7 @@ class BinaryProxyIT {
     long totalSize = binary.values().stream()
         .map(chunk -> chunk.length)
         .reduce(Integer::sum).orElse(0);
-    assertEquals(5736579, totalSize);
+    assertEquals(244211, totalSize);
   }
 
   @Test

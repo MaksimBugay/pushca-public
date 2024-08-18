@@ -65,11 +65,18 @@ public class ApiController {
         .onErrorResume(Mono::error);
   }
 
-  @PostMapping(value = "/binary/protected")
+  @CrossOrigin(origins = "*")
+  @GetMapping(value = "/binary/protected/{suffix}")
   public Flux<byte[]> serveProtectedBinaryAsStream(
       ServerHttpResponse response,
-      @RequestBody DownloadProtectedBinaryRequest request) {
+      @PathVariable String suffix,
+      @RequestParam(value = "canPlayType", defaultValue = "") String canPlayType,
+      @RequestParam(value = "sgn") String signature,
+      @RequestParam(value = "exp") long expirationTime) {
 
+    DownloadProtectedBinaryRequest request = new DownloadProtectedBinaryRequest(
+        suffix, expirationTime, canPlayType, signature
+    );
     CreatePrivateUrlSuffixRequest params;
     try {
       params = encryptionService.decrypt(request.suffix(), CreatePrivateUrlSuffixRequest.class);
@@ -111,7 +118,6 @@ public class ApiController {
           return Mono.empty();
         });
   }
-
 
   @GetMapping(value = "/binary/{workspaceId}/{binaryId}")
   public Flux<byte[]> servePublicBinaryAsStream(

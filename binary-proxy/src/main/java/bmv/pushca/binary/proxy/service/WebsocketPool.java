@@ -125,7 +125,7 @@ public class WebsocketPool implements DisposableBean {
             BooleanResponse response = fromJson(json, BooleanResponse.class);
             result = response.result();
           } catch (Exception ex) {
-            LOGGER.warn("Invalid response format for id = {}: {}", parts[0], parts[2]);
+            LOGGER.warn("Invalid response format for id = {}: {}", parts[0], parts[2], ex);
           }
         }
         completeWithResponse(parts[0], result);
