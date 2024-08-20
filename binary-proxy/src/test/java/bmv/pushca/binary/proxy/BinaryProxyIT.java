@@ -93,15 +93,13 @@ class BinaryProxyIT {
     Thread.sleep(5000);
     final String workspaceId = "cec7abf69bab9f5aa793bd1c0c101e99";
     final String binaryId = "aba62189-9876-4001-9ba2-d3a80bd28f0c";
-    String canPlayType = "probably";
     String mimeType = "image/jpeg";
 
     Flux<byte[]> responseBody = client.get()
         .uri(
-            MessageFormat.format("/binary/protected/{0}?exp={1}&canPlayType={2}&sgn={3}",
+            MessageFormat.format("/binary/protected/{0}?exp={1}&sgn={2}",
                 "AkH46_jGAZwHSyFS0WSM8aFbW3hHguBj2XWiMsAOzLH3gHmokmnUejRaSHcezpMf6r-BgC8d82GScHVEMSucS8vW8cyU9ds7LQiuhj-jx86qxq_PjJ3EUU9KlH-eoqHXk8-dbQ2Sw6Xc8GtoeWTekd_NmyPfgRPbNJc35PqjQdsdIKl84nXcUdkV_limcBUxovA9tiq0N4avpJIAGKEf4ArpsXXx",
                 Long.valueOf(30018L).toString(),
-                canPlayType,
                 "ywUHMgMZgmrh7rvHWiawiHzWguXCOHfrmEkvYqoe0D4"
             )
         )
@@ -131,7 +129,7 @@ class BinaryProxyIT {
     final String binaryId = "aba62189-9876-4001-9ba2-d3a80bd28f0c";
     String mimeType = "video/mp4";
     Flux<byte[]> responseBody = client.get().uri(MessageFormat.format(
-            "/binary/{0}/{1}?canPlayType=probably",
+            "/binary/{0}/{1}",
             workspaceId,
             binaryId
         ))

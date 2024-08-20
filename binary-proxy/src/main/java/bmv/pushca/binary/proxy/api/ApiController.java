@@ -1,5 +1,7 @@
 package bmv.pushca.binary.proxy.api;
 
+import static bmv.pushca.binary.proxy.util.BinaryUtils.canPlayTypeInBrowser;
+import static bmv.pushca.binary.proxy.util.BinaryUtils.isDownloadBinaryRequestExpired;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
@@ -65,17 +67,15 @@ public class ApiController {
         .onErrorResume(Mono::error);
   }
 
-  @CrossOrigin(origins = "*")
   @GetMapping(value = "/binary/protected/{suffix}")
   public Flux<byte[]> serveProtectedBinaryAsStream(
       ServerHttpResponse response,
       @PathVariable String suffix,
-      @RequestParam(value = "canPlayType", defaultValue = "") String canPlayType,
       @RequestParam(value = "sgn") String signature,
       @RequestParam(value = "exp") long expirationTime) {
 
     DownloadProtectedBinaryRequest request = new DownloadProtectedBinaryRequest(
-        suffix, expirationTime, canPlayType, signature
+        suffix, expirationTime, signature
     );
     CreatePrivateUrlSuffixRequest params;
     try {
@@ -93,16 +93,20 @@ public class ApiController {
         true,
         List.of()
     );
-    CompletableFuture<Boolean> verificationFuture = binaryProxyService.verifyBinarySignature(
-        ownerFilter,
-        request
-    );
+    CompletableFuture<Boolean> verificationFuture;
+    if (isDownloadBinaryRequestExpired(expirationTime)) {
+      verificationFuture = CompletableFuture.completedFuture(Boolean.FALSE);
+    } else {
+      verificationFuture = binaryProxyService.verifyBinarySignature(
+          ownerFilter,
+          request
+      );
+    }
 
     return Mono.fromFuture(verificationFuture)
         .flatMapMany(isValid -> {
           if (isValid) {
-            return serveBinaryAsStream(params.workspaceId(), params.binaryId(),
-                request.canPlayType(), response);
+            return serveBinaryAsStream(params.workspaceId(), params.binaryId(), response);
           } else {
             response.setStatusCode(HttpStatus.FORBIDDEN);
             return Mono.empty();
@@ -123,12 +127,11 @@ public class ApiController {
   public Flux<byte[]> servePublicBinaryAsStream(
       @PathVariable String workspaceId,
       @PathVariable String binaryId,
-      @RequestParam(value = "canPlayType", defaultValue = "") String canPlayType,
       ServerHttpResponse response) {
-    return serveBinaryAsStream(workspaceId, binaryId, canPlayType, response);
+    return serveBinaryAsStream(workspaceId, binaryId, response);
   }
 
-  private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId, String canPlayType,
+  private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId,
       ServerHttpResponse response) {
     final ConcurrentLinkedQueue<String> pendingChunks = new ConcurrentLinkedQueue<>();
     return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
@@ -136,7 +139,7 @@ public class ApiController {
             new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
         .flatMapMany(binaryManifest -> {
               // Set the Content-Disposition header to suggest the filename for the download
-              if (!"probably".equals(canPlayType)) {
+              if (!canPlayTypeInBrowser(binaryManifest.mimeType())) {
                 response.getHeaders().setContentDisposition(
                     ContentDisposition.builder("attachment")
                         .filename(binaryManifest.name())
