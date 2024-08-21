@@ -28,7 +28,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -67,16 +66,11 @@ public class ApiController {
         .onErrorResume(Mono::error);
   }
 
-  @GetMapping(value = "/binary/protected/{suffix}")
+  @CrossOrigin(origins = "*")
+  @PostMapping(value = "/binary/protected")
   public Flux<byte[]> serveProtectedBinaryAsStream(
-      ServerHttpResponse response,
-      @PathVariable String suffix,
-      @RequestParam(value = "sgn") String signature,
-      @RequestParam(value = "exp") long expirationTime) {
-
-    DownloadProtectedBinaryRequest request = new DownloadProtectedBinaryRequest(
-        suffix, expirationTime, signature
-    );
+      @RequestBody DownloadProtectedBinaryRequest request,
+      ServerHttpResponse response) {
     CreatePrivateUrlSuffixRequest params;
     try {
       params = encryptionService.decrypt(request.suffix(), CreatePrivateUrlSuffixRequest.class);
@@ -94,7 +88,7 @@ public class ApiController {
         List.of()
     );
     CompletableFuture<Boolean> verificationFuture;
-    if (isDownloadBinaryRequestExpired(expirationTime)) {
+    if (isDownloadBinaryRequestExpired(request.exp())) {
       verificationFuture = CompletableFuture.completedFuture(Boolean.FALSE);
     } else {
       verificationFuture = binaryProxyService.verifyBinarySignature(
@@ -106,7 +100,7 @@ public class ApiController {
     return Mono.fromFuture(verificationFuture)
         .flatMapMany(isValid -> {
           if (isValid) {
-            return serveBinaryAsStream(params.workspaceId(), params.binaryId(), response);
+            return serveBinaryAsStream(params.workspaceId(), params.binaryId(), response, true);
           } else {
             response.setStatusCode(HttpStatus.FORBIDDEN);
             return Mono.empty();
@@ -128,18 +122,18 @@ public class ApiController {
       @PathVariable String workspaceId,
       @PathVariable String binaryId,
       ServerHttpResponse response) {
-    return serveBinaryAsStream(workspaceId, binaryId, response);
+    return serveBinaryAsStream(workspaceId, binaryId, response, false);
   }
 
   private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId,
-      ServerHttpResponse response) {
+      ServerHttpResponse response, boolean securePost) {
     final ConcurrentLinkedQueue<String> pendingChunks = new ConcurrentLinkedQueue<>();
     return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
         .onErrorResume(throwable -> Mono.error(
             new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
         .flatMapMany(binaryManifest -> {
               // Set the Content-Disposition header to suggest the filename for the download
-              if (!canPlayTypeInBrowser(binaryManifest.mimeType())) {
+              if (securePost || (!canPlayTypeInBrowser(binaryManifest.mimeType()))) {
                 response.getHeaders().setContentDisposition(
                     ContentDisposition.builder("attachment")
                         .filename(binaryManifest.name())
