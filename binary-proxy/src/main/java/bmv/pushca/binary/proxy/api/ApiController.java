@@ -66,7 +66,7 @@ public class ApiController {
         .onErrorResume(Mono::error);
   }
 
-  @CrossOrigin(origins = "*")
+  //@CrossOrigin(origins = "*")
   @PostMapping(value = "/binary/protected")
   public Flux<byte[]> serveProtectedBinaryAsStream(
       @RequestBody DownloadProtectedBinaryRequest request,
