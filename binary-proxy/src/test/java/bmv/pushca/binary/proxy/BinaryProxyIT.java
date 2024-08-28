@@ -125,8 +125,8 @@ class BinaryProxyIT {
   @Test
   void binaryProxyTest() throws Exception {
     Thread.sleep(5000);
-    final String workspaceId = "cec7abf69bab9f5aa793bd1c0c101e99";
-    final String binaryId = "aba62189-9876-4001-9ba2-d3a80bd28f0c";
+    final String workspaceId = "fd7a59519eb02229d71303584f71ee26";
+    final String binaryId = "04b83037-20d3-438e-938a-da9fe939e325";
     String mimeType = "video/mp4";
     Flux<byte[]> responseBody = client.get().uri(MessageFormat.format(
             "/binary/{0}/{1}",
@@ -149,6 +149,6 @@ class BinaryProxyIT {
     long totalSize = binary.values().stream()
         .map(chunk -> chunk.length)
         .reduce(Integer::sum).orElse(0);
-    assertEquals(5736579, totalSize);
+    assertEquals(26785815, totalSize);
   }
 }

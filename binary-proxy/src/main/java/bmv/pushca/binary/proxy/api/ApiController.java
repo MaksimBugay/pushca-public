@@ -11,6 +11,9 @@ import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkExcepti
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.text.MessageFormat;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -23,11 +26,11 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -36,6 +39,10 @@ import reactor.core.publisher.Mono;
 public class ApiController {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WebsocketPool.class);
+  private static final String REDIRECT_URL_WITH_WORKSPACE_PATTERN =
+      "/protected-binary.html?suffix={0}&workspace={1}";
+
+  private static final String REDIRECT_URL_PATTERN = "/protected-binary.html?suffix={0}";
 
   private final WebsocketPool websocketPool;
   private final BinaryProxyService binaryProxyService;
@@ -59,14 +66,14 @@ public class ApiController {
     });
   }
 
-  @CrossOrigin(origins = "*")
+  //@CrossOrigin(origins = "*")
   @PostMapping(value = "/binary/private/create-url-suffix")
   public Mono<String> createPrivateUrlSuffix(@RequestBody CreatePrivateUrlSuffixRequest request) {
     return Mono.just(encryptionService.encrypt(request, RuntimeException::new))
         .onErrorResume(Mono::error);
   }
 
-  //@CrossOrigin(origins = "*")
+  //@CrossOrigin(origins = "*", exposedHeaders = "Content-Disposition")
   @PostMapping(value = "/binary/protected")
   public Flux<byte[]> serveProtectedBinaryAsStream(
       @RequestBody DownloadProtectedBinaryRequest request,
@@ -93,7 +100,12 @@ public class ApiController {
     } else {
       verificationFuture = binaryProxyService.verifyBinarySignature(
           ownerFilter,
-          request
+          new DownloadProtectedBinaryRequest(
+              request.suffix(),
+              request.exp(),
+              request.signature(),
+              params.binaryId()
+          )
       );
     }
 
@@ -115,6 +127,43 @@ public class ApiController {
           }
           return Mono.empty();
         });
+  }
+
+  @GetMapping(value = "/binary/short-url/{binaryId}")
+  public Mono<Void> redirectToProtectedBinary(
+      @PathVariable String binaryId,
+      @RequestParam(value = "exposeWorkspace", defaultValue = "no") String exposeWorkspace,
+      ServerHttpResponse response) {
+
+    return Mono.fromFuture(binaryProxyService.getPrivateUrlSuffix(binaryId))
+        .flatMap(suffix -> {
+          String url;
+          if ("no".equals(exposeWorkspace)) {
+            url = MessageFormat.format(REDIRECT_URL_PATTERN, suffix);
+          } else {
+            String workspaceId = encryptionService.
+                decryptPipeSafe(suffix, CreatePrivateUrlSuffixRequest.class)
+                .workspaceId();
+            url = MessageFormat.format(REDIRECT_URL_WITH_WORKSPACE_PATTERN, suffix, workspaceId);
+          }
+          response.setStatusCode(HttpStatus.FOUND);
+          setResponseLocation(response, url);
+          return response.setComplete();
+        })
+        .onErrorResume(
+            throwable -> {
+              LOGGER.error("Failed attempt to access binary with id {}", binaryId, throwable);
+              response.setStatusCode(HttpStatus.EXPECTATION_FAILED);
+              return response.setComplete();
+            });
+  }
+
+  private void setResponseLocation(ServerHttpResponse response, String url) {
+    try {
+      response.getHeaders().setLocation(new URI(url));
+    } catch (URISyntaxException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @GetMapping(value = "/binary/{workspaceId}/{binaryId}")

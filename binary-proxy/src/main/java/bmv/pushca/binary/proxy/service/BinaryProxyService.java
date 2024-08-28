@@ -1,6 +1,10 @@
 package bmv.pushca.binary.proxy.service;
 
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.ID_GENERATOR;
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.PRIVATE_URL_SUFFIX;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_GATEWAY_REQUEST;
+import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_MESSAGE;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_UPLOAD_BINARY_APPEAL;
 import static bmv.pushca.binary.proxy.pushca.model.Datagram.buildDatagramId;
 import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
@@ -27,6 +31,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class BinaryProxyService {
 
+  private static final ClientSearchData BROADCAST_ALL_FILTER =
+      new ClientSearchData(null, null, null, "ultimate-file-sharing-listener");
   private final WebsocketPool websocketPool;
 
   private final int pushcaClientHashCode;
@@ -45,6 +51,17 @@ public class BinaryProxyService {
       ClientSearchData ownerFilter, DownloadProtectedBinaryRequest signedRequest) {
 
     String id = sendVerifySignatureRequest(ownerFilter, signedRequest);
+    return websocketPool.registerResponseWaiter(
+        id, microserviceConfiguration.responseTimeoutMs
+    );
+  }
+
+  public CompletableFuture<String> getPrivateUrlSuffix(String binaryId) {
+    String id = broadcastMessage(BROADCAST_ALL_FILTER, MessageFormat.format("{0}{1}{2}",
+        PRIVATE_URL_SUFFIX.name(),
+        MESSAGE_PARTS_DELIMITER,
+        binaryId
+    ));
     return websocketPool.registerResponseWaiter(
         id, microserviceConfiguration.responseTimeoutMs
     );
@@ -126,6 +143,18 @@ public class BinaryProxyService {
         "verify-binary-signature",
         JsonUtility.toJsonAsBytes(signedRequest)
     );
+  }
+
+  public String broadcastMessage(ClientSearchData dest, String message) {
+    String id = ID_GENERATOR.generate().toString();
+
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("filter", dest);
+    metaData.put("message",
+        MessageFormat.format("{0}{1}{2}", id, MESSAGE_PARTS_DELIMITER, message));
+    metaData.put("preserveOrder", false);
+
+    return websocketPool.sendCommand(id, SEND_MESSAGE, metaData);
   }
 
   public String sendGatewayRequest(ClientSearchData dest,

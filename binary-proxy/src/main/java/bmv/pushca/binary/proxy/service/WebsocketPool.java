@@ -2,6 +2,7 @@ package bmv.pushca.binary.proxy.service;
 
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.BINARY_MANIFEST;
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.PRIVATE_URL_SUFFIX;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.RESPONSE;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.buildCommandMessage;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.isValidMessageType;
@@ -114,6 +115,7 @@ public class WebsocketPool implements DisposableBean {
         BinaryManifest manifest = fromJson(parts[2], BinaryManifest.class);
         completeWithResponse(manifest.id(), manifest);
         sendAcknowledge(parts[0]);
+        return;
       }
       if (RESPONSE == type) {
         Boolean result = Boolean.FALSE;
@@ -129,6 +131,10 @@ public class WebsocketPool implements DisposableBean {
           }
         }
         completeWithResponse(parts[0], result);
+        return;
+      }
+      if (PRIVATE_URL_SUFFIX == type) {
+        completeWithResponse(parts[0], parts[2]);
       }
     }
   }

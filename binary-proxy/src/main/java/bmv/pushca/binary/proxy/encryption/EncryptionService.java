@@ -21,6 +21,14 @@ public interface EncryptionService {
 
   <T> T decrypt(String encString, Class<T> clazz) throws Exception;
 
+  default <T> T decryptPipeSafe(String encString, Class<T> clazz) {
+    try{
+      return decrypt(encString, clazz);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   String decryptString(String encString) throws Exception;
 
   <T> T decryptFromBinary(byte[] input, Class<T> clazz) throws Exception;
