@@ -108,6 +108,11 @@ public class WebsocketPool implements DisposableBean {
 
   private void wsConnectionMessageWasReceivedHandler(String message) {
     //LOGGER.info("New ws message: {}", message);
+    if (message.contains(String.format("::%s::", PRIVATE_URL_SUFFIX.name()))) {
+      String[] parts = message.split("::");
+      completeWithResponse(parts[0], parts[2]);
+      return;
+    }
     String[] parts = message.split(MESSAGE_PARTS_DELIMITER);
     if ((parts.length > 1) && isValidMessageType(parts[1])) {
       MessageType type = MessageType.valueOf(parts[1]);
@@ -131,10 +136,6 @@ public class WebsocketPool implements DisposableBean {
           }
         }
         completeWithResponse(parts[0], result);
-        return;
-      }
-      if (PRIVATE_URL_SUFFIX == type) {
-        completeWithResponse(parts[0], parts[2]);
       }
     }
   }

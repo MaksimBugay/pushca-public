@@ -1,7 +1,6 @@
 package bmv.pushca.binary.proxy.service;
 
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.ID_GENERATOR;
-import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.PRIVATE_URL_SUFFIX;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_GATEWAY_REQUEST;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_MESSAGE;
@@ -70,9 +69,8 @@ public class BinaryProxyService {
         false,
         List.of(pushcaClient)
     );
-    String id = broadcastMessage(dest, MessageFormat.format("{0}{1}{2}",
+    String id = broadcastMessage(dest, MessageFormat.format("{0}::{1}",
         PRIVATE_URL_SUFFIX.name(),
-        MESSAGE_PARTS_DELIMITER,
         binaryId
     ));
     return websocketPool.registerResponseWaiter(
@@ -164,7 +162,7 @@ public class BinaryProxyService {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("filter", dest);
     metaData.put("message",
-        MessageFormat.format("{0}{1}{2}", id, MESSAGE_PARTS_DELIMITER, message));
+        MessageFormat.format("{0}::{1}", id, message));
     metaData.put("preserveOrder", false);
 
     websocketPool.sendCommand(null, SEND_MESSAGE, metaData);
