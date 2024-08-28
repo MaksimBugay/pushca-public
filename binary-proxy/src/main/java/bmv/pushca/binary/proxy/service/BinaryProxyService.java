@@ -167,7 +167,8 @@ public class BinaryProxyService {
         MessageFormat.format("{0}{1}{2}", id, MESSAGE_PARTS_DELIMITER, message));
     metaData.put("preserveOrder", false);
 
-    return websocketPool.sendCommand(id, SEND_MESSAGE, metaData);
+    websocketPool.sendCommand(null, SEND_MESSAGE, metaData);
+    return id;
   }
 
   public String sendGatewayRequest(ClientSearchData dest,

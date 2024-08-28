@@ -129,7 +129,7 @@ public class ApiController {
         });
   }
 
-  @GetMapping(value = "/binary/short-url/{binaryId}")
+  @GetMapping(value = "/binary/{binaryId}")
   public Mono<Void> redirectToProtectedBinary(
       @PathVariable String binaryId,
       @RequestParam(value = "exposeWorkspace", defaultValue = "no") String exposeWorkspace,
@@ -152,8 +152,15 @@ public class ApiController {
         })
         .onErrorResume(
             throwable -> {
-              LOGGER.error("Failed attempt to access binary with id {}", binaryId, throwable);
-              response.setStatusCode(HttpStatus.EXPECTATION_FAILED);
+              if ((throwable.getCause() != null)
+                  && (throwable.getCause() instanceof TimeoutException)) {
+                LOGGER.error("Failed by timeout attempt to access binary with id {}",
+                    binaryId, throwable);
+                response.setStatusCode(HttpStatus.NOT_FOUND);
+              } else {
+                LOGGER.error("Failed attempt to access binary with id {}", binaryId, throwable);
+                response.setStatusCode(HttpStatus.EXPECTATION_FAILED);
+              }
               return response.setComplete();
             });
   }
