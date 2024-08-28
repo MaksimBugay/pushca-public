@@ -17,6 +17,7 @@ import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
+import bmv.pushca.binary.proxy.pushca.model.PClient;
 import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
 import bmv.pushca.binary.proxy.util.serialisation.JsonUtility;
 import java.text.MessageFormat;
@@ -33,15 +34,19 @@ public class BinaryProxyService {
 
   private static final ClientSearchData BROADCAST_ALL_FILTER =
       new ClientSearchData(null, null, null, "ultimate-file-sharing-listener");
+
   private final WebsocketPool websocketPool;
 
   private final int pushcaClientHashCode;
+
+  private final PClient pushcaClient;
 
   private final MicroserviceConfiguration microserviceConfiguration;
 
   public BinaryProxyService(WebsocketPool websocketPool,
       PushcaWsClientFactory pushcaWsClientFactory,
       MicroserviceConfiguration microserviceConfiguration) {
+    this.pushcaClient = pushcaWsClientFactory.pushcaClient;
     this.pushcaClientHashCode = pushcaWsClientFactory.pushcaClient.hashCode();
     this.websocketPool = websocketPool;
     this.microserviceConfiguration = microserviceConfiguration;
@@ -57,7 +62,15 @@ public class BinaryProxyService {
   }
 
   public CompletableFuture<String> getPrivateUrlSuffix(String binaryId) {
-    String id = broadcastMessage(BROADCAST_ALL_FILTER, MessageFormat.format("{0}{1}{2}",
+    final ClientSearchData dest = new ClientSearchData(
+        BROADCAST_ALL_FILTER.workSpaceId(),
+        BROADCAST_ALL_FILTER.accountId(),
+        BROADCAST_ALL_FILTER.deviceId(),
+        BROADCAST_ALL_FILTER.applicationId(),
+        false,
+        List.of(pushcaClient)
+    );
+    String id = broadcastMessage(dest, MessageFormat.format("{0}{1}{2}",
         PRIVATE_URL_SUFFIX.name(),
         MESSAGE_PARTS_DELIMITER,
         binaryId
