@@ -79,8 +79,9 @@ public interface PushcaWebSocketApi {
    *
    * @param binaryId - binary(file) id
    * @param order    - datagram order in binary
+   * @param clientHash - client hash
    */
-  void sendAcknowledge(UUID binaryId, int order);
+  void sendAcknowledge(UUID binaryId, int order, int clientHash);
 
   //=================================TEXT MESSAGE API===============================================
 

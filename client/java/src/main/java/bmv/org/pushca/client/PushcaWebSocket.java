@@ -151,8 +151,9 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   private final Executor asyncExecutor;
 
-  public static String buildAcknowledgeId(String binaryId, int order) {
-    return MessageFormat.format("{0}-{1}", binaryId, java.lang.String.valueOf(order));
+  public static String buildAcknowledgeId(String binaryId, int order, int clientHash) {
+    return MessageFormat.format("{0}-{1}-{2}", binaryId, String.valueOf(order),
+        String.valueOf(clientHash));
   }
 
   PushcaWebSocket(String pushcaApiUrl, String pusherId,
@@ -326,7 +327,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       );
     }
     if (binaryWithHeader.withAcknowledge) {
-      sendAcknowledge(binaryWithHeader.binaryId, binaryWithHeader.order);
+      sendAcknowledge(binaryWithHeader.binaryId, binaryWithHeader.order,
+          binaryWithHeader.clientHash);
     }
     if (binaryData.isCompleted()) {
       Optional.ofNullable(dataConsumer).ifPresent(
@@ -482,8 +484,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     );
   }
 
-  public void sendAcknowledge(UUID binaryId, int order) {
-    String id = buildAcknowledgeId(binaryId.toString(), order);
+  public void sendAcknowledge(UUID binaryId, int order, int clientHash) {
+    String id = buildAcknowledgeId(binaryId.toString(), order, clientHash);
     sendAcknowledge(id);
   }
 
@@ -683,7 +685,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         .collect(Collectors.toList());
 
     for (Datagram datagram : datagrams) {
-      final String responseId = buildAcknowledgeId(binaryObjectData.id, datagram.order);
+      final String responseId =
+          buildAcknowledgeId(binaryObjectData.id, datagram.order, dest.hashCode());
       executeWithRepeatOnFailure(
           responseId,
           () -> webSocket.send(addAll(datagram.prefix, datagram.data))
