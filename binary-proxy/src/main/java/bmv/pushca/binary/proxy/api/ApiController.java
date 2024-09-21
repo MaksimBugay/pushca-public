@@ -132,18 +132,15 @@ public class ApiController {
   @GetMapping(value = "/binary/{binaryId}")
   public Mono<Void> redirectToProtectedBinary(
       @PathVariable String binaryId,
-      @RequestParam(value = "exposeWorkspace", defaultValue = "no") String exposeWorkspace,
+      @RequestParam(value = "workspace", required = false) String workspaceId,
       ServerHttpResponse response) {
 
     return Mono.fromFuture(binaryProxyService.getPrivateUrlSuffix(binaryId))
         .flatMap(suffix -> {
           String url;
-          if ("no".equals(exposeWorkspace)) {
+          if (StringUtils.isEmpty(workspaceId)) {
             url = MessageFormat.format(REDIRECT_URL_PATTERN, suffix);
           } else {
-            String workspaceId = encryptionService.
-                decryptPipeSafe(suffix, CreatePrivateUrlSuffixRequest.class)
-                .workspaceId();
             url = MessageFormat.format(REDIRECT_URL_WITH_WORKSPACE_PATTERN, suffix, workspaceId);
           }
           response.setStatusCode(HttpStatus.FOUND);
