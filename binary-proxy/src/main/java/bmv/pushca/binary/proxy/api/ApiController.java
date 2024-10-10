@@ -1,5 +1,6 @@
 package bmv.pushca.binary.proxy.api;
 
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
 import static bmv.pushca.binary.proxy.util.BinaryUtils.canPlayTypeInBrowser;
 import static bmv.pushca.binary.proxy.util.BinaryUtils.isDownloadBinaryRequestExpired;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
@@ -69,7 +70,16 @@ public class ApiController {
   //@CrossOrigin(origins = "*")
   @PostMapping(value = "/binary/private/create-url-suffix")
   public Mono<String> createPrivateUrlSuffix(@RequestBody CreatePrivateUrlSuffixRequest request) {
-    return Mono.just(encryptionService.encrypt(request, RuntimeException::new))
+    return Mono.just(MessageFormat.format("{0}{1}{2}",
+            encryptionService.encryptBytes(
+                binaryProxyService.generatePrivateUrlShortSuffix(
+                    request.workspaceId(), request.binaryId()
+                ),
+                RuntimeException::new
+            ),
+            MESSAGE_PARTS_DELIMITER,
+            encryptionService.encrypt(request, RuntimeException::new)
+        ))
         .onErrorResume(Mono::error);
   }
 
@@ -129,13 +139,13 @@ public class ApiController {
         });
   }
 
-  @GetMapping(value = "/binary/{binaryId}")
+  @GetMapping(value = "/binary/{binaryCoordinates}")
   public Mono<Void> redirectToProtectedBinary(
-      @PathVariable String binaryId,
+      @PathVariable String binaryCoordinates,
       @RequestParam(value = "workspace", required = false) String workspaceId,
       ServerHttpResponse response) {
 
-    return Mono.fromFuture(binaryProxyService.getPrivateUrlSuffix(binaryId))
+    return Mono.fromFuture(binaryProxyService.getPrivateUrlSuffix(binaryCoordinates))
         .flatMap(suffix -> {
           String url;
           if (StringUtils.isEmpty(workspaceId)) {
@@ -152,10 +162,10 @@ public class ApiController {
               if ((throwable.getCause() != null)
                   && (throwable.getCause() instanceof TimeoutException)) {
                 LOGGER.error("Failed by timeout attempt to access binary with id {}",
-                    binaryId, throwable);
+                    binaryCoordinates, throwable);
                 response.setStatusCode(HttpStatus.NOT_FOUND);
               } else {
-                LOGGER.error("Failed attempt to access binary with id {}", binaryId, throwable);
+                LOGGER.error("Failed attempt to access binary with id {}", binaryCoordinates, throwable);
                 response.setStatusCode(HttpStatus.EXPECTATION_FAILED);
               }
               return response.setComplete();

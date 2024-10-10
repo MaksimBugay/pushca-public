@@ -9,9 +9,20 @@ public interface EncryptionService {
 
   String encryptString(String inputStr) throws Exception;
 
+  String encryptBytes(byte[] input) throws Exception;
+
   default <T> String encrypt(T input, Function<Exception, RuntimeException> exceptionBuilder) {
     try {
       return encrypt(input);
+    } catch (Exception e) {
+      throw exceptionBuilder.apply(e);
+    }
+  }
+
+  default String encryptBytes(byte[] input,
+      Function<Exception, RuntimeException> exceptionBuilder) {
+    try {
+      return encryptBytes(input);
     } catch (Exception e) {
       throw exceptionBuilder.apply(e);
     }
@@ -22,7 +33,7 @@ public interface EncryptionService {
   <T> T decrypt(String encString, Class<T> clazz) throws Exception;
 
   default <T> T decryptPipeSafe(String encString, Class<T> clazz) {
-    try{
+    try {
       return decrypt(encString, clazz);
     } catch (Exception e) {
       throw new RuntimeException(e);
@@ -30,6 +41,8 @@ public interface EncryptionService {
   }
 
   String decryptString(String encString) throws Exception;
+
+  byte[] decryptToBytes(String encString) throws Exception;
 
   <T> T decryptFromBinary(byte[] input, Class<T> clazz) throws Exception;
 

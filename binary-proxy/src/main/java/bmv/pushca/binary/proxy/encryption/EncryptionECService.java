@@ -34,6 +34,10 @@ public class EncryptionECService extends EncryptionServiceBase {
     return eccService.encryptString(inputStr);
   }
 
+  public String encryptBytes(byte[] input) throws Exception {
+    return eccService.encryptBytes(input);
+  }
+
   @Override
   public <T> byte[] encryptToBinary(T input) throws Exception {
     return eccService.encryptToBinary(input);
@@ -47,6 +51,10 @@ public class EncryptionECService extends EncryptionServiceBase {
   @Override
   public String decryptString(String encString) throws Exception {
     return eccService.decryptString(encString);
+  }
+
+  public byte[] decryptToBytes(String encString) throws Exception {
+    return eccService.decryptToBytes(encString);
   }
 
   @Override

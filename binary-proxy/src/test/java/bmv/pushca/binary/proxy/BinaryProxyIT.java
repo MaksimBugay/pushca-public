@@ -80,9 +80,10 @@ class BinaryProxyIT {
           assertNotNull(response);
           urlSuffix.set(response);
         });
-
+    String shortPrefix = urlSuffix.get().split("@@")[0];
+    System.out.printf("%s: %d%n", shortPrefix, shortPrefix.length());
     CreatePrivateUrlSuffixRequest decryptedRequest = encryptionService.decrypt(
-        urlSuffix.get(),
+        urlSuffix.get().split("@@")[1],
         CreatePrivateUrlSuffixRequest.class
     );
     assertEquals(request, decryptedRequest);

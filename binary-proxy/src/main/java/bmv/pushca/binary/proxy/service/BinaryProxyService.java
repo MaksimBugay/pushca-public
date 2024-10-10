@@ -9,6 +9,7 @@ import static bmv.pushca.binary.proxy.pushca.model.Datagram.buildDatagramId;
 import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
 import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.calculateSha256;
 import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.concatParts;
+import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.intToBytes;
 
 import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
@@ -18,14 +19,17 @@ import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.model.PClient;
 import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
+import bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils;
 import bmv.pushca.binary.proxy.util.serialisation.JsonUtility;
 import java.text.MessageFormat;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.SplittableRandom;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -42,6 +46,8 @@ public class BinaryProxyService {
 
   private final MicroserviceConfiguration microserviceConfiguration;
 
+  private SplittableRandom random = new SplittableRandom();
+
   public BinaryProxyService(WebsocketPool websocketPool,
       PushcaWsClientFactory pushcaWsClientFactory,
       MicroserviceConfiguration microserviceConfiguration) {
@@ -49,6 +55,17 @@ public class BinaryProxyService {
     this.pushcaClientHashCode = pushcaWsClientFactory.pushcaClient.hashCode();
     this.websocketPool = websocketPool;
     this.microserviceConfiguration = microserviceConfiguration;
+  }
+
+  public byte[] generatePrivateUrlShortSuffix(String workspaceId, String binaryId) {
+    byte[] suffix = ArrayUtils.addAll(
+        intToBytes(random.nextInt(0, Integer.MAX_VALUE)),
+        intToBytes(BmvObjectUtils.calculateStringHashCode(workspaceId))
+    );
+    return ArrayUtils.addAll(
+        suffix,
+        intToBytes(BmvObjectUtils.calculateStringHashCode(binaryId))
+    );
   }
 
   public CompletableFuture<Boolean> verifyBinarySignature(
@@ -60,7 +77,8 @@ public class BinaryProxyService {
     );
   }
 
-  public CompletableFuture<String> getPrivateUrlSuffix(String binaryId) {
+  public CompletableFuture<String> getPrivateUrlSuffix(String binaryCoordinates) {
+    //TODO implement workspace and binary ID hash extraction
     final ClientSearchData dest = new ClientSearchData(
         BROADCAST_ALL_FILTER.workSpaceId(),
         BROADCAST_ALL_FILTER.accountId(),
@@ -71,7 +89,7 @@ public class BinaryProxyService {
     );
     String id = broadcastMessage(dest, MessageFormat.format("{0}::{1}",
         PRIVATE_URL_SUFFIX.name(),
-        binaryId
+        binaryCoordinates
     ));
     return websocketPool.registerResponseWaiter(
         id, microserviceConfiguration.responseTimeoutMs

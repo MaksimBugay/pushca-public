@@ -26,8 +26,11 @@ public class ECCService {
   }
 
   String encryptString(String inputStr) throws Exception {
-    return encodeBase64URLSafeString(
-        encodeData(publicKey, inputStr.getBytes(StandardCharsets.UTF_8)));
+    return encryptBytes(inputStr.getBytes(StandardCharsets.UTF_8));
+  }
+
+  String encryptBytes(byte[] input) throws Exception {
+    return encodeBase64URLSafeString(encodeData(publicKey, input));
   }
 
   public <T> byte[] encryptToBinary(T input) throws Exception {
@@ -39,7 +42,11 @@ public class ECCService {
   }
 
   public String decryptString(String encString) throws Exception {
-    return new String(decodeData(privateKey, decodeBase64(encString)), StandardCharsets.UTF_8);
+    return new String(decryptToBytes(encString), StandardCharsets.UTF_8);
+  }
+
+  public byte[] decryptToBytes(String encString) throws Exception {
+    return decodeData(privateKey, decodeBase64(encString));
   }
 
   public <T> T decryptFromBinary(byte[] input, Class<T> clazz) throws Exception {

@@ -1,7 +1,11 @@
 package bmv.pushca.binary.proxy.encryption;
 
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.ID_GENERATOR;
+import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.bytesToInt;
+import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.intToBytes;
 import static java.util.concurrent.Executors.newFixedThreadPool;
 
+import bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils;
 import com.nimbusds.jwt.JWTClaimsSet;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -9,10 +13,12 @@ import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.SplittableRandom;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.commons.lang3.ArrayUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -27,6 +33,7 @@ public class EncryptionServiceTest {
   private static final String TEST_CLAIM_NAME = "test1";
   private static EncryptionECService encryptionECService;
   private static ExecutorService executorService;
+  private static SplittableRandom random = new SplittableRandom();
 
   @BeforeAll
   public static void init() throws Exception {
@@ -45,6 +52,32 @@ public class EncryptionServiceTest {
     String actualStr = SDF.format(actual);
     Assertions.assertEquals(expectedStr, actualStr);
   }
+
+  @Test
+  void binaryUrlTest() throws Exception {
+    int workspace = BmvObjectUtils.calculateStringHashCode(ID_GENERATOR.generate().toString());
+    int binaryId1 = BmvObjectUtils.calculateStringHashCode(ID_GENERATOR.generate().toString());
+    int binaryId2 = BmvObjectUtils.calculateStringHashCode(ID_GENERATOR.generate().toString());
+
+    byte[] prefix = intToBytes(random.nextInt(0, Integer.MAX_VALUE));
+    prefix = ArrayUtils.addAll(prefix, intToBytes(workspace));
+    prefix = ArrayUtils.addAll(prefix, intToBytes(binaryId1));
+
+    String encPrefix = encryptionECService.encryptBytes(prefix);
+    System.out.printf("%s: %d%n", encPrefix, encPrefix.length());
+
+    byte[] tmp = encryptionECService.decryptToBytes(encPrefix);
+    int w = bytesToInt(Arrays.copyOfRange(tmp, 4,8));
+    Assertions.assertEquals(workspace, w);
+    int b = bytesToInt(Arrays.copyOfRange(tmp, 8,12));
+    Assertions.assertEquals(binaryId1, b);
+
+    prefix = ArrayUtils.addAll(intToBytes(workspace), intToBytes(binaryId2));
+    prefix = ArrayUtils.addAll(prefix, intToBytes(random.nextInt(0, Integer.MAX_VALUE)));
+    encPrefix = encryptionECService.encryptBytes(prefix);
+    System.out.printf("%s: %d%n", encPrefix, encPrefix.length());
+  }
+
 
   @Test
   void encryptedJwtAndUrlEncodingTest() throws Exception {
