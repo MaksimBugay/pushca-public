@@ -6,6 +6,8 @@ import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.intToBytes;
 import static java.util.concurrent.Executors.newFixedThreadPool;
 
 import bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils;
+import bmv.pushca.binary.proxy.service.BinaryCoordinatesService;
+import bmv.pushca.binary.proxy.service.BinaryCoordinatesService.BinaryCoordinates;
 import com.nimbusds.jwt.JWTClaimsSet;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -32,6 +34,8 @@ public class EncryptionServiceTest {
 
   private static final String TEST_CLAIM_NAME = "test1";
   private static EncryptionECService encryptionECService;
+
+  private static BinaryCoordinatesService binaryCoordinatesService;
   private static ExecutorService executorService;
   private static SplittableRandom random = new SplittableRandom();
 
@@ -44,6 +48,7 @@ public class EncryptionServiceTest {
 
     encryptionECService =
         new EncryptionECService(keysPath, "password123");
+    binaryCoordinatesService = new BinaryCoordinatesService(encryptionECService);
     executorService = newFixedThreadPool(N_THREADS);
   }
 
@@ -66,11 +71,9 @@ public class EncryptionServiceTest {
     String encPrefix = encryptionECService.encryptBytes(prefix);
     System.out.printf("%s: %d%n", encPrefix, encPrefix.length());
 
-    byte[] tmp = encryptionECService.decryptToBytes(encPrefix);
-    int w = bytesToInt(Arrays.copyOfRange(tmp, 4,8));
-    Assertions.assertEquals(workspace, w);
-    int b = bytesToInt(Arrays.copyOfRange(tmp, 8,12));
-    Assertions.assertEquals(binaryId1, b);
+    BinaryCoordinates coordinates = binaryCoordinatesService.retrieve(encPrefix);
+    Assertions.assertEquals(workspace, coordinates.workspaceIdHash());
+    Assertions.assertEquals(binaryId1, coordinates.binaryIdHash());
 
     prefix = ArrayUtils.addAll(intToBytes(workspace), intToBytes(binaryId2));
     prefix = ArrayUtils.addAll(prefix, intToBytes(random.nextInt(0, Integer.MAX_VALUE)));

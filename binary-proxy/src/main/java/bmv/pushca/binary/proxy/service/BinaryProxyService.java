@@ -20,6 +20,7 @@ import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.model.PClient;
 import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
 import bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils;
+import bmv.pushca.binary.proxy.service.BinaryCoordinatesService.BinaryCoordinates;
 import bmv.pushca.binary.proxy.util.serialisation.JsonUtility;
 import java.text.MessageFormat;
 import java.util.Base64;
@@ -46,15 +47,19 @@ public class BinaryProxyService {
 
   private final MicroserviceConfiguration microserviceConfiguration;
 
-  private SplittableRandom random = new SplittableRandom();
+  private final BinaryCoordinatesService binaryCoordinatesService;
+
+  private final SplittableRandom random = new SplittableRandom();
 
   public BinaryProxyService(WebsocketPool websocketPool,
       PushcaWsClientFactory pushcaWsClientFactory,
-      MicroserviceConfiguration microserviceConfiguration) {
+      MicroserviceConfiguration microserviceConfiguration,
+      BinaryCoordinatesService binaryCoordinatesService) {
     this.pushcaClient = pushcaWsClientFactory.pushcaClient;
     this.pushcaClientHashCode = pushcaWsClientFactory.pushcaClient.hashCode();
     this.websocketPool = websocketPool;
     this.microserviceConfiguration = microserviceConfiguration;
+    this.binaryCoordinatesService = binaryCoordinatesService;
   }
 
   public byte[] generatePrivateUrlShortSuffix(String workspaceId, String binaryId) {
@@ -77,19 +82,19 @@ public class BinaryProxyService {
     );
   }
 
-  public CompletableFuture<String> getPrivateUrlSuffix(String binaryCoordinates) {
-    //TODO implement workspace and binary ID hash extraction
+  public CompletableFuture<String> getPrivateUrlSuffix(String encBinaryCoordinates) {
+    BinaryCoordinates coordinates = binaryCoordinatesService.retrieve(encBinaryCoordinates);
     final ClientSearchData dest = new ClientSearchData(
         BROADCAST_ALL_FILTER.workSpaceId(),
         BROADCAST_ALL_FILTER.accountId(),
-        BROADCAST_ALL_FILTER.deviceId(),
+        String.valueOf(coordinates.workspaceIdHash()),
         BROADCAST_ALL_FILTER.applicationId(),
         false,
         List.of(pushcaClient)
     );
     String id = broadcastMessage(dest, MessageFormat.format("{0}::{1}",
         PRIVATE_URL_SUFFIX.name(),
-        binaryCoordinates
+        String.valueOf(coordinates.binaryIdHash())
     ));
     return websocketPool.registerResponseWaiter(
         id, microserviceConfiguration.responseTimeoutMs
