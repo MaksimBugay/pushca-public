@@ -9,7 +9,9 @@ public final class BinaryUtils {
       "image/jpeg",
       "video/mp4",
       "video/webm; codecs=\"vp8, opus\"",
-      "video/webm; codecs=\"vp9, opus\""
+      "video/webm; codecs=\"vp9, opus\"",
+      "image/bmp",
+      "image/png"
       );
 
   private BinaryUtils() {
