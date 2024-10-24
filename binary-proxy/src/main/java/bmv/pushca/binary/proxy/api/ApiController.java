@@ -10,6 +10,7 @@ import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
+import bmv.pushca.binary.proxy.pushca.util.NetworkUtils;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
 import java.net.URI;
@@ -31,6 +32,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
@@ -87,6 +89,8 @@ public class ApiController {
   @PostMapping(value = "/binary/protected")
   public Flux<byte[]> serveProtectedBinaryAsStream(
       @RequestBody DownloadProtectedBinaryRequest request,
+      @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
+      @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
       ServerHttpResponse response) {
     CreatePrivateUrlSuffixRequest params;
     try {
@@ -122,7 +126,8 @@ public class ApiController {
     return Mono.fromFuture(verificationFuture)
         .flatMapMany(isValid -> {
           if (isValid) {
-            return serveBinaryAsStream(params.workspaceId(), params.binaryId(), response, true);
+            return serveBinaryAsStream(params.workspaceId(), params.binaryId(), response, true,
+                NetworkUtils.getRealIP(xForwardedFor, xRealIp));
           } else {
             response.setStatusCode(HttpStatus.FORBIDDEN);
             return Mono.empty();
@@ -165,7 +170,8 @@ public class ApiController {
                     binaryCoordinates, throwable);
                 response.setStatusCode(HttpStatus.NOT_FOUND);
               } else {
-                LOGGER.error("Failed attempt to access binary with id {}", binaryCoordinates, throwable);
+                LOGGER.error("Failed attempt to access binary with id {}", binaryCoordinates,
+                    throwable);
                 response.setStatusCode(HttpStatus.EXPECTATION_FAILED);
               }
               return response.setComplete();
@@ -184,17 +190,23 @@ public class ApiController {
   public Flux<byte[]> servePublicBinaryAsStream(
       @PathVariable String workspaceId,
       @PathVariable String binaryId,
+      @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
+      @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
       ServerHttpResponse response) {
-    return serveBinaryAsStream(workspaceId, binaryId, response, false);
+    return serveBinaryAsStream(workspaceId, binaryId, response, false,
+        NetworkUtils.getRealIP(xForwardedFor, xRealIp));
   }
 
   private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId,
-      ServerHttpResponse response, boolean securePost) {
+      ServerHttpResponse response, boolean securePost, String receiverIP) {
     final ConcurrentLinkedQueue<String> pendingChunks = new ConcurrentLinkedQueue<>();
     return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
         .onErrorResume(throwable -> Mono.error(
             new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
         .flatMapMany(binaryManifest -> {
+              LOGGER.info("Transfer binary: sender IP {}, receiver IP {}, name {}, size {}",
+                  binaryManifest.senderIP(), receiverIP, binaryManifest.name(),
+                  binaryManifest.getTotalSize());
               // Set the Content-Disposition header to suggest the filename for the download
               if (securePost || (!canPlayTypeInBrowser(binaryManifest.mimeType()))) {
                 response.getHeaders().setContentDisposition(

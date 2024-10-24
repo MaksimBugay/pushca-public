@@ -3,6 +3,7 @@ package bmv.pushca.binary.proxy.pushca.util;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.Enumeration;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +14,15 @@ public final class NetworkUtils {
   private NetworkUtils() {
   }
 
+  public static String getRealIP(String xForwardedFor, String xRealIp) {
+    String realIp = "127.0.0.1";
+    if (StringUtils.isNotEmpty(xForwardedFor)) {
+      realIp = xForwardedFor;
+    } else if (StringUtils.isNotEmpty(xRealIp)) {
+      realIp = xRealIp;
+    }
+    return realIp;
+  }
   public static String getInternalIpAddress() {
     try {
       Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();

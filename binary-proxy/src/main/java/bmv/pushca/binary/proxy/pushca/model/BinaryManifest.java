@@ -6,21 +6,29 @@ import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 
 public record BinaryManifest(String id, String name, String mimeType,
-                             List<Datagram> datagrams, PClient sender,
+                             List<Datagram> datagrams,
+                             String senderIP,
+                             PClient sender,
                              String pusherInstanceId,
                              String downloadSessionId) {
 
   public BinaryManifest(String id, String name, String mimeType, List<Datagram> datagrams,
-      PClient sender, String pusherInstanceId, String downloadSessionId) {
+      String senderIP, PClient sender, String pusherInstanceId, String downloadSessionId) {
     this.id = id;
     this.name = name;
     this.mimeType = mimeType;
     this.datagrams = datagrams;
+    this.senderIP = senderIP;
     this.sender = sender;
     this.pusherInstanceId = pusherInstanceId;
     this.downloadSessionId =
         StringUtils.isEmpty(downloadSessionId) ? ID_GENERATOR.generate().toString()
             : downloadSessionId;
+  }
+
+  public BinaryManifest(String id, String name, String mimeType, List<Datagram> datagrams,
+      PClient sender, String pusherInstanceId, String downloadSessionId) {
+    this(id, name, mimeType, datagrams, null, sender, pusherInstanceId, downloadSessionId);
   }
 
   public BinaryManifest(String id, String name, String mimeType, List<Datagram> datagrams,

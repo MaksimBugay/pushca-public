@@ -117,9 +117,9 @@ public class WebsocketPool implements DisposableBean {
     if ((parts.length > 1) && isValidMessageType(parts[1])) {
       MessageType type = MessageType.valueOf(parts[1]);
       if (BINARY_MANIFEST == type) {
+        sendAcknowledge(parts[0]);
         BinaryManifest manifest = fromJson(parts[2], BinaryManifest.class);
         completeWithResponse(manifest.id(), manifest);
-        sendAcknowledge(parts[0]);
         return;
       }
       if (RESPONSE == type) {
