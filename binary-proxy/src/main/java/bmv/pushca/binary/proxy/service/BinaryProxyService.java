@@ -36,9 +36,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class BinaryProxyService {
 
-  private static final ClientSearchData BROADCAST_ALL_FILTER =
-      new ClientSearchData(null, null, null, "ultimate-file-sharing-listener");
-
   private final WebsocketPool websocketPool;
 
   private final int pushcaClientHashCode;
@@ -85,10 +82,10 @@ public class BinaryProxyService {
   public CompletableFuture<String> getPrivateUrlSuffix(String encBinaryCoordinates) {
     BinaryCoordinates coordinates = binaryCoordinatesService.retrieve(encBinaryCoordinates);
     final ClientSearchData dest = new ClientSearchData(
-        BROADCAST_ALL_FILTER.workSpaceId(),
-        BROADCAST_ALL_FILTER.accountId(),
+        null,
+        null,
         String.valueOf(coordinates.workspaceIdHash()),
-        BROADCAST_ALL_FILTER.applicationId(),
+        null,
         false,
         List.of(pushcaClient)
     );
@@ -210,7 +207,7 @@ public class BinaryProxyService {
         workspaceId,
         null,
         null,
-        "ultimate-file-sharing-listener"
+        null
     );
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("owner", ownerFilter);

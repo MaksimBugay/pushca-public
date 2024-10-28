@@ -104,7 +104,7 @@ public class ApiController {
         params.workspaceId(),
         null,
         null,
-        "ultimate-file-sharing-listener",
+        null,
         true,
         List.of()
     );
