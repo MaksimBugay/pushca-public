@@ -79,8 +79,8 @@ public class WebsocketPool implements DisposableBean {
         () -> {
           logHeapMemory();
           wsNettyPool.forEach(ws -> ws.send(buildCommandMessage(null, PING).commandBody));
-          LOGGER.info("Waiting hall size {}", waitingHall.size());
-          LOGGER.info("Websocket pool size: {}", this.wsNettyPool.size());
+          LOGGER.debug("Waiting hall size {}", waitingHall.size());
+          LOGGER.debug("Websocket pool size: {}", this.wsNettyPool.size());
         },
         25, 30, TimeUnit.SECONDS
     );
@@ -304,7 +304,7 @@ public class WebsocketPool implements DisposableBean {
     long totalMemory = runtime.totalMemory();
     long maxMemory = runtime.maxMemory();
 
-    LOGGER.info("Free memory: {} MB, Used Memory: {} MB, Total memory: {} MB, Max memory: {} MB",
+    LOGGER.debug("Free memory: {} MB, Used Memory: {} MB, Total memory: {} MB, Max memory: {} MB",
         freeMemory / (1024 * 1024),
         usedMemory / (1024 * 1024),
         totalMemory / (1024 * 1024),
