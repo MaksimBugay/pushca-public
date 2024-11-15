@@ -5,9 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
+import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import java.text.MessageFormat;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -92,18 +94,19 @@ class BinaryProxyIT {
   @Test
   void protectedBinaryTest() throws Exception {
     Thread.sleep(5000);
-    final String workspaceId = "cec7abf69bab9f5aa793bd1c0c101e99";
-    final String binaryId = "aba62189-9876-4001-9ba2-d3a80bd28f0c";
-    String mimeType = "image/jpeg";
+    DownloadProtectedBinaryRequest request = new DownloadProtectedBinaryRequest(
+        "AyhMxlDsvEBGSdmZLV_5GnNGDHV4QpIS2J9IIM9z7lGL7wLQ7QDZVqFhZ3ZKMP9Y_8wKii8pAonYxuGO6jSI6CE2DTuzUgL5k0pwWdzr0F4r1uTSya6LNGqM7DBpyyRfJFo8NtJgosOUXq0rjiypbj4OlAiaf4yUbsG5PL56V84QEOsaLJjZFoqoK86RgHl5xF5iq6KF5-1kLmJUJjFWWCApqElZ%7CeyJiYXNlNjRLZXkiOiJVTW1SZWdSWmhpNDJCcnFyNGpSSVpYcWF3REJ1a2RBSCt5MlhSMGN1TmVrT1cvNnRQL2pBaE45ZFNzNUJOdWNrIiwiYmFzZTY0SVYiOiJBTUxQSHBQdVd3TEVpZlI4In0",
+        Instant.now().toEpochMilli() + 1000_000,
+        "test",
+        null,
+        "pmWkWSBCL51Bfkhn79xPuKBKHz//H6B+mY6G9/eieuM="
+    );
+    String mimeType  = MediaType.APPLICATION_OCTET_STREAM.getType();
 
-    Flux<byte[]> responseBody = client.get()
-        .uri(
-            MessageFormat.format("/binary/protected/{0}?exp={1}&sgn={2}",
-                "AkH46_jGAZwHSyFS0WSM8aFbW3hHguBj2XWiMsAOzLH3gHmokmnUejRaSHcezpMf6r-BgC8d82GScHVEMSucS8vW8cyU9ds7LQiuhj-jx86qxq_PjJ3EUU9KlH-eoqHXk8-dbQ2Sw6Xc8GtoeWTekd_NmyPfgRPbNJc35PqjQdsdIKl84nXcUdkV_limcBUxovA9tiq0N4avpJIAGKEf4ArpsXXx",
-                Long.valueOf(30018L).toString(),
-                "ywUHMgMZgmrh7rvHWiawiHzWguXCOHfrmEkvYqoe0D4"
-            )
-        )
+    Flux<byte[]> responseBody = client.post()
+        .uri("/binary/protected")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(request)
         .exchange()
         .expectStatus().isOk()
         .expectHeader().contentType(mimeType)

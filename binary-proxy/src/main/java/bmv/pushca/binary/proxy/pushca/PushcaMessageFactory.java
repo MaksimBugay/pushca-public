@@ -18,7 +18,7 @@ public class PushcaMessageFactory {
 
   public enum MessageType {
     ACKNOWLEDGE, BINARY_MANIFEST, CHANNEL_MESSAGE, CHANNEL_EVENT, RESPONSE,
-    UPLOAD_BINARY_APPEAL, GATEWAY_REQUEST, PRIVATE_URL_SUFFIX
+    UPLOAD_BINARY_APPEAL, GATEWAY_REQUEST, PRIVATE_URL_SUFFIX, VALIDATE_PASSWORD_HASH
   }
 
   public static final TimeBasedEpochGenerator ID_GENERATOR = Generators.timeBasedEpochGenerator();

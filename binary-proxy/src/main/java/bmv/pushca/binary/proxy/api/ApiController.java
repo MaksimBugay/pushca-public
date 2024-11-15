@@ -86,7 +86,7 @@ public class ApiController {
         .onErrorResume(Mono::error);
   }
 
-  //@CrossOrigin(origins = "*", exposedHeaders = "Content-Disposition")
+  @CrossOrigin(origins = "*", exposedHeaders = "Content-Disposition")
   @PostMapping(value = "/binary/protected")
   public Flux<byte[]> serveProtectedBinaryAsStream(
       @RequestBody DownloadProtectedBinaryRequest request,
@@ -126,6 +126,7 @@ public class ApiController {
 
       verificationFuture = validatePasswordHashFuture.thenCompose(isPasswordHashValid -> {
         if (!isPasswordHashValid) {
+          LOGGER.warn("Password hash validation was not passed");
           return binaryProxyService.verifyBinarySignature(
               ownerFilter,
               new DownloadProtectedBinaryRequest(
