@@ -28,6 +28,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -69,7 +70,7 @@ public class ApiController {
     });
   }
 
-  //@CrossOrigin(origins = "*")
+  @CrossOrigin(origins = "*")
   @PostMapping(value = "/binary/private/create-url-suffix")
   public Mono<String> createPrivateUrlSuffix(@RequestBody CreatePrivateUrlSuffixRequest request) {
     return Mono.just(MessageFormat.format("{0}{1}{2}",
@@ -112,15 +113,33 @@ public class ApiController {
     if (isDownloadBinaryRequestExpired(request.exp())) {
       verificationFuture = CompletableFuture.completedFuture(Boolean.FALSE);
     } else {
-      verificationFuture = binaryProxyService.verifyBinarySignature(
-          ownerFilter,
-          new DownloadProtectedBinaryRequest(
-              request.suffix(),
-              request.exp(),
-              request.signature(),
-              params.binaryId()
-          )
-      );
+      CompletableFuture<Boolean> validatePasswordHashFuture;
+      if (StringUtils.isEmpty(request.passwordHash())) {
+        validatePasswordHashFuture = CompletableFuture.completedFuture(Boolean.FALSE);
+      } else {
+        validatePasswordHashFuture = binaryProxyService.validatePasswordHash(
+            params.binaryId(),
+            request.passwordHash(),
+            ownerFilter
+        );
+      }
+
+      verificationFuture = validatePasswordHashFuture.thenCompose(isPasswordHashValid -> {
+        if (!isPasswordHashValid) {
+          return binaryProxyService.verifyBinarySignature(
+              ownerFilter,
+              new DownloadProtectedBinaryRequest(
+                  request.suffix(),
+                  request.exp(),
+                  request.signature(),
+                  params.binaryId(),
+                  null
+              )
+          );
+        } else {
+          return CompletableFuture.completedFuture(Boolean.TRUE);
+        }
+      });
     }
 
     return Mono.fromFuture(verificationFuture)

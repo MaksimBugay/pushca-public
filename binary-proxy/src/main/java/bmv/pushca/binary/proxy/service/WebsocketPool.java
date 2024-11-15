@@ -4,6 +4,7 @@ import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.BINARY_MANIFEST;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.PRIVATE_URL_SUFFIX;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.RESPONSE;
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.VALIDATE_PASSWORD_HASH;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.buildCommandMessage;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.isValidMessageType;
 import static bmv.pushca.binary.proxy.pushca.model.Command.ACKNOWLEDGE;
@@ -111,6 +112,11 @@ public class WebsocketPool implements DisposableBean {
     if (message.contains(String.format("::%s::", PRIVATE_URL_SUFFIX.name()))) {
       String[] parts = message.split("::");
       completeWithResponse(parts[0], parts[2]);
+      return;
+    }
+    if (message.contains(String.format("::%s::", VALIDATE_PASSWORD_HASH.name()))) {
+      String[] parts = message.split("::");
+      completeWithResponse(parts[0], Boolean.valueOf(parts[2]));
       return;
     }
     String[] parts = message.split(MESSAGE_PARTS_DELIMITER);

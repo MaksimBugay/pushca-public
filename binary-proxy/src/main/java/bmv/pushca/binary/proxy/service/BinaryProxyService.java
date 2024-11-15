@@ -2,6 +2,7 @@ package bmv.pushca.binary.proxy.service;
 
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.ID_GENERATOR;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.PRIVATE_URL_SUFFIX;
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.VALIDATE_PASSWORD_HASH;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_GATEWAY_REQUEST;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_MESSAGE;
 import static bmv.pushca.binary.proxy.pushca.model.Command.SEND_UPLOAD_BINARY_APPEAL;
@@ -78,6 +79,19 @@ public class BinaryProxyService {
         id, microserviceConfiguration.responseTimeoutMs
     );
   }
+
+  public CompletableFuture<Boolean> validatePasswordHash(String binaryId, String passwordHash,
+      ClientSearchData ownerFilter) {
+    String id = broadcastMessage(ownerFilter, MessageFormat.format("{0}::{1}::{2}",
+        VALIDATE_PASSWORD_HASH.name(),
+        binaryId,
+        passwordHash
+    ));
+    return websocketPool.registerResponseWaiter(
+        id, microserviceConfiguration.responseTimeoutMs
+    );
+  }
+
 
   public CompletableFuture<String> getPrivateUrlSuffix(String encBinaryCoordinates) {
     BinaryCoordinates coordinates = binaryCoordinatesService.retrieve(encBinaryCoordinates);
