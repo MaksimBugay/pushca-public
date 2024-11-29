@@ -3,6 +3,7 @@ package bmv.pushca.binary.proxy.api;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
 import static bmv.pushca.binary.proxy.util.BinaryUtils.canPlayTypeInBrowser;
 import static bmv.pushca.binary.proxy.util.BinaryUtils.isDownloadBinaryRequestExpired;
+import static bmv.pushca.binary.proxy.util.BinaryUtils.patchPrivateUrlSuffix;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
@@ -171,12 +172,13 @@ public class ApiController {
       ServerHttpResponse response) {
 
     return Mono.fromFuture(binaryProxyService.getPrivateUrlSuffix(binaryCoordinates))
-        .flatMap(suffix -> {
+        .flatMap(suffix0 -> {
+          String patchedSuffix = patchPrivateUrlSuffix(suffix0);
           String url;
           if (StringUtils.isEmpty(workspaceId)) {
-            url = MessageFormat.format(REDIRECT_URL_PATTERN, suffix);
+            url = MessageFormat.format(REDIRECT_URL_PATTERN, patchedSuffix);
           } else {
-            url = MessageFormat.format(REDIRECT_URL_WITH_WORKSPACE_PATTERN, suffix, workspaceId);
+            url = MessageFormat.format(REDIRECT_URL_WITH_WORKSPACE_PATTERN, patchedSuffix, workspaceId);
           }
           response.setStatusCode(HttpStatus.FOUND);
           setResponseLocation(response, url);

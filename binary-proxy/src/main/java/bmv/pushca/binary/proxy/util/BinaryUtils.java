@@ -1,5 +1,10 @@
 package bmv.pushca.binary.proxy.util;
 
+import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.calculateSha256;
+
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Set;
 
@@ -13,9 +18,26 @@ public final class BinaryUtils {
       "image/bmp",
       "image/png",
       "audio/webm"
-      );
+  );
 
   private BinaryUtils() {
+  }
+
+  public static String patchPrivateUrlSuffix(String suffix) {
+    String decodedSuffix = URLDecoder.decode(suffix, StandardCharsets.UTF_8);
+    String[] parts = decodedSuffix.split("\\|");
+    if (parts.length > 2) {
+      return URLEncoder.encode(
+          String.format("%s|%s|%s",
+              parts[0],
+              parts[1],
+              calculateSha256(parts[2].getBytes(StandardCharsets.UTF_8))
+          ),
+          StandardCharsets.UTF_8
+      );
+    } else {
+      return suffix;
+    }
   }
 
   public static boolean canPlayTypeInBrowser(String mimeType) {
