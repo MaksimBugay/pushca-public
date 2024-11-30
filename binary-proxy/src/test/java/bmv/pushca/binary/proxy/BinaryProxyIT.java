@@ -26,6 +26,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.web.reactive.server.EntityExchangeResult;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
@@ -101,7 +102,7 @@ class BinaryProxyIT {
         null,
         "pmWkWSBCL51Bfkhn79xPuKBKHz//H6B+mY6G9/eieuM="
     );
-    String mimeType  = MediaType.APPLICATION_OCTET_STREAM.getType();
+    String mimeType = MediaType.APPLICATION_OCTET_STREAM.getType();
 
     Flux<byte[]> responseBody = client.post()
         .uri("/binary/protected")
@@ -124,6 +125,44 @@ class BinaryProxyIT {
         .map(chunk -> chunk.length)
         .reduce(Integer::sum).orElse(0);
     assertEquals(244211, totalSize);
+  }
+
+  @Test
+  void getProtectedBinaryDescriptionTest() throws Exception {
+    Thread.sleep(5000);
+    final String suffix =
+        "An_ehNRThW_r1o7tY8fBqG5HcvgmL6sj-cyqmsIceadrW2UgA2qYn6_-Gh7I-IkCIJphhWYIMrfgo4h2zTlYQFXjZV4wadjhEo5D2lQ1kfeXjBEm6s0fN4oNCAU3RleLLuLQhbIB0l27mkKeOugDYHfYIb6uLUrW5QOlAeUpB6tp38wdoa5KDoKv80rj0L79VSJOUQLXrgC5JDi3ZyITI-qQt_FE";
+
+    EntityExchangeResult<String> response = client.get().uri(MessageFormat.format(
+            "/binary-manifest/protected/{0}",
+            suffix
+        ))
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody(String.class)
+        .returnResult();
+    String readMeText = response.getResponseBody();
+    System.out.println(readMeText);
+  }
+
+  @Test
+  void getBinaryDescriptionTest() throws Exception {
+    Thread.sleep(5000);
+    //85fb3881ad15bf9ae956cb30f22c5855/eb69bb0c-d49b-443d-ba2b-0ce9c6491092
+    final String workspaceId = "85fb3881ad15bf9ae956cb30f22c5855";
+    final String binaryId = "eb69bb0c-d49b-443d-ba2b-0ce9c6491092";
+
+    EntityExchangeResult<String> response = client.get().uri(MessageFormat.format(
+            "/binary-manifest/{0}/{1}",
+            workspaceId,
+            binaryId
+        ))
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody(String.class)
+        .returnResult();
+    String readMeText = response.getResponseBody();
+    System.out.println(readMeText);
   }
 
   @Test

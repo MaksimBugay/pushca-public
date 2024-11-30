@@ -4,6 +4,9 @@ import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_
 import static bmv.pushca.binary.proxy.util.BinaryUtils.canPlayTypeInBrowser;
 import static bmv.pushca.binary.proxy.util.BinaryUtils.isDownloadBinaryRequestExpired;
 import static bmv.pushca.binary.proxy.util.BinaryUtils.patchPrivateUrlSuffix;
+import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.toJson;
+import static org.apache.commons.lang3.StringUtils.isEmpty;
+import static org.apache.commons.lang3.StringUtils.isNotEmpty;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
@@ -21,7 +24,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -115,7 +117,7 @@ public class ApiController {
       verificationFuture = CompletableFuture.completedFuture(Boolean.FALSE);
     } else {
       CompletableFuture<Boolean> validatePasswordHashFuture;
-      if (StringUtils.isEmpty(request.passwordHash())) {
+      if (isEmpty(request.passwordHash())) {
         validatePasswordHashFuture = CompletableFuture.completedFuture(Boolean.FALSE);
       } else {
         validatePasswordHashFuture = binaryProxyService.validatePasswordHash(
@@ -175,10 +177,11 @@ public class ApiController {
         .flatMap(suffix0 -> {
           String patchedSuffix = patchPrivateUrlSuffix(suffix0);
           String url;
-          if (StringUtils.isEmpty(workspaceId)) {
+          if (isEmpty(workspaceId)) {
             url = MessageFormat.format(REDIRECT_URL_PATTERN, patchedSuffix);
           } else {
-            url = MessageFormat.format(REDIRECT_URL_WITH_WORKSPACE_PATTERN, patchedSuffix, workspaceId);
+            url = MessageFormat.format(REDIRECT_URL_WITH_WORKSPACE_PATTERN, patchedSuffix,
+                workspaceId);
           }
           response.setStatusCode(HttpStatus.FOUND);
           setResponseLocation(response, url);
@@ -206,6 +209,63 @@ public class ApiController {
     } catch (URISyntaxException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  @GetMapping(value = "/binary-manifest/protected/{suffix}", produces = MediaType.APPLICATION_JSON_VALUE)
+  public Mono<String> getProtectedBinaryDescription(
+      @PathVariable String suffix,
+      @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
+      @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
+      ServerHttpResponse response
+  ) {
+    CreatePrivateUrlSuffixRequest params;
+    try {
+      params = encryptionService.decrypt(suffix, CreatePrivateUrlSuffixRequest.class);
+    } catch (Exception ex) {
+      response.setStatusCode(HttpStatus.FORBIDDEN);
+      return Mono.empty();
+    }
+
+    return getBinaryDescription(
+        params.workspaceId(),
+        params.binaryId(),
+        xForwardedFor,
+        xRealIp,
+        response
+    );
+  }
+
+  @GetMapping(value = "/binary-manifest/{workspaceId}/{binaryId}", produces = MediaType.APPLICATION_JSON_VALUE)
+  public Mono<String> getBinaryDescription(
+      @PathVariable String workspaceId,
+      @PathVariable String binaryId,
+      @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
+      @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
+      ServerHttpResponse response) {
+    String ip = NetworkUtils.getRealIP(xForwardedFor, xRealIp);
+    return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
+        .map(manifest -> {
+          LOGGER.debug("Binary manifest was acquired by user with IP {}: {}", ip, toJson(manifest));
+          return manifest;
+        })
+        .map(manifest -> isNotEmpty(manifest.readMeText()) ? manifest.readMeText()
+            : "No description")
+        .onErrorResume(
+            throwable -> {
+              if ((throwable.getCause() != null)
+                  && (throwable.getCause() instanceof TimeoutException)) {
+                LOGGER.error("Failed by timeout attempt to download manifest for binary with id {}",
+                    binaryId, throwable);
+                response.setStatusCode(HttpStatus.NOT_FOUND);
+                return Mono.empty();
+              } else {
+                LOGGER.error("Error fetching binary manifest for binary with id: {}", binaryId,
+                    throwable);
+                response.setStatusCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                return Mono.just("{\"error\": \"Unable to fetch binary manifest\"}");
+              }
+            }
+        );
   }
 
   @GetMapping(value = "/binary/{workspaceId}/{binaryId}")
@@ -242,7 +302,7 @@ public class ApiController {
                   binaryManifest.getTotalSize()
               );
               // Set the Content-Type header
-              if (StringUtils.isNotEmpty(binaryManifest.mimeType())) {
+              if (isNotEmpty(binaryManifest.mimeType())) {
                 response.getHeaders().setContentType(MediaType.valueOf(binaryManifest.mimeType()));
               } else {
                 response.getHeaders().setContentType(MediaType.APPLICATION_OCTET_STREAM);
