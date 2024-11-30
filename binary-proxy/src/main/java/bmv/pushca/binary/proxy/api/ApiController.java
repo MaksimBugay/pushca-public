@@ -211,7 +211,7 @@ public class ApiController {
     }
   }
 
-  @GetMapping(value = "/binary-manifest/protected/{suffix}", produces = MediaType.APPLICATION_JSON_VALUE)
+  @GetMapping(value = "/binary/binary-manifest/protected/{suffix}", produces = MediaType.APPLICATION_JSON_VALUE)
   public Mono<String> getProtectedBinaryDescription(
       @PathVariable String suffix,
       @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
@@ -235,7 +235,7 @@ public class ApiController {
     );
   }
 
-  @GetMapping(value = "/binary-manifest/{workspaceId}/{binaryId}", produces = MediaType.APPLICATION_JSON_VALUE)
+  @GetMapping(value = "/binary/binary-manifest/{workspaceId}/{binaryId}", produces = MediaType.APPLICATION_JSON_VALUE)
   public Mono<String> getBinaryDescription(
       @PathVariable String workspaceId,
       @PathVariable String binaryId,

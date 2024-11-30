@@ -131,12 +131,13 @@ class BinaryProxyIT {
   void getProtectedBinaryDescriptionTest() throws Exception {
     Thread.sleep(5000);
     final String suffix =
-        "An_ehNRThW_r1o7tY8fBqG5HcvgmL6sj-cyqmsIceadrW2UgA2qYn6_-Gh7I-IkCIJphhWYIMrfgo4h2zTlYQFXjZV4wadjhEo5D2lQ1kfeXjBEm6s0fN4oNCAU3RleLLuLQhbIB0l27mkKeOugDYHfYIb6uLUrW5QOlAeUpB6tp38wdoa5KDoKv80rj0L79VSJOUQLXrgC5JDi3ZyITI-qQt_FE";
+        "AiW9yPharNmluBXgCQm4oB2_9_IlmzW4NO3g0uI1M3hiiNadzANtWAmb2HBSKFWhga1km-8J13G17Wg58IBdFnUCIhvNqFtw0IP8NOH_o2hoeHg6LLjx5L_4OXEB5TssqvLUBaj4jhPcWxkPTKs_pdwmAdK4zrSvvs6AiotziiMxDlV1m0RIfGli7u7zETzO13r1Ek8_yaMyFHHR81PGv49PR3l3";
 
-    EntityExchangeResult<String> response = client.get().uri(MessageFormat.format(
-            "/binary-manifest/protected/{0}",
-            suffix
-        ))
+    String url = MessageFormat.format(
+        "/binary/binary-manifest/protected/{0}",
+        suffix
+    );
+    EntityExchangeResult<String> response = client.get().uri(url)
         .exchange()
         .expectStatus().isOk()
         .expectBody(String.class)
@@ -148,12 +149,12 @@ class BinaryProxyIT {
   @Test
   void getBinaryDescriptionTest() throws Exception {
     Thread.sleep(5000);
-    //85fb3881ad15bf9ae956cb30f22c5855/eb69bb0c-d49b-443d-ba2b-0ce9c6491092
+    //https://secure.fileshare.ovh:31443/binary/85fb3881ad15bf9ae956cb30f22c5855/6d9a9584-f4d9-4df7-9611-a8a9a651278b
     final String workspaceId = "85fb3881ad15bf9ae956cb30f22c5855";
-    final String binaryId = "eb69bb0c-d49b-443d-ba2b-0ce9c6491092";
+    final String binaryId = "6d9a9584-f4d9-4df7-9611-a8a9a651278b";
 
     EntityExchangeResult<String> response = client.get().uri(MessageFormat.format(
-            "/binary-manifest/{0}/{1}",
+            "/binary/binary-manifest/{0}/{1}",
             workspaceId,
             binaryId
         ))
