@@ -14,16 +14,19 @@ import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
+import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.util.NetworkUtils;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.MessageFormat;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -298,16 +301,19 @@ public class ApiController {
                 );
               }
               // Set the Content-Length header if the total size is known
-              response.getHeaders().setContentLength(
+              /*response.getHeaders().setContentLength(
                   binaryManifest.getTotalSize()
-              );
+              );*/
+              response.getHeaders().set("X-Total-Size", String.valueOf(binaryManifest.getTotalSize()));
               // Set the Content-Type header
               if (isNotEmpty(binaryManifest.mimeType())) {
                 response.getHeaders().setContentType(MediaType.valueOf(binaryManifest.mimeType()));
               } else {
                 response.getHeaders().setContentType(MediaType.APPLICATION_OCTET_STREAM);
               }
-              return Flux.fromIterable(binaryManifest.datagrams())
+              return Flux.fromIterable(binaryManifest.datagrams().stream().sorted(Comparator.comparingInt(
+                      Datagram::order)).collect(
+                      Collectors.toList()))
                   .flatMap(
                       dtm -> Mono.fromFuture(
                               binaryProxyService.requestBinaryChunk(

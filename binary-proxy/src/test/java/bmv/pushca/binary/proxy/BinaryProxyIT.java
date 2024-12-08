@@ -169,9 +169,9 @@ class BinaryProxyIT {
   @Test
   void binaryProxyTest() throws Exception {
     Thread.sleep(5000);
-    //https://secure.fileshare.ovh:31443/binary/615abb482d4d7850eccbd0e693c5641b/f3bbfed4-56bd-40e0-8554-59f8224db3a4
-    final String workspaceId = "615abb482d4d7850eccbd0e693c5641b";
-    final String binaryId = "f3bbfed4-56bd-40e0-8554-59f8224db3a4";
+    //https://secure.fileshare.ovh/binary/85fb3881ad15bf9ae956cb30f22c5855/d7594d47-afc7-412b-b4f4-a88de5ffefdc
+    final String workspaceId = "85fb3881ad15bf9ae956cb30f22c5855";
+    final String binaryId = "d7594d47-afc7-412b-b4f4-a88de5ffefdc";
     String mimeType = "video/mp4";
     Flux<byte[]> responseBody = client.get().uri(MessageFormat.format(
             "/binary/{0}/{1}",
@@ -181,6 +181,11 @@ class BinaryProxyIT {
         .exchange()
         .expectStatus().isOk()
         .expectHeader().contentType(mimeType)
+        .expectHeader().value("X-Total-Size", v -> {
+          if (!v.equals("9840497")) {
+            throw new IllegalStateException("Wrong total size header");
+          }
+        })
         .returnResult(byte[].class)
         .getResponseBody();
     Map<Integer, byte[]> binary = new ConcurrentHashMap<>();
@@ -194,6 +199,6 @@ class BinaryProxyIT {
     long totalSize = binary.values().stream()
         .map(chunk -> chunk.length)
         .reduce(Integer::sum).orElse(0);
-    assertEquals(15673308, totalSize);
+    assertEquals(9840497, totalSize);
   }
 }
