@@ -13,6 +13,7 @@ import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
 import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
+import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.util.NetworkUtils;
@@ -170,6 +171,83 @@ public class ApiController {
         });
   }
 
+  @PostMapping(value = "/binary/m/protected")
+  public Mono<BinaryManifest> getProtectedBinaryManifest(
+      @RequestBody DownloadProtectedBinaryRequest request,
+      @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
+      @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
+      ServerHttpResponse response) {
+    CreatePrivateUrlSuffixRequest params;
+    try {
+      params = encryptionService.decrypt(request.suffix(), CreatePrivateUrlSuffixRequest.class);
+    } catch (Exception ex) {
+      response.setStatusCode(HttpStatus.FORBIDDEN);
+      return Mono.empty();
+    }
+
+    final ClientSearchData ownerFilter = new ClientSearchData(
+        params.workspaceId(),
+        null,
+        null,
+        null,
+        true,
+        List.of()
+    );
+    CompletableFuture<Boolean> verificationFuture;
+    if (isDownloadBinaryRequestExpired(request.exp())) {
+      verificationFuture = CompletableFuture.completedFuture(Boolean.FALSE);
+    } else {
+      CompletableFuture<Boolean> validatePasswordHashFuture;
+      if (isEmpty(request.passwordHash())) {
+        validatePasswordHashFuture = CompletableFuture.completedFuture(Boolean.FALSE);
+      } else {
+        validatePasswordHashFuture = binaryProxyService.validatePasswordHash(
+            params.binaryId(),
+            request.passwordHash(),
+            ownerFilter
+        );
+      }
+
+      verificationFuture = validatePasswordHashFuture.thenCompose(isPasswordHashValid -> {
+        if (!isPasswordHashValid) {
+          LOGGER.warn("Password hash validation was not passed");
+          return binaryProxyService.verifyBinarySignature(
+              ownerFilter,
+              new DownloadProtectedBinaryRequest(
+                  request.suffix(),
+                  request.exp(),
+                  request.signature(),
+                  params.binaryId(),
+                  null
+              )
+          );
+        } else {
+          return CompletableFuture.completedFuture(Boolean.TRUE);
+        }
+      });
+    }
+
+    return Mono.fromFuture(verificationFuture)
+        .flatMap(isValid -> {
+          if (isValid) {
+            return getBinaryManifest(params.workspaceId(), params.binaryId(), response,
+                NetworkUtils.getRealIP(xForwardedFor, xRealIp));
+          } else {
+            response.setStatusCode(HttpStatus.FORBIDDEN);
+            return Mono.empty();
+          }
+        })
+        .onErrorResume(throwable -> {
+          if (throwable instanceof TimeoutException) {
+            response.setStatusCode(NOT_FOUND);
+          } else {
+            LOGGER.warn("Tampered signature for binary with id: {}", params.binaryId(), throwable);
+            response.setStatusCode(HttpStatus.FORBIDDEN);
+          }
+          return Mono.empty();
+        });
+  }
+
   @GetMapping(value = "/binary/{binaryCoordinates}")
   public Mono<Void> redirectToProtectedBinary(
       @PathVariable String binaryCoordinates,
@@ -282,6 +360,44 @@ public class ApiController {
         NetworkUtils.getRealIP(xForwardedFor, xRealIp));
   }
 
+  @GetMapping(value = "/binary/m/{workspaceId}/{binaryId}")
+  public Mono<BinaryManifest> getPublicBinaryManifest(
+      @PathVariable String workspaceId,
+      @PathVariable String binaryId,
+      @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
+      @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
+      ServerHttpResponse response) {
+    return getBinaryManifest(workspaceId, binaryId, response,
+        NetworkUtils.getRealIP(xForwardedFor, xRealIp));
+  }
+
+
+  private Mono<BinaryManifest> getBinaryManifest(String workspaceId, String binaryId,
+      ServerHttpResponse response, String receiverIP) {
+    return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
+        .map(binaryManifest -> {
+          LOGGER.info("Transfer binary: sender IP {}, receiver IP {}, name {}, size {}",
+              binaryManifest.senderIP(), receiverIP, binaryManifest.name(),
+              binaryManifest.getTotalSize());
+          return binaryManifest;
+        })
+        .onErrorResume(throwable -> {
+          if ((throwable.getCause() != null)
+              && (throwable.getCause() instanceof TimeoutException)) {
+            LOGGER.error("Failed by timeout attempt to download binary with id {}",
+                binaryId, throwable);
+            response.setStatusCode(HttpStatus.NOT_FOUND);
+            return Mono.empty();
+          } else {
+            return Mono.error(throwable);
+          }
+        })
+        .onErrorResume(throwable -> Mono.error(
+                new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)
+            )
+        );
+  }
+
   private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId,
       ServerHttpResponse response, boolean securePost, String receiverIP) {
     final ConcurrentLinkedQueue<String> pendingChunks = new ConcurrentLinkedQueue<>();
@@ -311,9 +427,10 @@ public class ApiController {
               } else {
                 response.getHeaders().setContentType(MediaType.APPLICATION_OCTET_STREAM);
               }
-              return Flux.fromIterable(binaryManifest.datagrams().stream().sorted(Comparator.comparingInt(
-                      Datagram::order)).collect(
-                      Collectors.toList()))
+              return Flux.fromIterable(
+                      binaryManifest.datagrams().stream().sorted(Comparator.comparingInt(
+                          Datagram::order)).collect(
+                          Collectors.toList()))
                   .flatMap(
                       dtm -> Mono.fromFuture(
                               binaryProxyService.requestBinaryChunk(

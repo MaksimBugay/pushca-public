@@ -165,11 +165,16 @@ public class NettyWsClient {
       return;
     }
     byte[] bytes = new byte[wsData.getPayload().readableByteCount()];
-    wsData.getPayload().read(bytes);
-    if (wsData.getPayload() instanceof io.netty.buffer.ByteBuf) {
-      ReferenceCountUtil.retain((ByteBuf) wsData.getPayload());
+
+    try {
+        wsData.getPayload().read(bytes); // Read the payload into the byte array
+        dataConsumer.accept(this, bytes); // Process the bytes with the data consumer
+    } finally {
+        // Explicitly release the buffer to avoid memory leaks
+        if (wsData.getPayload() instanceof ByteBuf) {
+            ReferenceCountUtil.release(wsData.getPayload());
+        }
     }
-    dataConsumer.accept(this, bytes);
   }
 
   private void onOpen(WebSocketSession session) {

@@ -7,6 +7,7 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
 import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
+import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.time.Instant;
@@ -166,6 +167,26 @@ class BinaryProxyIT {
     System.out.println(readMeText);
   }
 
+  @Test
+  void getBinaryManifestTest() throws Exception {
+    Thread.sleep(5000);
+    final String workspaceId = "85fb3881ad15bf9ae956cb30f22c5855";
+    final String binaryId = "d7594d47-afc7-412b-b4f4-a88de5ffefdc";
+
+    BinaryManifest manifest = client.get().uri(MessageFormat.format(
+            "/binary/m/{0}/{1}",
+            workspaceId,
+            binaryId
+        ))
+        .exchange()
+        .expectStatus().isOk()
+        .returnResult(BinaryManifest.class)
+        .getResponseBody().blockFirst();
+
+    assertEquals("test.mp4", manifest.name());
+    assertEquals("video/mp4", manifest.mimeType());
+    assertEquals(9840497, manifest.getTotalSize());
+  }
   @Test
   void binaryProxyTest() throws Exception {
     Thread.sleep(5000);
