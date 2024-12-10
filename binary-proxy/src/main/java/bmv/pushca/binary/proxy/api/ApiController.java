@@ -108,13 +108,9 @@ public class ApiController {
       return Flux.empty();
     }
 
-    final ClientSearchData ownerFilter = new ClientSearchData(
+    final ClientSearchData ownerFilter = binaryProxyService.buildClientFilter(
         params.workspaceId(),
-        null,
-        null,
-        null,
-        true,
-        List.of()
+        true
     );
     CompletableFuture<Boolean> verificationFuture;
     if (isDownloadBinaryRequestExpired(request.exp())) {
@@ -185,13 +181,9 @@ public class ApiController {
       return Mono.empty();
     }
 
-    final ClientSearchData ownerFilter = new ClientSearchData(
+    final ClientSearchData ownerFilter = binaryProxyService.buildClientFilter(
         params.workspaceId(),
-        null,
-        null,
-        null,
-        true,
-        List.of()
+        true
     );
     CompletableFuture<Boolean> verificationFuture;
     if (isDownloadBinaryRequestExpired(request.exp())) {

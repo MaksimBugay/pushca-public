@@ -92,17 +92,24 @@ public class BinaryProxyService {
     );
   }
 
+  public ClientSearchData buildClientFilter(String workspaceId, boolean findAny) {
+    return buildClientFilter(BmvObjectUtils.calculateStringHashCode(workspaceId), findAny);
+  }
+
+  public ClientSearchData buildClientFilter(int workspaceIdHash, boolean findAny) {
+    return new ClientSearchData(
+        String.valueOf(workspaceIdHash),
+        null,
+        null,
+        null,
+        findAny,
+        List.of(pushcaClient)
+    );
+  }
 
   public CompletableFuture<String> getPrivateUrlSuffix(String encBinaryCoordinates) {
     BinaryCoordinates coordinates = binaryCoordinatesService.retrieve(encBinaryCoordinates);
-    final ClientSearchData dest = new ClientSearchData(
-        null,
-        null,
-        String.valueOf(coordinates.workspaceIdHash()),
-        null,
-        false,
-        List.of(pushcaClient)
-    );
+    final ClientSearchData dest = buildClientFilter(coordinates.workspaceIdHash(), false);
     String id = broadcastMessage(dest, MessageFormat.format("{0}::{1}",
         PRIVATE_URL_SUFFIX.name(),
         String.valueOf(coordinates.binaryIdHash())
@@ -217,12 +224,7 @@ public class BinaryProxyService {
 
   public void sendUploadBinaryAppeal(String workspaceId, String binaryId, int chunkSize,
       boolean manifestOnly, List<Integer> requestedChunks) {
-    final ClientSearchData ownerFilter = new ClientSearchData(
-        workspaceId,
-        null,
-        null,
-        null
-    );
+    final ClientSearchData ownerFilter = buildClientFilter(workspaceId, false);
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("owner", ownerFilter);
     metaData.put("binaryId", binaryId);
