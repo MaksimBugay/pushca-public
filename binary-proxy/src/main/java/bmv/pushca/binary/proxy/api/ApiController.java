@@ -11,6 +11,8 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
 import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
+import bmv.pushca.binary.proxy.api.request.ResolveIpRequest;
+import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
@@ -18,6 +20,7 @@ import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.util.NetworkUtils;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
+import bmv.pushca.binary.proxy.service.WebClientFactory;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -34,6 +37,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,6 +47,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -57,8 +62,8 @@ public class ApiController {
 
   private final WebsocketPool websocketPool;
   private final BinaryProxyService binaryProxyService;
-
   private final EncryptionService encryptionService;
+  private final WebClient webClient = WebClientFactory.createWebClient();
 
   @Autowired
   public ApiController(
@@ -75,6 +80,18 @@ public class ApiController {
       websocketPool.closeNettyWebsocketPool();
       websocketPool.createNettyWebsocketPool();
     });
+  }
+
+  @CrossOrigin(origins = "*")
+  @PostMapping(value = "/binary/resolve-ip")
+  Mono<GeoLookupResponse> resolveIp(@RequestBody ResolveIpRequest request) {
+    return webClient.post()
+        .uri("https://app.multiloginapp.com/resolve") // Replace with the actual external API URL
+        .bodyValue(request) // Pass the request body
+        .retrieve()
+        .bodyToMono(GeoLookupResponse.class) // Convert response to desired type
+        .onErrorResume(error -> Mono.error(
+            new RuntimeException("Failed geo lookup attempt for ip" + request.ip(), error)));
   }
 
   @CrossOrigin(origins = "*")

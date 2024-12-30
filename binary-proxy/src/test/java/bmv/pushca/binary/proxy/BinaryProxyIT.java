@@ -6,6 +6,8 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
 import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
+import bmv.pushca.binary.proxy.api.request.ResolveIpRequest;
+import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import java.text.MessageFormat;
@@ -63,6 +65,23 @@ class BinaryProxyIT {
         .baseUrl("http://localhost:" + port + contextPath)
         .responseTimeout(Duration.of(1, ChronoUnit.MINUTES))
         .build();
+  }
+
+  @Test
+  void geoIpResolvingTest() {
+    ResolveIpRequest request = new ResolveIpRequest("85.190.239.186");
+
+    client.post()
+        .uri("/binary/resolve-ip")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(request)
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody(GeoLookupResponse.class)
+        .value(response -> {
+          assertNotNull(response);
+          System.out.println(response);
+        });
   }
 
   @Test
@@ -187,6 +206,7 @@ class BinaryProxyIT {
     assertEquals("video/mp4", manifest.mimeType());
     assertEquals(9840497, manifest.getTotalSize());
   }
+
   @Test
   void binaryProxyTest() throws Exception {
     Thread.sleep(5000);

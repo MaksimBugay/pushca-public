@@ -9,7 +9,7 @@ import bmv.pushca.binary.proxy.pushca.connection.model.OpenConnectionPoolRequest
 import bmv.pushca.binary.proxy.pushca.connection.model.OpenConnectionPoolResponse;
 import bmv.pushca.binary.proxy.pushca.connection.model.PusherAddress;
 import bmv.pushca.binary.proxy.pushca.model.PClient;
-import io.netty.channel.ChannelOption;
+import bmv.pushca.binary.proxy.service.WebClientFactory;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
@@ -20,19 +20,14 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
-import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
-import reactor.netty.http.client.HttpClient;
-import reactor.netty.resources.ConnectionProvider;
 
 @Component
 public class PushcaWsClientFactory {
@@ -53,7 +48,7 @@ public class PushcaWsClientFactory {
       MicroserviceConfiguration microserviceConfiguration) {
     this.microserviceConfiguration = microserviceConfiguration;
     this.pushcaConfig = pushcaConfig;
-    this.webClient = initWebClient();
+    this.webClient = WebClientFactory.createWebClient();
     this.pushcaClient = new PClient(
         PUSHCA_CLUSTER_WORKSPACE_ID,
         "admin",
@@ -122,30 +117,5 @@ public class PushcaWsClientFactory {
           return Mono.empty();
         })
         .timeout(Duration.ofSeconds(30));
-  }
-
-  private WebClient initWebClient() {
-    final int size = 32 * 1024 * 1024;
-    final ExchangeStrategies strategies = ExchangeStrategies.builder()
-        .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(size))
-        .build();
-
-    ConnectionProvider connectionProvider = ConnectionProvider.builder(
-            "BinaryProxyPushcaConnectionPool"
-        )
-        .maxConnections(100)
-        .pendingAcquireMaxCount(1000)
-        .build();
-    ReactorClientHttpConnector clientHttpConnector = new ReactorClientHttpConnector(
-        HttpClient.create(connectionProvider)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 60_000)
-            .option(ChannelOption.SO_KEEPALIVE, Boolean.TRUE)
-    );
-
-    return WebClient.builder()
-        .defaultHeader(HttpHeaders.USER_AGENT, "Binary proxy: pushca download url processor")
-        .clientConnector(clientHttpConnector)
-        .exchangeStrategies(strategies)
-        .build();
   }
 }
