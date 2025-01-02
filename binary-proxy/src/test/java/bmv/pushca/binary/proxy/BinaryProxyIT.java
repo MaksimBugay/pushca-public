@@ -1,5 +1,8 @@
 package bmv.pushca.binary.proxy;
 
+import static bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory.BINARY_PROXY_CONNECTION_TO_PUSHER_APP_ID;
+import static bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory.PUSHCA_CLUSTER_WORKSPACE_ID;
+import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.toJson;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
@@ -10,7 +13,10 @@ import bmv.pushca.binary.proxy.api.request.ResolveIpRequest;
 import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
+import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
+import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.IpGeoLookupService;
+import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.time.Instant;
@@ -58,6 +64,9 @@ class BinaryProxyIT {
   @Autowired
   private IpGeoLookupService ipGeoLookupService;
 
+  @Autowired
+  private BinaryProxyService binaryProxyService;
+
   @DynamicPropertySource
   static void customProperties(DynamicPropertyRegistry registry) {
     registry.add("binary-proxy.geo-lookup.db.path", () -> "C:\\tmp\\");
@@ -100,6 +109,26 @@ class BinaryProxyIT {
           assertNotNull(response);
           System.out.println(response);
         });
+  }
+
+  @Test
+  void resolveIpViaWsGatewayTest() throws InterruptedException {
+    Thread.sleep(5000);
+    ClientSearchData dest = new ClientSearchData(
+        PUSHCA_CLUSTER_WORKSPACE_ID,
+        "admin",
+        null,
+        BINARY_PROXY_CONNECTION_TO_PUSHER_APP_ID,
+        true,
+        null
+    );
+
+    ResolveIpRequest request = new ResolveIpRequest("95.216.194.46");
+    byte[] requestPayload = toJson(request).getBytes(StandardCharsets.UTF_8);
+
+    binaryProxyService.sendGatewayRequest(
+        dest, false, "RESOLVE_IP_WITH_PROXY_CHECK", requestPayload
+    );
   }
 
   @Test

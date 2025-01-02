@@ -2,6 +2,7 @@ package bmv.pushca.binary.proxy.service;
 
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.BINARY_MANIFEST;
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.GATEWAY_REQUEST;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.PRIVATE_URL_SUFFIX;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.RESPONSE;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MessageType.VALIDATE_PASSWORD_HASH;
@@ -12,6 +13,7 @@ import static bmv.pushca.binary.proxy.pushca.model.Command.PING;
 import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.concatParts;
 import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.fromJson;
 
+import bmv.pushca.binary.proxy.api.request.GatewayRequestHeader;
 import bmv.pushca.binary.proxy.api.response.BooleanResponse;
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.config.PushcaConfig;
@@ -36,6 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BiFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -56,6 +59,8 @@ public class WebsocketPool implements DisposableBean {
   private final PushcaWsClientFactory pushcaWsClientFactory;
   private final MicroserviceConfiguration microserviceConfiguration;
 
+  private final WsGateway wsGateway;
+
   private final Scheduler websocketScheduler;
   private final Scheduler delayedExecutor;
   private final ListWithRandomAccess<NettyWsClient> wsNettyPool =
@@ -63,7 +68,8 @@ public class WebsocketPool implements DisposableBean {
 
   public WebsocketPool(MicroserviceConfiguration configuration,
       PushcaConfig pushcaConfig,
-      PushcaWsClientFactory pushcaWsClientFactory) {
+      PushcaWsClientFactory pushcaWsClientFactory,
+      WsGateway wsGateway) {
     this.pushcaConfig = pushcaConfig;
     this.microserviceConfiguration = configuration;
     this.pushcaWsClientFactory = pushcaWsClientFactory;
@@ -73,6 +79,7 @@ public class WebsocketPool implements DisposableBean {
     this.delayedExecutor =
         Schedulers.newBoundedElastic(configuration.delayedExecutorPoolSize, 10_000,
             "delayedExecutionThreads");
+    this.wsGateway = wsGateway;
 
     createNettyWebsocketPool();
 
@@ -122,6 +129,24 @@ public class WebsocketPool implements DisposableBean {
     String[] parts = message.split(MESSAGE_PARTS_DELIMITER);
     if ((parts.length > 1) && isValidMessageType(parts[1])) {
       MessageType type = MessageType.valueOf(parts[1]);
+      if (GATEWAY_REQUEST == type) {
+        String path = parts[2];
+        GatewayRequestHeader header = fromJson(parts[3], GatewayRequestHeader.class);
+        byte[] requestPayload = new byte[0];
+        if (parts.length == 5) {
+          requestPayload = Base64.getDecoder().decode(parts[4]);
+        }
+        BiFunction<GatewayRequestHeader, byte[], byte[]> gatewayProcessor =
+            wsGateway.getPathProcessor(path);
+        if (gatewayProcessor != null) {
+          byte[] responsePayload = gatewayProcessor.apply(header, requestPayload);
+          if (responsePayload == null) {
+            responsePayload = new byte[0];
+          }
+          sendGatewayResponse(parts[0], responsePayload);
+        }
+        return;
+      }
       if (BINARY_MANIFEST == type) {
         sendAcknowledge(parts[0]);
         BinaryManifest manifest = fromJson(parts[2], BinaryManifest.class);
@@ -247,6 +272,13 @@ public class WebsocketPool implements DisposableBean {
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("messageId", id);
     sendCommand(null, ACKNOWLEDGE, metaData);
+  }
+
+  public void sendGatewayResponse(String id, byte[] response) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("id", id);
+    metaData.put("payload", Base64.getEncoder().encodeToString(response));
+    sendCommand(id, Command.SEND_GATEWAY_RESPONSE, metaData);
   }
 
   public String sendCommand(String id, Command command, Map<String, Object> metaData) {
