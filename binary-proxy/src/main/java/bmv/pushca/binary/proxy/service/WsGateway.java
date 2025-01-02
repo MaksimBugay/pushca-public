@@ -25,16 +25,22 @@ public class WsGateway {
     this.ipGeoLookupService = ipGeoLookupService;
     this.gatewayPathProcessors = Map.of(
         Path.RESOLVE_IP_WITH_PROXY_CHECK.name(),
-        this::resolveIpWithProxyCheck
+        this::resolveIpWithProxyCheck,
+        Path.PING.name(),
+        this::ping
     );
   }
 
-  enum Path {RESOLVE_IP_WITH_PROXY_CHECK}
+  enum Path {RESOLVE_IP_WITH_PROXY_CHECK, PING}
 
   private final Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayPathProcessors;
 
   public BiFunction<GatewayRequestHeader, byte[], byte[]> getPathProcessor(String path) {
     return gatewayPathProcessors.get(path);
+  }
+
+  private byte[] ping(GatewayRequestHeader header, byte[] ipAddress) {
+    return "PONG".getBytes(StandardCharsets.UTF_8);
   }
 
   private byte[] resolveIpWithProxyCheck(GatewayRequestHeader header, byte[] ipAddress) {

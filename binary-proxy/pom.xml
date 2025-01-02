@@ -152,6 +152,7 @@
             <arg>-XX:MaxRAMPercentage=80</arg>
             <arg>-Djava.security.egd=file:/dev/./urandom</arg>
             <arg>-Djava.security.properties=file:src/main/resources/security/java.security</arg>
+            <arg>-Dorg.graalvm.nativeimage.lang.charset=IncludeAllTimeZonesAndCharsets</arg>
           </jvmArgs>
           <buildArgs>
             <buildArg>-H:IncludeResources=".*.yaml|.*.yml|.*.sh|.*.properties|.*.security"
@@ -160,6 +161,7 @@
             <buildArg>-H:TraceClassInitialization=true</buildArg>
             <buildArg>-H:+ReportExceptionStackTraces</buildArg>
             <buildArg>-H:Path=/usr/bin/openssl</buildArg>
+            <buildArg>-H:+AddAllCharsets</buildArg>
             <buildArg>--allow-incomplete-classpath</buildArg>
             <buildArg>--verbose</buildArg>
             <buildArg>--enable-http</buildArg>

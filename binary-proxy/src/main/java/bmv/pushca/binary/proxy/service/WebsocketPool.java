@@ -129,20 +129,24 @@ public class WebsocketPool implements DisposableBean {
     String[] parts = message.split(MESSAGE_PARTS_DELIMITER);
     if ((parts.length > 1) && isValidMessageType(parts[1])) {
       MessageType type = MessageType.valueOf(parts[1]);
+      //TODO doesn't was under graalvm
       if (GATEWAY_REQUEST == type) {
+        LOGGER.info("Gateway request was received: {}", message);
         String path = parts[2];
         GatewayRequestHeader header = fromJson(parts[3], GatewayRequestHeader.class);
         byte[] requestPayload = new byte[0];
         if (parts.length == 5) {
           requestPayload = Base64.getDecoder().decode(parts[4]);
         }
+        byte[] responsePayload;
         BiFunction<GatewayRequestHeader, byte[], byte[]> gatewayProcessor =
             wsGateway.getPathProcessor(path);
         if (gatewayProcessor != null) {
-          byte[] responsePayload = gatewayProcessor.apply(header, requestPayload);
+          responsePayload = gatewayProcessor.apply(header, requestPayload);
           if (responsePayload == null) {
             responsePayload = new byte[0];
           }
+          LOGGER.info("Ready to send prepared gateway response");
           sendGatewayResponse(parts[0], responsePayload);
         }
         return;
