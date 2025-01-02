@@ -20,13 +20,13 @@ import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.util.NetworkUtils;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
+import bmv.pushca.binary.proxy.service.IpGeoLookupService;
 import bmv.pushca.binary.proxy.service.WebClientFactory;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.MessageFormat;
 import java.util.Comparator;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
@@ -37,7 +37,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -63,15 +62,18 @@ public class ApiController {
   private final WebsocketPool websocketPool;
   private final BinaryProxyService binaryProxyService;
   private final EncryptionService encryptionService;
+
+  private final IpGeoLookupService ipGeoLookupService;
   private final WebClient webClient = WebClientFactory.createWebClient();
 
   @Autowired
   public ApiController(
       WebsocketPool websocketPool, BinaryProxyService binaryProxyService,
-      EncryptionService encryptionService) {
+      EncryptionService encryptionService, IpGeoLookupService ipGeoLookupService) {
     this.websocketPool = websocketPool;
     this.binaryProxyService = binaryProxyService;
     this.encryptionService = encryptionService;
+    this.ipGeoLookupService = ipGeoLookupService;
   }
 
   @PostMapping(value = "/binary/admin/recreate-ws-pool")
@@ -90,6 +92,14 @@ public class ApiController {
         .bodyValue(request) // Pass the request body
         .retrieve()
         .bodyToMono(GeoLookupResponse.class) // Convert response to desired type
+        .onErrorResume(error -> Mono.error(
+            new RuntimeException("Failed geo lookup attempt for ip" + request.ip(), error)));
+  }
+
+  @CrossOrigin(origins = "*")
+  @PostMapping(value = "/binary/resolve-ip-with-proxy-check")
+  Mono<GeoLookupResponse> resolveIpWithProxyCheck(@RequestBody ResolveIpRequest request) {
+    return Mono.fromCallable(() -> ipGeoLookupService.resolve(request.ip()))
         .onErrorResume(error -> Mono.error(
             new RuntimeException("Failed geo lookup attempt for ip" + request.ip(), error)));
   }

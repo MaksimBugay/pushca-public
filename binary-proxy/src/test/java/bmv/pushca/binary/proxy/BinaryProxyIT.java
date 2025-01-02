@@ -10,6 +10,7 @@ import bmv.pushca.binary.proxy.api.request.ResolveIpRequest;
 import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
+import bmv.pushca.binary.proxy.service.IpGeoLookupService;
 import java.text.MessageFormat;
 import java.time.Duration;
 import java.time.Instant;
@@ -54,8 +55,12 @@ class BinaryProxyIT {
   @Autowired
   private EncryptionService encryptionService;
 
+  @Autowired
+  private IpGeoLookupService ipGeoLookupService;
+
   @DynamicPropertySource
   static void customProperties(DynamicPropertyRegistry registry) {
+    registry.add("binary-proxy.geo-lookup.db.path", () -> "C:\\tmp\\");
   }
 
   @BeforeEach
@@ -65,6 +70,19 @@ class BinaryProxyIT {
         .baseUrl("http://localhost:" + port + contextPath)
         .responseTimeout(Duration.of(1, ChronoUnit.MINUTES))
         .build();
+  }
+
+  @Test
+  void ipResolverTest() {
+    String ipAddress = "95.216.194.46";
+    GeoLookupResponse response = ipGeoLookupService.resolve(ipAddress);
+    assertEquals("FI", response.countryCode());
+    assertEquals("Finland", response.countryName());
+    assertEquals("Helsinki", response.city());
+    assertEquals(
+        "[type=PUB, ASN=24940, ISP=Hetzner Online GmbH, usage_type=DCH, threat=BOTNET]",
+        response.proxyInfo()
+    );
   }
 
   @Test
@@ -81,6 +99,29 @@ class BinaryProxyIT {
         .value(response -> {
           assertNotNull(response);
           System.out.println(response);
+        });
+  }
+
+  @Test
+  void geoIpResolvingWithProxyCheckTest() {
+    ResolveIpRequest request = new ResolveIpRequest("95.216.194.46");
+
+    client.post()
+        .uri("/binary/resolve-ip-with-proxy-check")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(request)
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody(GeoLookupResponse.class)
+        .value(response -> {
+          assertNotNull(response);
+          assertEquals("FI", response.countryCode());
+          assertEquals("Finland", response.countryName());
+          assertEquals("Helsinki", response.city());
+          assertEquals(
+              "[type=PUB, ASN=24940, ISP=Hetzner Online GmbH, usage_type=DCH, threat=BOTNET]",
+              response.proxyInfo()
+          );
         });
   }
 

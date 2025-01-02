@@ -7,7 +7,12 @@ public record GeoLookupResponse(
     Double longitude,
     String timeZone,
     String countryCode,
-    String countryName
+    String countryName,
+    String city,
+    String proxyInfo
 ) {
 
+  public GeoLookupResponse(String ip) {
+    this(ip, null, null, null, null, null, null, null, null);
+  }
 }
