@@ -13,7 +13,6 @@ import static bmv.pushca.binary.proxy.pushca.model.Command.PING;
 import static bmv.pushca.binary.proxy.pushca.util.BmvObjectUtils.concatParts;
 import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.fromJson;
 
-import bmv.pushca.binary.proxy.api.request.GatewayRequestHeader;
 import bmv.pushca.binary.proxy.api.response.BooleanResponse;
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.config.PushcaConfig;
@@ -28,17 +27,19 @@ import bmv.pushca.binary.proxy.pushca.connection.model.SimpleWsResponse;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.Command;
 import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
+import bmv.pushca.binary.proxy.service.WsGateway.GatewayRequestData;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -59,7 +60,7 @@ public class WebsocketPool implements DisposableBean {
   private final PushcaWsClientFactory pushcaWsClientFactory;
   private final MicroserviceConfiguration microserviceConfiguration;
 
-  private final WsGateway wsGateway;
+  private Consumer<GatewayRequestData> gatewayRequestHandler;
 
   private final Scheduler websocketScheduler;
   private final Scheduler delayedExecutor;
@@ -68,8 +69,7 @@ public class WebsocketPool implements DisposableBean {
 
   public WebsocketPool(MicroserviceConfiguration configuration,
       PushcaConfig pushcaConfig,
-      PushcaWsClientFactory pushcaWsClientFactory,
-      WsGateway wsGateway) {
+      PushcaWsClientFactory pushcaWsClientFactory) {
     this.pushcaConfig = pushcaConfig;
     this.microserviceConfiguration = configuration;
     this.pushcaWsClientFactory = pushcaWsClientFactory;
@@ -79,7 +79,6 @@ public class WebsocketPool implements DisposableBean {
     this.delayedExecutor =
         Schedulers.newBoundedElastic(configuration.delayedExecutorPoolSize, 10_000,
             "delayedExecutionThreads");
-    this.wsGateway = wsGateway;
 
     createNettyWebsocketPool();
 
@@ -96,6 +95,11 @@ public class WebsocketPool implements DisposableBean {
         this::runResponseWaiterRepeater,
         10, 10, TimeUnit.SECONDS
     );
+  }
+
+  public void setGatewayRequestHandler(
+      Consumer<GatewayRequestData> gatewayRequestHandler) {
+    this.gatewayRequestHandler = gatewayRequestHandler;
   }
 
   private void runResponseWaiterRepeater() {
@@ -131,24 +135,13 @@ public class WebsocketPool implements DisposableBean {
       MessageType type = MessageType.valueOf(parts[1]);
       //TODO doesn't was under graalvm
       if (GATEWAY_REQUEST == type) {
-        LOGGER.info("Gateway request was received: {}", message);
-        String path = parts[2];
-        GatewayRequestHeader header = fromJson(parts[3], GatewayRequestHeader.class);
-        byte[] requestPayload = new byte[0];
-        if (parts.length == 5) {
-          requestPayload = Base64.getDecoder().decode(parts[4]);
-        }
-        byte[] responsePayload;
-        BiFunction<GatewayRequestHeader, byte[], byte[]> gatewayProcessor =
-            wsGateway.getPathProcessor(path);
-        if (gatewayProcessor != null) {
-          responsePayload = gatewayProcessor.apply(header, requestPayload);
-          if (responsePayload == null) {
-            responsePayload = new byte[0];
-          }
-          LOGGER.info("Ready to send prepared gateway response");
-          sendGatewayResponse(parts[0], responsePayload);
-        }
+        Optional.ofNullable(gatewayRequestHandler)
+            .ifPresent(handler -> handler.accept(new GatewayRequestData(
+                parts[0],
+                parts[3],
+                parts[2],
+                (parts.length == 5) ? parts[4] : null
+            )));
         return;
       }
       if (BINARY_MANIFEST == type) {
@@ -278,13 +271,6 @@ public class WebsocketPool implements DisposableBean {
     sendCommand(null, ACKNOWLEDGE, metaData);
   }
 
-  public void sendGatewayResponse(String id, byte[] response) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("id", id);
-    metaData.put("payload", Base64.getEncoder().encodeToString(response));
-    sendCommand(id, Command.SEND_GATEWAY_RESPONSE, metaData);
-  }
-
   public String sendCommand(String id, Command command, Map<String, Object> metaData) {
     CommandWithId cmd = (metaData == null) ? PushcaMessageFactory.buildCommandMessage(id, command) :
         PushcaMessageFactory.buildCommandMessage(id, command, metaData);
@@ -295,6 +281,19 @@ public class WebsocketPool implements DisposableBean {
 
   public void runWithDelay(Runnable task, long delayMs) {
     delayedExecutor.schedule(task, delayMs, TimeUnit.MILLISECONDS);
+  }
+
+  public CompletableFuture<Void> runAsynchronously(Runnable task) {
+    CompletableFuture<Void> future = new CompletableFuture<>();
+    delayedExecutor.schedule(() -> {
+      try {
+        task.run();
+        future.complete(null);
+      } catch (Exception e) {
+        future.completeExceptionally(e);
+      }
+    }, 0, TimeUnit.MILLISECONDS);
+    return future;
   }
 
   @Override

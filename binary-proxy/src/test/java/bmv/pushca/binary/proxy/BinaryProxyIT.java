@@ -129,6 +129,7 @@ class BinaryProxyIT {
     binaryProxyService.sendGatewayRequest(
         dest, false, "RESOLVE_IP_WITH_PROXY_CHECK", requestPayload
     );
+    Thread.sleep(2000);
   }
 
   @Test
