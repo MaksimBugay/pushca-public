@@ -44,7 +44,7 @@ public class HealthEndpointWithLoggingWebExtension extends ReactiveHealthEndpoin
     mono.doOnSuccess(response -> {
       if (response.getStatus() != OK.value()) {
         HealthComponent healthComponent = response.getBody();
-        LOGGER.warn("Rate limit service health check result: " + toJson(healthComponent));
+        LOGGER.warn("Binary proxy service health check result: " + toJson(healthComponent));
       }
     });
     return mono;

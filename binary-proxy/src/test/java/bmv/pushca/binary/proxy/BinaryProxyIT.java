@@ -9,6 +9,7 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
 import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
+import bmv.pushca.binary.proxy.api.request.GetPublicBinaryManifestRequest;
 import bmv.pushca.binary.proxy.api.request.ResolveIpRequest;
 import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
@@ -255,6 +256,30 @@ class BinaryProxyIT {
         .returnResult();
     String readMeText = response.getResponseBody();
     System.out.println(readMeText);
+  }
+
+  @Test
+  void getPublicBinaryManifestTest() throws Exception {
+    Thread.sleep(5000);
+    GetPublicBinaryManifestRequest request = new GetPublicBinaryManifestRequest(
+        "1f92c8904b8a3a86a60bc9ddf66eff32",
+        "74a4e642-d880-4b6f-b5ae-cf2edeff9a0e",
+        "aea5c935-5aab-4b98-a35a-84de2da31b00",
+        "YWVhNWM5MzUtNWFhYi00Yjk4LWEzNWEtODRkZTJkYTMxYjAwOksyNm9GeDh3NDdINUVudFgzVEJnd2M1YjZLYUdmdXJa"
+        //null,//UUID.randomUUID().toString(),
+        //null//UUID.randomUUID().toString()
+    );
+
+    BinaryManifest manifest = client.post()
+        .uri("/binary/m/public")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(request)
+        .exchange()
+        .expectStatus().isOk()
+        .returnResult(BinaryManifest.class)
+        .getResponseBody().blockFirst();
+
+    System.out.println(manifest);
   }
 
   @Test

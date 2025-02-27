@@ -11,10 +11,12 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
 import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
+import bmv.pushca.binary.proxy.api.request.GetPublicBinaryManifestRequest;
 import bmv.pushca.binary.proxy.api.request.ResolveIpRequest;
 import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
+import bmv.pushca.binary.proxy.pushca.exception.InvalidHumanTokenException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
@@ -27,10 +29,12 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.MessageFormat;
 import java.util.Comparator;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -390,15 +394,63 @@ public class ApiController {
         NetworkUtils.getRealIP(xForwardedFor, xRealIp));
   }
 
+  @PostMapping(value = "/binary/m/public")
+  public Mono<BinaryManifest> getPublicBinaryManifest(
+      @RequestBody GetPublicBinaryManifestRequest request,
+      @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
+      @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
+      ServerHttpResponse response) {
+    return getBinaryManifest(
+        request.workspaceId(),
+        request.binaryId(),
+        response,
+        NetworkUtils.getRealIP(xForwardedFor, xRealIp),
+        request.pageId(),
+        request.humanToken()
+    );
+  }
+
+  private Mono<Boolean> validateHumanToken(String pageId, String token) {
+    return webClient.post()
+        .uri("https://secure.fileshare.ovh/pushca/dynamic-captcha/validate-human-token")
+        .bodyValue(Map.of("pageId", pageId, "token", token))
+        .retrieve()
+        .bodyToMono(Boolean.class)
+        .onErrorResume(error -> {
+              LOGGER.warn("Failed validate human token attempt", error);
+              return Mono.just(Boolean.FALSE);
+            }
+        );
+  }
 
   private Mono<BinaryManifest> getBinaryManifest(String workspaceId, String binaryId,
       ServerHttpResponse response, String receiverIP) {
+    return getBinaryManifest(workspaceId, binaryId, response, receiverIP, null, null);
+  }
+
+  private Mono<BinaryManifest> getBinaryManifest(String workspaceId, String binaryId,
+      ServerHttpResponse response, String receiverIP, String pageId, String humanToken) {
     return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
-        .map(binaryManifest -> {
+        .flatMap(binaryManifest -> {
           LOGGER.info("Transfer binary: sender IP {}, receiver IP {}, name {}, size {}",
               binaryManifest.senderIP(), receiverIP, binaryManifest.name(),
               binaryManifest.getTotalSize());
-          return binaryManifest;
+
+          if (Boolean.TRUE.equals(binaryManifest.forHuman())) {
+            if (StringUtils.isEmpty(pageId) || StringUtils.isEmpty(humanToken)){
+              return Mono.error(new InvalidHumanTokenException());
+            } else {
+              return validateHumanToken(pageId, humanToken).handle((isHuman, sink) -> {
+                    if (Boolean.TRUE.equals(isHuman)) {
+                      sink.next(binaryManifest);
+                    } else {
+                      sink.error(new InvalidHumanTokenException());
+                    }
+                  });
+            }
+          } else {
+            return Mono.just(binaryManifest);
+          }
         })
         .onErrorResume(throwable -> {
           if ((throwable.getCause() != null)
@@ -406,6 +458,10 @@ public class ApiController {
             LOGGER.error("Failed by timeout attempt to download binary with id {}",
                 binaryId, throwable);
             response.setStatusCode(HttpStatus.NOT_FOUND);
+            return Mono.empty();
+          } else if (throwable instanceof InvalidHumanTokenException) {
+            LOGGER.warn("Invalid human token: page id {}, token {}", pageId, humanToken);
+            response.setStatusCode(HttpStatus.FORBIDDEN);
             return Mono.empty();
           } else {
             return Mono.error(throwable);

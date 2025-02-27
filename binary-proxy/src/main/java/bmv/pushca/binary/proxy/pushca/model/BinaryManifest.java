@@ -11,10 +11,12 @@ public record BinaryManifest(String id, String name, String mimeType,
                              String senderIP,
                              PClient sender,
                              String pusherInstanceId,
-                             String downloadSessionId) {
+                             String downloadSessionId,
+                             Boolean forHuman) {
 
-  public BinaryManifest(String id, String name, String mimeType, String readMeText, List<Datagram> datagrams,
-      String senderIP, PClient sender, String pusherInstanceId, String downloadSessionId) {
+  public BinaryManifest(String id, String name, String mimeType, String readMeText,
+      List<Datagram> datagrams, String senderIP, PClient sender, String pusherInstanceId,
+      String downloadSessionId, Boolean forHuman) {
     this.id = id;
     this.name = name;
     this.mimeType = mimeType;
@@ -26,14 +28,18 @@ public record BinaryManifest(String id, String name, String mimeType,
     this.downloadSessionId =
         StringUtils.isEmpty(downloadSessionId) ? ID_GENERATOR.generate().toString()
             : downloadSessionId;
+    this.forHuman = forHuman;
   }
 
-  public BinaryManifest(String id, String name, String mimeType, String readMeText, List<Datagram> datagrams,
+  public BinaryManifest(String id, String name, String mimeType, String readMeText,
+      List<Datagram> datagrams,
       PClient sender, String pusherInstanceId, String downloadSessionId) {
-    this(id, name, mimeType, readMeText, datagrams, null, sender, pusherInstanceId, downloadSessionId);
+    this(id, name, mimeType, readMeText, datagrams, null, sender, pusherInstanceId,
+        downloadSessionId, Boolean.FALSE);
   }
 
-  public BinaryManifest(String id, String name, String mimeType, String readMeText, List<Datagram> datagrams,
+  public BinaryManifest(String id, String name, String mimeType, String readMeText,
+      List<Datagram> datagrams,
       PClient sender, String pusherInstanceId) {
     this(id, name, mimeType, readMeText, datagrams, sender, pusherInstanceId, null);
   }
