@@ -1,5 +1,6 @@
 #FROM ghcr.io/graalvm/graalvm-community:21.0.1-ol9-20231024 AS builder
-FROM ghcr.io/graalvm/graalvm-community:22.0.1 AS builder
+#FROM ghcr.io/graalvm/graalvm-community:22.0.1 AS builder
+FROM ghcr.io/graalvm/graalvm-community:23.0.2-ol8-20250121 AS builder
 
 # Install tar and gzip to extract the Maven binaries
 #RUN microdnf update \
