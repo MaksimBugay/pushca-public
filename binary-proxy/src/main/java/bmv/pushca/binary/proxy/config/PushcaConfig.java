@@ -11,7 +11,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.util.StringUtils;
 
 @Configuration
-public class PushcaConfig {
+public class PushcaConfig implements PushcaClusterSecretAware {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PushcaConfig.class);
 
