@@ -14,7 +14,6 @@ import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.api.response.PageIdResponse;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
-import bmv.pushca.binary.proxy.pushca.exception.InvalidHumanTokenException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
@@ -25,13 +24,11 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.MessageFormat;
 import java.util.Comparator;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,14 +44,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+@SuppressWarnings("unused")
 @RestController
 public class ApiController {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(WebsocketPool.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ApiController.class);
 
     private static final String REDIRECT_URL_WITH_WORKSPACE_AND_THUMBNAIL_PATTERN =
             "/protected-binary-ex.html?suffix={0}&workspace={1}&tn={2}";
@@ -70,7 +67,6 @@ public class ApiController {
     private final PageIdService pageIdService;
 
     private final IpGeoLookupService ipGeoLookupService;
-    private final WebClient webClient = WebClientFactory.createWebClient();
 
     @Autowired
     public ApiController(
@@ -142,7 +138,7 @@ public class ApiController {
     @CrossOrigin(origins = "*")
     @PostMapping(value = "/binary/resolve-ip")
     Mono<GeoLookupResponse> resolveIp(@RequestBody ResolveIpRequest request) {
-        return webClient.post()
+        return binaryProxyService.getWebClient().post()
                 .uri("https://app.multiloginapp.com/resolve") // Replace with the actual external API URL
                 .bodyValue(request) // Pass the request body
                 .retrieve()
@@ -231,7 +227,11 @@ public class ApiController {
         return Mono.fromFuture(verificationFuture)
                 .flatMapMany(isValid -> {
                     if (isValid) {
-                        return serveBinaryAsStream(params.workspaceId(), params.binaryId(), response, true,
+                        return serveBinaryAsStream(
+                                params.workspaceId(),
+                                params.binaryId(),
+                                null, null,
+                                response, true,
                                 NetworkUtils.getRealIP(xForwardedFor, xRealIp));
                     } else {
                         response.setStatusCode(HttpStatus.FORBIDDEN);
@@ -304,8 +304,7 @@ public class ApiController {
         return Mono.fromFuture(verificationFuture)
                 .flatMap(isValid -> {
                     if (isValid) {
-                        return getBinaryManifest(params.workspaceId(), params.binaryId(), response,
-                                NetworkUtils.getRealIP(xForwardedFor, xRealIp));
+                        return getBinaryManifest(params.workspaceId(), params.binaryId(), response);
                     } else {
                         response.setStatusCode(HttpStatus.FORBIDDEN);
                         return Mono.empty();
@@ -436,9 +435,18 @@ public class ApiController {
             @PathVariable String binaryId,
             @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
             @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
+            @RequestParam(value = "page-id", required = false) String pageId,
+            @RequestParam(value = "human-token", required = false) String humanToken,
             ServerHttpResponse response) {
-        return serveBinaryAsStream(workspaceId, binaryId, response, false,
-                NetworkUtils.getRealIP(xForwardedFor, xRealIp));
+        return serveBinaryAsStream(
+                workspaceId,
+                binaryId,
+                pageId,
+                humanToken,
+                response,
+                false,
+                NetworkUtils.getRealIP(xForwardedFor, xRealIp)
+        );
     }
 
     @GetMapping(value = "/binary/m/{workspaceId}/{binaryId}")
@@ -448,8 +456,7 @@ public class ApiController {
             @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
             @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
             ServerHttpResponse response) {
-        return getBinaryManifest(workspaceId, binaryId, response,
-                NetworkUtils.getRealIP(xForwardedFor, xRealIp));
+        return getBinaryManifest(workspaceId, binaryId, response);
     }
 
     @PostMapping(value = "/binary/m/public")
@@ -461,80 +468,40 @@ public class ApiController {
         return getBinaryManifest(
                 request.workspaceId(),
                 request.binaryId(),
-                response,
-                NetworkUtils.getRealIP(xForwardedFor, xRealIp),
                 request.pageId(),
-                request.humanToken()
+                request.humanToken(),
+                response
         );
     }
 
-    private Mono<Boolean> validateHumanToken(String pageId, String token) {
-        return webClient.post()
-                .uri("https://secure.fileshare.ovh/pushca/dynamic-captcha/validate-human-token")
-                .bodyValue(Map.of("pageId", pageId, "token", token))
-                .retrieve()
-                .bodyToMono(Boolean.class)
-                .onErrorResume(error -> {
-                            LOGGER.warn("Failed validate human token attempt", error);
-                            return Mono.just(Boolean.FALSE);
-                        }
-                );
+    private Mono<BinaryManifest> getBinaryManifest(String workspaceId, String binaryId,
+                                                   ServerHttpResponse response) {
+        return getBinaryManifest(workspaceId, binaryId, null, null, response);
     }
 
     private Mono<BinaryManifest> getBinaryManifest(String workspaceId, String binaryId,
-                                                   ServerHttpResponse response, String receiverIP) {
-        return getBinaryManifest(workspaceId, binaryId, response, receiverIP, null, null);
-    }
-
-    private Mono<BinaryManifest> getBinaryManifest(String workspaceId, String binaryId,
-                                                   ServerHttpResponse response, String receiverIP, String pageId, String humanToken) {
-        return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
-                .flatMap(binaryManifest -> {
-                    LOGGER.info("Transfer binary: sender IP {}, receiver IP {}, name {}, size {}",
-                            binaryManifest.senderIP(), receiverIP, binaryManifest.name(),
-                            binaryManifest.getTotalSize());
-
-                    if (Boolean.TRUE.equals(binaryManifest.forHuman())) {
-                        if (StringUtils.isEmpty(pageId) || StringUtils.isEmpty(humanToken)) {
-                            return Mono.error(new InvalidHumanTokenException());
-                        } else {
-                            return validateHumanToken(pageId, humanToken).handle((isHuman, sink) -> {
-                                if (Boolean.TRUE.equals(isHuman)) {
-                                    sink.next(binaryManifest);
-                                } else {
-                                    sink.error(new InvalidHumanTokenException());
-                                }
-                            });
-                        }
-                    } else {
-                        return Mono.just(binaryManifest);
-                    }
-                })
-                .onErrorResume(throwable -> {
-                    if ((throwable.getCause() != null)
-                            && (throwable.getCause() instanceof TimeoutException)) {
-                        LOGGER.error("Failed by timeout attempt to download binary with id {}",
-                                binaryId, throwable);
-                        response.setStatusCode(HttpStatus.NOT_FOUND);
-                        return Mono.empty();
-                    } else if (throwable instanceof InvalidHumanTokenException) {
-                        LOGGER.warn("Invalid human token: page id {}, token {}", pageId, humanToken);
-                        response.setStatusCode(HttpStatus.FORBIDDEN);
-                        return Mono.empty();
-                    } else {
-                        return Mono.error(throwable);
-                    }
-                })
-                .onErrorResume(throwable -> Mono.error(
-                                new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)
-                        )
-                );
+                                                   String pageId, String humanToken,
+                                                   ServerHttpResponse response) {
+        return binaryProxyService.requestBinaryManifestWithHumanOnlyCheck(
+                workspaceId,
+                binaryId,
+                pageId,
+                humanToken,
+                response::setStatusCode
+        );
     }
 
     private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId,
+                                             String pageId, String humanToken,
                                              ServerHttpResponse response, boolean securePost, String receiverIP) {
         final ConcurrentLinkedQueue<String> pendingChunks = new ConcurrentLinkedQueue<>();
-        return Mono.fromFuture(binaryProxyService.requestBinaryManifest(workspaceId, binaryId))
+        return binaryProxyService.requestBinaryManifestWithHumanOnlyCheck(
+                        workspaceId,
+                        binaryId,
+                        pageId,
+                        humanToken,
+                        response::setStatusCode
+                )
                 .onErrorResume(throwable -> Mono.error(
                         new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
                 .flatMapMany(binaryManifest -> {
@@ -550,9 +517,9 @@ public class ApiController {
                                 );
                             }
                             // Set the Content-Length header if the total size is known
-              /*response.getHeaders().setContentLength(
-                  binaryManifest.getTotalSize()
-              );*/
+                            response.getHeaders().setContentLength(
+                                    binaryManifest.getTotalSize()
+                            );
                             response.getHeaders().set("X-Total-Size", String.valueOf(binaryManifest.getTotalSize()));
                             // Set the Content-Type header
                             if (isNotEmpty(binaryManifest.mimeType())) {
