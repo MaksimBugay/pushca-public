@@ -10,6 +10,7 @@ import bmv.pushca.binary.proxy.pushca.connection.model.OpenConnectionPoolRespons
 import bmv.pushca.binary.proxy.pushca.connection.model.PusherAddress;
 import bmv.pushca.binary.proxy.pushca.model.PClient;
 import bmv.pushca.binary.proxy.service.WebClientFactory;
+
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
@@ -18,8 +19,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.core.io.buffer.PooledDataBuffer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -45,7 +49,7 @@ public class PushcaWsClientFactory {
   private final MicroserviceConfiguration microserviceConfiguration;
 
   public PushcaWsClientFactory(PushcaConfig pushcaConfig,
-      MicroserviceConfiguration microserviceConfiguration) {
+                               MicroserviceConfiguration microserviceConfiguration) {
     this.microserviceConfiguration = microserviceConfiguration;
     this.pushcaConfig = pushcaConfig;
     this.webClient = WebClientFactory.createWebClient();
@@ -57,14 +61,14 @@ public class PushcaWsClientFactory {
     );
   }
 
-  public Mono<List<NettyWsClient>> createNettyConnectionPool(int poolSize,
-      String pusherInstanceId,
-      Function<PusherAddress, String> wsAuthorizedUrlExtractor,
-      Consumer<String> messageConsumer,
-      BiConsumer<NettyWsClient, byte[]> dataConsumer,
-      Consumer<NettyWsClient> afterOpenListener,
-      Consumer<NettyWsClient> afterCloseListener,
-      Scheduler scheduler) {
+  public Mono<List<NettyWsClient>> createConnectionPool(int poolSize,
+                                                           String pusherInstanceId,
+                                                           Function<PusherAddress, String> wsAuthorizedUrlExtractor,
+                                                           Consumer<String> messageConsumer,
+                                                           BiConsumer<NettyWsClient, byte[]> dataConsumer,
+                                                           Consumer<NettyWsClient> afterOpenListener,
+                                                           Consumer<NettyWsClient> afterCloseListener,
+                                                           Scheduler scheduler) {
     LOGGER.info("Instance IP: {}", microserviceConfiguration.getInstanceIP());
     return webClient.post()
         .uri(pushcaConfig.getPushcaClusterUrl() + "/open-connection-pool")
@@ -75,13 +79,17 @@ public class PushcaWsClientFactory {
             OpenConnectionPoolRequest.class)
         .accept(MediaType.APPLICATION_JSON)
         .exchangeToMono(clientResponse -> {
-          if (!HttpStatus.OK.equals(clientResponse.statusCode())) {
-            return Mono.error(new IllegalStateException(
-                "Failed attempt to open internal ws connections pool" + toJson(pushcaClient)));
-          } else {
-            return clientResponse.bodyToMono(OpenConnectionPoolResponse.class);
-          }
-        })
+              if (!HttpStatus.OK.equals(clientResponse.statusCode())) {
+                // Must release body to prevent ByteBuf leak
+                return clientResponse.releaseBody()
+                    .then(Mono.error(new IllegalStateException(
+                        "Failed attempt to open internal ws connections pool" + toJson(pushcaClient))));
+              } else {
+                return clientResponse.bodyToMono(OpenConnectionPoolResponse.class);
+              }
+            }
+        )
+        .doOnDiscard(PooledDataBuffer.class, DataBufferUtils::release)
         .flatMap(openConnectionPoolResponse -> {
           if (openConnectionPoolResponse == null || CollectionUtils.isEmpty(
               openConnectionPoolResponse.addresses())) {
@@ -93,11 +101,17 @@ public class PushcaWsClientFactory {
           return Flux.fromIterable(openConnectionPoolResponse.addresses())
               .<NettyWsClient>handle((address, sink) -> {
                 try {
+                  String authorizedUrl = wsAuthorizedUrlExtractor.apply(address);
+                  if (authorizedUrl == null || authorizedUrl.isBlank()) {
+                    sink.error(new IllegalStateException(
+                        "Failed to build authorized websocket url for address " + address));
+                    return;
+                  }
                   sink.next(new NettyWsClient(
                       indexInPool.getAndIncrement(),
                       microserviceConfiguration.getInstanceIP(),
                       pushcaConfig.getPushcaClusterSecret(),
-                      new URI(wsAuthorizedUrlExtractor.apply(address)),
+                      new URI(authorizedUrl),
                       messageConsumer,
                       dataConsumer,
                       afterOpenListener,
@@ -105,17 +119,15 @@ public class PushcaWsClientFactory {
                       pushcaConfig.getNettySslContext(),
                       scheduler
                   ));
-                } catch (URISyntaxException e) {
+                } catch (URISyntaxException | RuntimeException e) {
                   sink.error(new RuntimeException(e));
                 }
               })
               .collectList();
         })
         .subscribeOn(scheduler)
-        .onErrorResume(throwable -> {
-          LOGGER.error("Failed attempt to get authorized websocket urls from Pushca", throwable);
-          return Mono.empty();
-        })
-        .timeout(Duration.ofSeconds(30));
+        .timeout(Duration.ofSeconds(30))
+        .doOnError(throwable ->
+            LOGGER.error("Failed attempt to get authorized websocket urls from Pushca", throwable));
   }
 }

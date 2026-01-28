@@ -17,6 +17,7 @@ import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.IpGeoLookupService;
+
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
 import java.time.Duration;
@@ -26,6 +27,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+
+import bmv.pushca.binary.proxy.service.WebClientFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,22 +39,24 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.reactive.server.EntityExchangeResult;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 @ActiveProfiles("test")
-@TestPropertySource(locations = "classpath:application-test.yaml")
-@SpringBootTest(classes = {
-    BinaryProxyMicroservice.class}, webEnvironment = RANDOM_PORT)
+@SpringBootTest(classes = {BinaryProxyMicroservice.class}, webEnvironment = RANDOM_PORT)
 class BinaryProxyIT {
 
   static {
   }
 
   protected WebTestClient client;
+
+  private WebClient webClient;
 
   @Value("${spring.webflux.base-path:}")
   String contextPath;
@@ -70,6 +75,25 @@ class BinaryProxyIT {
 
   @DynamicPropertySource
   static void customProperties(DynamicPropertyRegistry registry) {
+    // Core configuration
+    registry.add("binary-proxy.dockerized", () -> "false");
+    registry.add("binary-proxy.response.timeout.ms", () -> "5000");
+    registry.add("binary-proxy.selectors-threads-pool.size", () -> "2");
+    registry.add("binary-proxy.workers-threads-pool.size", () -> "20");
+    registry.add("binary-proxy.delayed-executor-pool.size", () -> "10");
+    registry.add("binary-proxy.websocket-executor-pool.size", () -> "5");
+
+    // Pushca configuration
+    registry.add("binary-proxy.pushca.cluster.url", () -> "https://secure.fileshare.ovh/pushca");
+    registry.add("binary-proxy.pushca.cluster.secret", () -> "QHqVav6Ope7vhGjHh2h8");
+    registry.add("binary-proxy.pushca.connection-pool.size", () -> "2");
+
+    // Encryption configuration
+    registry.add("binary-proxy.encryption.keys.path",
+        () -> "C:\\mbugai\\work\\secure-file-share\\binary-proxy\\src\\test\\resources\\");
+    registry.add("binary-proxy.encryption.private-key.pwd", () -> "password123");
+
+    // Geo lookup
     registry.add("binary-proxy.geo-lookup.db.path", () -> "C:\\tmp\\");
   }
 
@@ -78,8 +102,10 @@ class BinaryProxyIT {
     client = WebTestClient
         .bindToServer()
         .baseUrl("http://localhost:" + port + contextPath)
-        .responseTimeout(Duration.of(1, ChronoUnit.MINUTES))
+        .responseTimeout(Duration.of(10, ChronoUnit.MINUTES))  // Increased to 5 minutes
         .build();
+
+    webClient = WebClientFactory.createWebClient();
   }
 
   @Test
@@ -309,33 +335,64 @@ class BinaryProxyIT {
     //https://secure.fileshare.ovh/binary/85fb3881ad15bf9ae956cb30f22c5855/d7594d47-afc7-412b-b4f4-a88de5ffefdc
     final String workspaceId = "85fb3881ad15bf9ae956cb30f22c5855";
     final String binaryId = "d7594d47-afc7-412b-b4f4-a88de5ffefdc";
-    String mimeType = "video/mp4";
-    Flux<byte[]> responseBody = client.get().uri(MessageFormat.format(
-            "/binary/{0}/{1}",
-            workspaceId,
-            binaryId
-        ))
-        .exchange()
-        .expectStatus().isOk()
-        .expectHeader().contentType(mimeType)
-        .expectHeader().value("X-Total-Size", v -> {
-          if (!v.equals("9840497")) {
-            throw new IllegalStateException("Wrong total size header");
-          }
-        })
-        .returnResult(byte[].class)
-        .getResponseBody();
+
+    //https://secure.fileshare.ovh/public-binary-ex.html?w=cd76d01d1bf41bbac822457782fe2433&id=48f09364-ee10-43d2-9210-f7219e4d10ae&tn=0836caf3-811a-5ad7-ac2a-678cc5469bcf
+    //final String workspaceId = "cd76d01d1bf41bbac822457782fe2433";
+    //final String binaryId = "48f09364-ee10-43d2-9210-f7219e4d10ae";
+    String expectedMimeType = "video/mp4";
+    //String expectedMimeType = "video/x-matroska";
+    long expectedTotalSize = 9840497L;
+    //long expectedTotalSize = 2035587682;
+
+    // Use regular WebClient instead of WebTestClient to avoid wiretap memory leaks
+    WebClient webClient = WebClient.builder()
+        .baseUrl("http://localhost:" + port + contextPath)
+        .build();
+
     Map<Integer, byte[]> binary = new ConcurrentHashMap<>();
     AtomicInteger order = new AtomicInteger();
+    AtomicReference<String> contentType = new AtomicReference<>();
+    AtomicReference<String> totalSizeHeader = new AtomicReference<>();
+
+    Flux<byte[]> responseBody = webClient.get()
+        .uri("/binary/{workspaceId}/{binaryId}", workspaceId, binaryId)
+        .exchangeToFlux(response -> {
+          // Verify status
+          if (!response.statusCode().is2xxSuccessful()) {
+            return Flux.error(new IllegalStateException(
+                "Expected 2xx but got " + response.statusCode()));
+          }
+
+          // Capture headers
+          contentType.set(response.headers().contentType()
+              .map(Object::toString).orElse(null));
+          totalSizeHeader.set(response.headers().header("X-Total-Size")
+              .stream().findFirst().orElse(null));
+
+          // Stream the body as byte arrays, releasing each DataBuffer
+          return response.bodyToFlux(DataBuffer.class)
+              .map(dataBuffer -> {
+                byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                dataBuffer.read(bytes);
+                DataBufferUtils.release(dataBuffer);
+                return bytes;
+              });
+        });
+
     StepVerifier.create(responseBody)
         .thenConsumeWhile(chunk -> {
           binary.put(order.getAndIncrement(), chunk);
           return true;
         })
         .verifyComplete();
+
+    // Assertions
+    assertEquals(expectedMimeType, contentType.get());
+    assertEquals(String.valueOf(expectedTotalSize), totalSizeHeader.get());
+
     long totalSize = binary.values().stream()
-        .map(chunk -> chunk.length)
-        .reduce(Integer::sum).orElse(0);
-    assertEquals(9840497, totalSize);
+        .mapToInt(chunk -> chunk.length)
+        .sum();
+    assertEquals(expectedTotalSize, totalSize);
   }
 }

@@ -28,7 +28,7 @@ public class WebsocketPoolHealthCheck implements HealthIndicator {
   private Health websocketPoolHealth() {
     Throwable error = null;
     try {
-      websocketPool.isHealthy();
+      websocketPool.checkHealth();
     } catch (Exception ex) {
       error = ex;
     }

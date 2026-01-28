@@ -18,10 +18,11 @@ import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.util.NetworkUtils;
-import bmv.pushca.binary.proxy.service.*;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
 import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
@@ -29,6 +30,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
+import bmv.pushca.binary.proxy.service.BinaryProxyService;
+import bmv.pushca.binary.proxy.service.IpGeoLookupService;
+import bmv.pushca.binary.proxy.service.PageIdService;
+import bmv.pushca.binary.proxy.service.WebsocketPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -83,8 +88,8 @@ public class ApiController {
     @PostMapping(value = "/binary/admin/recreate-ws-pool")
     public Mono<Void> reCreateWebsocketPool() {
         return Mono.fromRunnable(() -> {
-            websocketPool.closeNettyWebsocketPool();
-            websocketPool.createNettyWebsocketPool();
+            websocketPool.closeWebsocketPool();
+            websocketPool.createWebsocketPool();
         });
     }
 
@@ -336,12 +341,17 @@ public class ApiController {
                         url = MessageFormat.format(REDIRECT_URL_PATTERN, patchedSuffix);
                     } else {
                         if (isEmpty(thumbnailId)) {
-                            url = MessageFormat.format(REDIRECT_URL_WITH_WORKSPACE_PATTERN, patchedSuffix,
+                            url = MessageFormat.format(
+                                    REDIRECT_URL_WITH_WORKSPACE_PATTERN,
+                                    URLEncoder.encode(patchedSuffix, StandardCharsets.UTF_8),
                                     workspaceId);
                         } else {
-                            url = MessageFormat.format(REDIRECT_URL_WITH_WORKSPACE_AND_THUMBNAIL_PATTERN,
-                                    patchedSuffix,
-                                    workspaceId, thumbnailId);
+                            url = MessageFormat.format(
+                                    REDIRECT_URL_WITH_WORKSPACE_AND_THUMBNAIL_PATTERN,
+                                    URLEncoder.encode(patchedSuffix, StandardCharsets.UTF_8),
+                                    workspaceId,
+                                    thumbnailId
+                            );
                         }
                     }
                     response.setStatusCode(HttpStatus.FOUND);
@@ -505,11 +515,17 @@ public class ApiController {
                 .onErrorResume(throwable -> Mono.error(
                         new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
                 .flatMapMany(binaryManifest -> {
-                            LOGGER.info("Transfer binary: sender IP {}, receiver IP {}, name {}, size {}",
-                                    binaryManifest.senderIP(), receiverIP, binaryManifest.name(),
+                            String mimeType = binaryManifest.mimeType();
+                            if (mimeType == null) {
+                                mimeType = "application/octet-stream";
+                            }
+                            LOGGER.info("Transfer binary: sender IP {}, receiver IP {}, name {}, mime-type {}, size {}",
+                                    binaryManifest.senderIP(), receiverIP,
+                                    binaryManifest.name(),
+                                    mimeType,
                                     binaryManifest.getTotalSize());
                             // Set the Content-Disposition header to suggest the filename for the download
-                            if (securePost || (!canPlayTypeInBrowser(binaryManifest.mimeType()))) {
+                            if (securePost || (!canPlayTypeInBrowser(mimeType))) {
                                 response.getHeaders().setContentDisposition(
                                         ContentDisposition.builder("attachment")
                                                 .filename(binaryManifest.name())
