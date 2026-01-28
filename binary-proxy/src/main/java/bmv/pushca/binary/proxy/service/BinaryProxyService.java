@@ -201,14 +201,13 @@ public class BinaryProxyService {
 
     public CompletableFuture<BinaryManifest> requestBinaryManifest(String workspaceId,
                                                                    String binaryId) {
-        CompletableFuture<BinaryManifest> future = websocketPool.registerResponseWaiter(
-                binaryId, microserviceConfiguration.responseTimeoutMs
-        );
         sendUploadBinaryAppeal(
                 workspaceId, binaryId, DEFAULT_CHUNK_SIZE, true, null
         );
 
-        return future;
+        return websocketPool.registerResponseWaiter(
+                binaryId, microserviceConfiguration.responseTimeoutMs
+        );
     }
 
     public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String downloadSessionId,
@@ -237,10 +236,10 @@ public class BinaryProxyService {
                 if (datagram.order() < maxOrder) {
                     final String nextDatagramId =
                             buildDatagramId(binaryId, datagram.order() + 1, pushcaClientHashCode);
-                    websocketPool.activateResponseWaiter(concatParts(nextDatagramId, downloadSessionId));
                     sendUploadBinaryAppeal(
                             workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order() + 1)
                     );
+                    websocketPool.activateResponseWaiter(concatParts(nextDatagramId, downloadSessionId));
                 } else {
                     websocketPool.removeDownloadSession(binaryId, downloadSessionId);
                 }
@@ -253,11 +252,11 @@ public class BinaryProxyService {
         pendingChunks.add(waiterId);
 
         if (datagram.order() == 0) {
-            websocketPool.registerDownloadSession(binaryId, downloadSessionId);
-            websocketPool.activateResponseWaiter(waiterId);
             sendUploadBinaryAppeal(
                     workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(0)
             );
+            websocketPool.registerDownloadSession(binaryId, downloadSessionId);
+            websocketPool.activateResponseWaiter(waiterId);
         }
 
         return responseWaiter;
