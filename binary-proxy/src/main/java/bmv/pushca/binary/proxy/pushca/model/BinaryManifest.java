@@ -3,6 +3,7 @@ package bmv.pushca.binary.proxy.pushca.model;
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.ID_GENERATOR;
 
 import java.util.List;
+
 import org.apache.commons.lang3.StringUtils;
 
 public record BinaryManifest(String id, String name, String mimeType,
@@ -12,11 +13,12 @@ public record BinaryManifest(String id, String name, String mimeType,
                              PClient sender,
                              String pusherInstanceId,
                              String downloadSessionId,
-                             Boolean forHuman) {
+                             Boolean forHuman,
+                             Long expireAt) {
 
   public BinaryManifest(String id, String name, String mimeType, String readMeText,
-      List<Datagram> datagrams, String senderIP, PClient sender, String pusherInstanceId,
-      String downloadSessionId, Boolean forHuman) {
+                        List<Datagram> datagrams, String senderIP, PClient sender, String pusherInstanceId,
+                        String downloadSessionId, Boolean forHuman, Long expireAt) {
     this.id = id;
     this.name = name;
     this.mimeType = mimeType;
@@ -29,18 +31,18 @@ public record BinaryManifest(String id, String name, String mimeType,
         StringUtils.isEmpty(downloadSessionId) ? ID_GENERATOR.generate().toString()
             : downloadSessionId;
     this.forHuman = forHuman;
+    this.expireAt = expireAt;
   }
 
   public BinaryManifest(String id, String name, String mimeType, String readMeText,
-      List<Datagram> datagrams,
-      PClient sender, String pusherInstanceId, String downloadSessionId) {
+                        List<Datagram> datagrams,
+                        PClient sender, String pusherInstanceId, String downloadSessionId) {
     this(id, name, mimeType, readMeText, datagrams, null, sender, pusherInstanceId,
-        downloadSessionId, Boolean.FALSE);
+        downloadSessionId, Boolean.FALSE, null);
   }
 
   public BinaryManifest(String id, String name, String mimeType, String readMeText,
-      List<Datagram> datagrams,
-      PClient sender, String pusherInstanceId) {
+                        List<Datagram> datagrams, PClient sender, String pusherInstanceId) {
     this(id, name, mimeType, readMeText, datagrams, sender, pusherInstanceId, null);
   }
 

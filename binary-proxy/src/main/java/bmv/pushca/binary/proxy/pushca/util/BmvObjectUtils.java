@@ -25,9 +25,12 @@ import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+
+import bmv.pushca.binary.proxy.util.serialisation.JsonUtility;
 import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+@SuppressWarnings("unused")
 public final class BmvObjectUtils {
 
   public static final DateTimeFormatter FORMATTER =
@@ -226,5 +229,9 @@ public final class BmvObjectUtils {
 
   public static <T> T getLastElement(List<T> list) {
     return list.stream().reduce((first, second) -> second).orElseThrow();
+  }
+
+  public static byte[] objectToBase64Binary(Object manifest) {
+    return Base64.getEncoder().encode(JsonUtility.toJson(manifest).getBytes(StandardCharsets.UTF_8));
   }
 }

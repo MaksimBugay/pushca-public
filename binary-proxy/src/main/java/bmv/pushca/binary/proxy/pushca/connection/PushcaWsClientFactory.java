@@ -16,6 +16,7 @@ import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -47,6 +48,7 @@ public class PushcaWsClientFactory {
   private final WebClient webClient;
   private final PushcaConfig pushcaConfig;
   private final MicroserviceConfiguration microserviceConfiguration;
+  private final AtomicReference<String> pusherInstanceIdHolder = new AtomicReference<>();
 
   public PushcaWsClientFactory(PushcaConfig pushcaConfig,
                                MicroserviceConfiguration microserviceConfiguration) {
@@ -61,14 +63,18 @@ public class PushcaWsClientFactory {
     );
   }
 
+  public String getPusherInstanceId() {
+    return pusherInstanceIdHolder.get();
+  }
+
   public Mono<List<NettyWsClient>> createConnectionPool(int poolSize,
-                                                           String pusherInstanceId,
-                                                           Function<PusherAddress, String> wsAuthorizedUrlExtractor,
-                                                           Consumer<String> messageConsumer,
-                                                           BiConsumer<NettyWsClient, byte[]> dataConsumer,
-                                                           Consumer<NettyWsClient> afterOpenListener,
-                                                           Consumer<NettyWsClient> afterCloseListener,
-                                                           Scheduler scheduler) {
+                                                        String pusherInstanceId,
+                                                        Function<PusherAddress, String> wsAuthorizedUrlExtractor,
+                                                        Consumer<String> messageConsumer,
+                                                        BiConsumer<NettyWsClient, byte[]> dataConsumer,
+                                                        Consumer<NettyWsClient> afterOpenListener,
+                                                        Consumer<NettyWsClient> afterCloseListener,
+                                                        Scheduler scheduler) {
     LOGGER.info("Instance IP: {}", microserviceConfiguration.getInstanceIP());
     return webClient.post()
         .uri(pushcaConfig.getPushcaClusterUrl() + "/open-connection-pool")
@@ -90,6 +96,7 @@ public class PushcaWsClientFactory {
             }
         )
         .doOnDiscard(PooledDataBuffer.class, DataBufferUtils::release)
+        .doOnNext(response -> pusherInstanceIdHolder.compareAndSet(null, response.pusherInstanceId()))
         .flatMap(openConnectionPoolResponse -> {
           if (openConnectionPoolResponse == null || CollectionUtils.isEmpty(
               openConnectionPoolResponse.addresses())) {

@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import bmv.pushca.binary.proxy.service.PublishBinaryService;
 import bmv.pushca.binary.proxy.service.WebClientFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -72,6 +73,9 @@ class BinaryProxyIT {
 
   @Autowired
   private BinaryProxyService binaryProxyService;
+
+  @Autowired
+  private PublishBinaryService publishBinaryService;
 
   @DynamicPropertySource
   static void customProperties(DynamicPropertyRegistry registry) {
@@ -328,6 +332,19 @@ class BinaryProxyIT {
     assertEquals("video/mp4", manifest.mimeType());
     assertEquals(9840497, manifest.getTotalSize());
   }
+
+    @Test
+    void publishRemoteBinaryStreamTest() throws InterruptedException {
+        Thread.sleep(5000);
+        String publicUrl = publishBinaryService.publishRemoteStream(
+                "https://secure.fileshare.ovh/remote-stream",
+                //"https://www.facebook.com/reel/1228391969246332",
+                "https://www.youtube.com/watch?v=6wTqAssKEwk",
+                0
+        ).block();
+        System.out.println(publicUrl);
+        Thread.sleep(5000);
+    }
 
   @Test
   void binaryProxyTest() throws Exception {

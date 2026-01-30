@@ -1,9 +1,12 @@
 package bmv.pushca.binary.proxy.pushca.connection;
 
+import bmv.pushca.binary.proxy.pushca.SendBinaryAgent;
+import bmv.pushca.binary.proxy.pushca.exception.SendBinaryError;
 import io.netty.handler.ssl.SslContext;
 
 import java.io.Serial;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
@@ -51,7 +54,7 @@ import reactor.util.retry.Retry;
  * </ul>
  */
 @SuppressWarnings("unused")
-public class NettyWsClient {
+public class NettyWsClient implements SendBinaryAgent {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(NettyWsClient.class);
 
@@ -94,6 +97,7 @@ public class NettyWsClient {
 
   // Bounded sinks for backpressure control
   private final Sinks.Many<String> sendSink;
+  private final Sinks.Many<byte[]> binarySendSink;
   private final Sinks.Many<byte[]> receiveSink;
 
   /**
@@ -135,6 +139,7 @@ public class NettyWsClient {
 
     this.webSocketClient = createWebSocketClient(sslContext);
     this.sendSink = Sinks.many().multicast().onBackpressureBuffer(DEFAULT_SEND_BUFFER_SIZE, false);
+    this.binarySendSink = Sinks.many().multicast().onBackpressureBuffer(DEFAULT_SEND_BUFFER_SIZE, false);
     this.receiveSink = Sinks.many().multicast().onBackpressureBuffer(DEFAULT_RECEIVE_BUFFER_SIZE, false);
   }
 
@@ -220,27 +225,41 @@ public class NettyWsClient {
    * @param bytes The binary data to send
    * @return true if the send operation was initiated successfully, false otherwise
    */
-  public boolean send(byte[] bytes) {
-    return withActiveConnection(
-        () -> {
-          WebSocketSession session = sessionRef.get();
-          if (session == null || !session.isOpen()) {
-            LOGGER.warn("Cannot send binary data - session not available: ws index {}", indexInPool);
-            return false;
-          }
-          try {
-            session.send(Mono.just(session.binaryMessage(factory -> factory.wrap(bytes))))
-                .subscribeOn(scheduler)
-                .doOnError(error -> LOGGER.error("Failed to send binary data: ws index {}", indexInPool, error))
-                .subscribe();
-            return true;
-          } catch (Exception e) {
-            LOGGER.error("Error sending binary data: ws index {}", indexInPool, e);
-            return false;
-          }
-        },
-        false
-    );
+  public boolean sendBytes(byte[] bytes) {
+    return withActiveConnection(() -> {
+      EmitResult result = binarySendSink.tryEmitNext(bytes);
+      if (result.isFailure()) {
+        LOGGER.warn("Failed to queue binary data for sending: ws index {}, result: {}",
+            indexInPool, result);
+        return false;
+      }
+      return true;
+    }, false);
+  }
+
+  @Override
+  public void send(byte[] bytes) throws SendBinaryError {
+    boolean success;
+    try {
+      success = sendBytes(bytes);
+    } catch (Exception ex) {
+      throw new SendBinaryError("Unexpected error during send binary data attempt: ws index " + indexInPool, ex);
+    }
+    if (!success) {
+      throw new SendBinaryError("Failed to send binary data: ws index " + indexInPool);
+    }
+  }
+
+  /**
+   * Sends binary data through the WebSocket connection using a ByteBuffer.
+   *
+   * @param byteBuffer The binary data to send
+   * @return true if the send operation was initiated successfully, false otherwise
+   */
+  public boolean send(ByteBuffer byteBuffer) {
+    byte[] bytes = new byte[byteBuffer.remaining()];
+    byteBuffer.get(bytes);
+    return sendBytes(bytes);
   }
 
   /**
@@ -445,9 +464,17 @@ public class NettyWsClient {
   }
 
   private Mono<Void> createOutputPipeline(WebSocketSession session) {
+    Flux<WebSocketMessage> textMessages = sendSink.asFlux()
+        .doOnNext(msg -> LOGGER.debug("Sending text message: {} chars, ws index {}", msg.length(), indexInPool))
+        .map(session::textMessage);
+
+    Flux<WebSocketMessage> binaryMessages = binarySendSink.asFlux()
+        .doOnNext(bytes -> LOGGER.debug("Sending binary message: {} bytes, ws index {}", bytes.length, indexInPool))
+        .map(bytes -> session.binaryMessage(factory -> factory.wrap(bytes)));
+
     return session.send(
-        sendSink.asFlux()
-            .map(session::textMessage)
+        Flux.merge(textMessages, binaryMessages)
+            .doOnSubscribe(s -> LOGGER.debug("Output pipeline subscribed: ws index {}", indexInPool))
             .doOnError(error -> LOGGER.error("Error in send stream: ws index {}", indexInPool, error))
     ).onErrorResume(error -> {
       LOGGER.error("Send pipeline error: ws index {}", indexInPool, error);
@@ -609,6 +636,7 @@ public class NettyWsClient {
 
   private void completeSinks() {
     safeExecute(sendSink::tryEmitComplete, "completing sendSink");
+    safeExecute(binarySendSink::tryEmitComplete, "completing binarySendSink");
     safeExecute(receiveSink::tryEmitComplete, "completing receiveSink");
   }
 
