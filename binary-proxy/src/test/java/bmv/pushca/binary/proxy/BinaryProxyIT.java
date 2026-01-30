@@ -12,6 +12,7 @@ import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.api.request.GetPublicBinaryManifestRequest;
 import bmv.pushca.binary.proxy.api.request.ResolveIpRequest;
 import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
+import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
@@ -66,6 +67,9 @@ class BinaryProxyIT {
   private String port;
 
   @Autowired
+  private PushcaConfig pushcaConfig;
+
+  @Autowired
   private EncryptionService encryptionService;
 
   @Autowired
@@ -99,6 +103,11 @@ class BinaryProxyIT {
 
     // Geo lookup
     registry.add("binary-proxy.geo-lookup.db.path", () -> "C:\\tmp\\");
+
+    registry.add(
+            "binary-proxy.pushca.publish-remote-stream.service.path",
+            () -> "https://secure.fileshare.ovh/remote-stream"
+    );
   }
 
   @BeforeEach
@@ -337,9 +346,9 @@ class BinaryProxyIT {
     void publishRemoteBinaryStreamTest() throws InterruptedException {
         Thread.sleep(5000);
         String publicUrl = publishBinaryService.publishRemoteStream(
-                "https://secure.fileshare.ovh/remote-stream",
-                //"https://www.facebook.com/reel/1228391969246332",
-                "https://www.youtube.com/watch?v=6wTqAssKEwk",
+                pushcaConfig.getPublishRemoteStreamServicePath(),
+                "https://www.facebook.com/reel/1228391969246332",
+                //"https://www.youtube.com/watch?v=6wTqAssKEwk",
                 0
         ).block();
         System.out.println(publicUrl);
