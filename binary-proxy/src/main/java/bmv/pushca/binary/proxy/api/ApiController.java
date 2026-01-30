@@ -12,6 +12,8 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 import bmv.pushca.binary.proxy.api.request.*;
 import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.api.response.PageIdResponse;
+import bmv.pushca.binary.proxy.api.response.PublishRemoteStreamResponse;
+import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
@@ -30,10 +32,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
-import bmv.pushca.binary.proxy.service.BinaryProxyService;
-import bmv.pushca.binary.proxy.service.IpGeoLookupService;
-import bmv.pushca.binary.proxy.service.PageIdService;
-import bmv.pushca.binary.proxy.service.WebsocketPool;
+import bmv.pushca.binary.proxy.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,16 +72,23 @@ public class ApiController {
 
     private final IpGeoLookupService ipGeoLookupService;
 
+    private final PushcaConfig pushcaConfig;
+
+    private final PublishBinaryService publishBinaryService;
+
     @Autowired
     public ApiController(
             WebsocketPool websocketPool, BinaryProxyService binaryProxyService,
             EncryptionService encryptionService, PageIdService pageIdService,
-            IpGeoLookupService ipGeoLookupService) {
+            IpGeoLookupService ipGeoLookupService, PushcaConfig pushcaConfig,
+            PublishBinaryService publishBinaryService) {
         this.websocketPool = websocketPool;
         this.binaryProxyService = binaryProxyService;
         this.encryptionService = encryptionService;
         this.pageIdService = pageIdService;
         this.ipGeoLookupService = ipGeoLookupService;
+        this.pushcaConfig = pushcaConfig;
+        this.publishBinaryService = publishBinaryService;
     }
 
     @PostMapping(value = "/binary/admin/recreate-ws-pool")
@@ -138,6 +144,25 @@ public class ApiController {
                         )
                 )
                 .map(PageIdResponse::new);
+    }
+
+    @CrossOrigin(origins = "*")
+    @PostMapping(value = "/binary/publish-remote-stream")
+    Mono<PublishRemoteStreamResponse> publishRemoteStream(@RequestBody PublishRemoteStreamRequest request) {
+        return publishBinaryService.publishRemoteStream(
+                        pushcaConfig.getPublishRemoteStreamServicePath(),
+                        request.url(),
+                        0
+                )
+                .map(PublishRemoteStreamResponse::new)
+                .onErrorResume(
+                        error -> Mono.error(
+                                new RuntimeException(
+                                        "Failed publish remote stream attempt for url" + request.url(),
+                                        error
+                                )
+                        )
+                );
     }
 
     @CrossOrigin(origins = "*")
