@@ -4,8 +4,11 @@ import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.fromJson;
 import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.toJson;
 
 import bmv.pushca.binary.proxy.api.request.GatewayRequestHeader;
+import bmv.pushca.binary.proxy.api.request.PublishRemoteStreamRequest;
 import bmv.pushca.binary.proxy.api.request.ResolveIpRequest;
 import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
+import bmv.pushca.binary.proxy.api.response.PublishRemoteStreamResponse;
+import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.pushca.model.Command;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -26,14 +29,25 @@ public class WsGateway {
 
   private final WebsocketPool websocketPool;
 
-  public WsGateway(IpGeoLookupService ipGeoLookupService, WebsocketPool websocketPool) {
+  private final PushcaConfig pushcaConfig;
+
+  private final PublishBinaryService publishBinaryService;
+
+  public WsGateway(IpGeoLookupService ipGeoLookupService,
+                   WebsocketPool websocketPool,
+                   PushcaConfig pushcaConfig,
+                   PublishBinaryService publishBinaryService) {
     this.ipGeoLookupService = ipGeoLookupService;
     this.websocketPool = websocketPool;
-    this.gatewayPathProcessors = Map.of(
+      this.pushcaConfig = pushcaConfig;
+      this.publishBinaryService = publishBinaryService;
+      this.gatewayPathProcessors = Map.of(
         Path.RESOLVE_IP_WITH_PROXY_CHECK.name(),
         this::resolveIpWithProxyCheck,
         Path.PING.name(),
-        this::ping
+        this::ping,
+        Path.PUBLISH_REMOTE_STREAM.name(),
+        this::publishRemoteStream
     );
     this.websocketPool.setGatewayRequestHandler(
         requestData -> websocketPool.runAsynchronously(() -> process(requestData))
@@ -45,7 +59,7 @@ public class WsGateway {
     );
   }
 
-  enum Path {RESOLVE_IP_WITH_PROXY_CHECK, PING}
+  enum Path {RESOLVE_IP_WITH_PROXY_CHECK, PING, PUBLISH_REMOTE_STREAM}
 
   private final Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayPathProcessors;
 
@@ -72,7 +86,35 @@ public class WsGateway {
   }
 
   private byte[] ping(GatewayRequestHeader header, byte[] ipAddress) {
-    return "PONG".getBytes(StandardCharsets.UTF_8);
+      return "PONG".getBytes(StandardCharsets.UTF_8);
+  }
+
+  private byte[] publishRemoteStream(GatewayRequestHeader header, byte[] requestBytes) {
+    String publicUrl;
+    String remoteUrl = "unknown";
+    try{
+        String requestJson = new String(requestBytes, StandardCharsets.UTF_8);
+        PublishRemoteStreamRequest request = fromJson(requestJson, PublishRemoteStreamRequest.class);
+        remoteUrl = request.url();
+
+        publicUrl = publishBinaryService.publishRemoteStream(
+                pushcaConfig.getPublishRemoteStreamServicePath(),
+                remoteUrl,
+                0
+        ).block();
+    } catch (Exception ex) {
+      LOGGER.warn("Unexpected error during publish remote stream attempt: {}", remoteUrl, ex);
+      return new byte[0];
+    }
+
+    LOGGER.info(
+      "Remote stream {} was successfully published to {}",
+      remoteUrl,
+      publicUrl
+    );
+    PublishRemoteStreamResponse response = new PublishRemoteStreamResponse(publicUrl);
+
+    return toJson(response).getBytes(StandardCharsets.UTF_8);
   }
 
   private byte[] resolveIpWithProxyCheck(GatewayRequestHeader header, byte[] ipAddress) {

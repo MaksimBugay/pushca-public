@@ -61,6 +61,7 @@ public class PushcaWsClientFactory {
         microserviceConfiguration.getInstanceId(),
         BINARY_PROXY_CONNECTION_TO_PUSHER_APP_ID
     );
+    LOGGER.info("Pool client: {}", this.pushcaClient);
   }
 
   public String getPusherInstanceId() {
