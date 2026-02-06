@@ -175,7 +175,11 @@ public class PublishBinaryService {
                                     .timeout(Duration.ofMinutes(30))
                                     .doOnComplete(() -> LOGGER.debug("All chunks sent, uploading manifest"))
                                     .doOnError(e -> LOGGER.error("Stream error before manifest upload", e))
-                                    .then(publisher.uploadManifestAsync())
+                                    // Defer so uploadManifestAsync() runs only after this Flux completes (i.e. after
+                                    // all chunks are processed), not at assembly time when datagrams are still empty
+                                    .then(
+                                            Mono.defer(publisher::uploadManifestAsync)
+                                    )
                                     .doFinally(
                                             ignoredSignal -> {
                                                 LOGGER.debug("Publisher doFinally: signal={}", ignoredSignal);
