@@ -64,7 +64,7 @@ public class WsGateway {
   private final Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayPathProcessors;
 
   public void process(GatewayRequestData requestData) {
-    LOGGER.debug("Gateway request was received: {}", requestData);
+    LOGGER.info("Gateway request was received: {}", requestData);
     GatewayRequestHeader header = fromJson(requestData.header(), GatewayRequestHeader.class);
     byte[] requestPayload = new byte[0];
     if (requestData.base64RequestBody != null) {
@@ -97,11 +97,11 @@ public class WsGateway {
         PublishRemoteStreamRequest request = fromJson(requestJson, PublishRemoteStreamRequest.class);
         remoteUrl = request.url();
 
-        publicUrl = publishBinaryService.publishRemoteStream(
+        publicUrl = publishBinaryService.publishRemoteStreamBlocking(
                 pushcaConfig.getPublishRemoteStreamServicePath(),
                 remoteUrl,
                 0
-        ).block();
+        );
     } catch (Exception ex) {
       LOGGER.warn("Unexpected error during publish remote stream attempt: {}", remoteUrl, ex);
       return new byte[0];

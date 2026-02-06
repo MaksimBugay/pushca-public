@@ -1,12 +1,16 @@
 package bmv.pushca.binary.proxy.service;
 
 import io.netty.channel.ChannelOption;
+import io.netty.handler.timeout.ReadTimeoutHandler;
+import io.netty.handler.timeout.WriteTimeoutHandler;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
+
+import java.util.concurrent.TimeUnit;
 
 public class WebClientFactory {
 
@@ -26,6 +30,10 @@ public class WebClientFactory {
         HttpClient.create(connectionProvider)
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 60_000)
             .option(ChannelOption.SO_KEEPALIVE, Boolean.TRUE)
+                .doOnConnected(conn -> conn
+                        .addHandlerLast(new ReadTimeoutHandler(15, TimeUnit.MINUTES))
+                        .addHandlerLast(new WriteTimeoutHandler(15, TimeUnit.MINUTES))
+                )
     );
 
     return WebClient.builder()

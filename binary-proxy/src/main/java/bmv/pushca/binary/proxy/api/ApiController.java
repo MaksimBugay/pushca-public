@@ -464,7 +464,7 @@ public class ApiController {
                 );
     }
 
-    @GetMapping(value = "/binary/{workspaceId}/{binaryId}")
+    @GetMapping({"/binary/{workspaceId}/{binaryId}", "/binary/{workspaceId}/{binaryId}/**"})
     public Flux<byte[]> servePublicBinaryAsStream(
             @PathVariable String workspaceId,
             @PathVariable String binaryId,
@@ -473,6 +473,8 @@ public class ApiController {
             @RequestParam(value = "page-id", required = false) String pageId,
             @RequestParam(value = "human-token", required = false) String humanToken,
             ServerHttpResponse response) {
+        String ip = NetworkUtils.getRealIP(xForwardedFor, xRealIp);
+        LOGGER.debug("Download binary with id {} from workspace {} was received from {}", binaryId, workspaceId, ip);
         return serveBinaryAsStream(
                 workspaceId,
                 binaryId,
@@ -480,8 +482,16 @@ public class ApiController {
                 humanToken,
                 response,
                 false,
-                NetworkUtils.getRealIP(xForwardedFor, xRealIp)
-        );
+                ip
+        )
+                .doOnError(
+                        throwable -> LOGGER.error(
+                                "Unexpected Error during serve binary with id {} from workspace {} attempt",
+                                binaryId,
+                                workspaceId,
+                                throwable
+                        )
+                );
     }
 
     @GetMapping(value = "/binary/m/{workspaceId}/{binaryId}")

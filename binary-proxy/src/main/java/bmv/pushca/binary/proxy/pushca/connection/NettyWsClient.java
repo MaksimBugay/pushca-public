@@ -63,11 +63,11 @@ public class NettyWsClient implements SendBinaryAgent {
 
   // Configuration constants
   private static final int DEFAULT_MAX_FRAME_PAYLOAD_LENGTH = 5 * 1024 * 1024; // 5MB
-  private static final int DEFAULT_SEND_BUFFER_SIZE = 1024;
+  public static final int DEFAULT_SEND_BUFFER_SIZE = 2 * 1024;
   private static final int DEFAULT_RECEIVE_BUFFER_SIZE = 1024;
-  private static final Duration DEFAULT_CLOSE_TIMEOUT = Duration.ofSeconds(5);
+  private static final Duration DEFAULT_CLOSE_TIMEOUT = Duration.ofSeconds(10);
   private static final int DEFAULT_RECEIVE_PREFETCH = 32;
-  private static final int DEFAULT_SEND_RETRY_MAX = 20;
+  private static final int DEFAULT_SEND_RETRY_MAX = 10;
   private static final Duration DEFAULT_SEND_RETRY_BACKOFF = Duration.ofMillis(50);
   private static final long LOG_THROTTLE_INTERVAL_MS = 5000; // Log at most once per 5 seconds
 
@@ -248,6 +248,33 @@ public class NettyWsClient implements SendBinaryAgent {
     if (!success) {
       throw new SendBinaryError("Failed to send binary data: ws index " + indexInPool);
     }
+  }
+
+  @Override
+  public Mono<Void> sendAsync(byte[] bytes) {
+    return Mono.defer(
+        () -> {
+          if (closed.get() || !connectionActive.get()) {
+            return Mono.error(new SendBinaryError("Connection not active: ws index " + indexInPool));
+          }
+          WebSocketSession session = sessionRef.get();
+          if (session == null || !session.isOpen()) {
+            return Mono.error(new SendBinaryError("Session not available: ws index " + indexInPool));
+          }
+          LOGGER.debug("Sending binary message directly: {} bytes, ws index {}", bytes.length, indexInPool);
+          return session.send(
+                  Mono.just(
+                      session.binaryMessage(
+                          factory -> factory.wrap(bytes)
+                      )
+                  )
+              )
+              .doOnSuccess(
+                  signal -> LOGGER.debug("Bytes sent: ws index {}, length {}", indexInPool, bytes.length)
+              )
+              .doOnError(error -> LOGGER.error("Error sending binary message: ws index {}", indexInPool, error));
+        }
+    );
   }
 
   /**

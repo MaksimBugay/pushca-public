@@ -1,8 +1,6 @@
 package bmv.pushca.binary.proxy.service;
 
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
-import bmv.pushca.binary.proxy.pushca.exception.SendBinaryError;
-import bmv.pushca.binary.proxy.pushca.exception.SendBinaryRuntimeError;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,10 +12,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.BufferOverflowStrategy;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 import reactor.util.function.Tuple2;
 
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
 import java.time.Duration;
@@ -26,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeoutException;
 
+import static bmv.pushca.binary.proxy.pushca.connection.NettyWsClient.DEFAULT_SEND_BUFFER_SIZE;
 import static bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal.DEFAULT_CHUNK_SIZE;
 
 @Service
@@ -42,6 +39,15 @@ public class PublishBinaryService {
     public PublishBinaryService(WebsocketPool websocketPool, PushcaWsClientFactory pushcaWsClientFactory) {
         this.websocketPool = websocketPool;
         this.pushcaWsClientFactory = pushcaWsClientFactory;
+    }
+
+    public String publishRemoteStreamBlocking(String serverBaseUrl, String remoteStreamUrl, int chunkSize) {
+        return publishRemoteStream(serverBaseUrl, remoteStreamUrl, chunkSize)
+                .flatMap(
+                        url ->  Mono.delay(Duration.ofSeconds(3))
+                                .flatMap(ignored -> Mono.just(url))
+                )
+                .block();
     }
 
     /**
@@ -78,7 +84,7 @@ public class PublishBinaryService {
 
         // Normalize base URL (remove trailing slashes)
         String normalizedBase = serverBaseUrl.replaceAll("/+$", "");
-        String encodedRemoteStreamUrl = URLEncoder.encode(remoteStreamUrl, StandardCharsets.UTF_8);
+        // Note: URL encoding intentionally skipped - not supported by downstream service
         String downloadUrl = normalizedBase + "/download?source_url=" + remoteStreamUrl;
 
         return webClient.get()
@@ -94,9 +100,10 @@ public class PublishBinaryService {
                             }
 
                             final String filename = extractFilename(response.headers().asHttpHeaders(), remoteStreamUrl);
+                            final String mediaType = extractMediaType(response.headers().asHttpHeaders(), filename);
                             @SuppressWarnings("resource") final BinaryStreamPublisher publisher = createBinaryStreamPublisher(
                                     filename,
-                                    "video/mp4"
+                                    mediaType
                             );
 
                             // Create a chunker that buffers DataBuffer slices by byte size
@@ -123,7 +130,7 @@ public class PublishBinaryService {
                                     .index()
                                     // Apply backpressure with bounded buffer to prevent memory issues
                                     .onBackpressureBuffer(
-                                            256,
+                                            DEFAULT_SEND_BUFFER_SIZE,
                                             dropped -> LOGGER.warn("Chunk {} dropped due to backpressure", dropped.getT1()),
                                             BufferOverflowStrategy.ERROR
                                     )
@@ -137,50 +144,38 @@ public class PublishBinaryService {
                                                 }
                                             }
                                     )
-                                    // Process each chunk with per-chunk timeout
+                                    // Process each chunk with per-chunk timeout, waiting for actual WebSocket write
                                     .concatMap(
-                                            indexed -> Mono.fromRunnable(
-                                                            () -> {
-                                                                DataBuffer chunk = indexed.getT2();
-                                                                try {
-                                                                    publisher.processChunk(indexed.getT1(), chunk);
-                                                                } catch (SendBinaryError ex) {
-                                                                    throw new SendBinaryRuntimeError(ex);
-                                                                } finally {
-                                                                    DataBufferUtils.release(chunk);
-                                                                }
-                                                            }
-                                                    )
-                                                    .subscribeOn(Schedulers.boundedElastic())
-                                                    .timeout(Duration.ofSeconds(30))
-                                                    .onErrorMap(
-                                                            TimeoutException.class,
-                                                            e -> new RuntimeException(
-                                                                    MessageFormat.format("Chunk consumer timeout at chunk {0}", indexed.getT1()),
-                                                                    e
-                                                            )
-                                                    )
-                                                    .doOnError(
-                                                            error -> LOGGER.error(
-                                                                    "Error during chunk processing: file name = {}, index = {}, error type = {}",
-                                                                    filename,
-                                                                    indexed.getT1(),
-                                                                    error.getClass().getName(),
-                                                                    error
-                                                            )
-                                                    )
-                                                    .doOnSuccess(v -> LOGGER.debug("Chunk {} processed successfully", indexed.getT1()))
-                                                    .thenReturn(indexed)
+                                            indexed -> {
+                                                DataBuffer chunk = indexed.getT2();
+                                                return publisher.processChunkAsync(indexed.getT1(), chunk)
+                                                        .doFinally(signal -> DataBufferUtils.release(chunk))
+                                                        .timeout(Duration.ofSeconds(30))
+                                                        .onErrorMap(
+                                                                TimeoutException.class,
+                                                                e -> new RuntimeException(
+                                                                        MessageFormat.format("Chunk send timeout at chunk {0}", indexed.getT1()),
+                                                                        e
+                                                                )
+                                                        )
+                                                        .doOnError(
+                                                                error -> LOGGER.error(
+                                                                        "Error during chunk processing: file name = {}, index = {}, error type = {}",
+                                                                        filename,
+                                                                        indexed.getT1(),
+                                                                        error.getClass().getName(),
+                                                                        error
+                                                                )
+                                                        )
+                                                        .doOnSuccess(v -> LOGGER.debug("Chunk {} sent successfully", indexed.getT1()))
+                                                        .thenReturn(indexed);
+                                            }
                                     )
                                     // Add overall timeout to prevent indefinite hanging on slow streams
                                     .timeout(Duration.ofMinutes(30))
-                                    .doOnComplete(() -> LOGGER.debug("All chunks processed, uploading manifest"))
+                                    .doOnComplete(() -> LOGGER.debug("All chunks sent, uploading manifest"))
                                     .doOnError(e -> LOGGER.error("Stream error before manifest upload", e))
-                                    .then(
-                                            Mono.fromCallable(
-                                                    publisher::uploadManifest
-                                            )
-                                    )
+                                    .then(publisher.uploadManifestAsync())
                                     .doFinally(
                                             ignoredSignal -> {
                                                 LOGGER.debug("Publisher doFinally: signal={}", ignoredSignal);
@@ -235,6 +230,41 @@ public class PublishBinaryService {
         }
 
         return "downloaded_file";
+    }
+
+    private String extractMediaType(HttpHeaders headers, String filename) {
+      // Try to get media type from X-Content-Type custom header
+      String mediaType = headers.getFirst("X-Content-Type");
+      if (mediaType != null && !mediaType.isEmpty()) {
+        return mediaType;
+      }
+
+      // Fall back to Content-Type header
+      String contentType = headers.getFirst(HttpHeaders.CONTENT_TYPE);
+      if (contentType != null && !contentType.isEmpty()) {
+        // Remove charset or other parameters: "video/mp4; charset=utf-8" -> "video/mp4"
+        int semicolonIndex = contentType.indexOf(';');
+        if (semicolonIndex > 0) {
+          contentType = contentType.substring(0, semicolonIndex).trim();
+        }
+        return contentType;
+      }
+
+      // Fall back to guessing from filename extension
+      if (filename != null && filename.contains(".")) {
+        String extension = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+        return switch (extension) {
+          case "mp4" -> "video/mp4";
+          case "webm" -> "video/webm";
+          case "mkv" -> "video/x-matroska";
+          case "mp3" -> "audio/mpeg";
+          case "m4a" -> "audio/mp4";
+          case "ogg" -> "audio/ogg";
+          default -> "application/octet-stream";
+        };
+      }
+
+      return "application/octet-stream";
     }
 
     private BinaryStreamPublisher createBinaryStreamPublisher(String name,
