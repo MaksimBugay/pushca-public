@@ -347,7 +347,8 @@ class BinaryProxyIT {
                 pushcaConfig.getPublishRemoteStreamServicePath(),
                 "https://www.facebook.com/reel/1228391969246332",
                 //"https://www.youtube.com/watch?v=6wTqAssKEwk",
-                0
+                0,
+                null
         ).block();
         System.out.println(publicUrl);
         Thread.sleep(5000);

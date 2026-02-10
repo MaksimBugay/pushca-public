@@ -645,7 +645,7 @@ public class WebsocketPool implements DisposableBean {
         long totalMemory = runtime.totalMemory();
         long maxMemory = runtime.maxMemory();
 
-        LOGGER.info("Free memory: {} MB, Used Memory: {} MB, Total memory: {} MB, Max memory: {} MB",
+        LOGGER.debug("Free memory: {} MB, Used Memory: {} MB, Total memory: {} MB, Max memory: {} MB",
                 freeMemory / (1024 * 1024),
                 usedMemory / (1024 * 1024),
                 totalMemory / (1024 * 1024),

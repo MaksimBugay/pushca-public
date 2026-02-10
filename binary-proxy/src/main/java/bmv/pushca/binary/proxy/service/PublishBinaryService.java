@@ -1,5 +1,6 @@
 package bmv.pushca.binary.proxy.service;
 
+import bmv.pushca.binary.proxy.api.request.PublishRemoteStreamRequest;
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -8,6 +9,7 @@ import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.BufferOverflowStrategy;
 import reactor.core.publisher.Flux;
@@ -41,15 +43,6 @@ public class PublishBinaryService {
         this.pushcaWsClientFactory = pushcaWsClientFactory;
     }
 
-    public String publishRemoteStreamBlocking(String serverBaseUrl, String remoteStreamUrl, int chunkSize) {
-        return publishRemoteStream(serverBaseUrl, remoteStreamUrl, chunkSize)
-                .flatMap(
-                        url ->  Mono.delay(Duration.ofSeconds(3))
-                                .flatMap(ignored -> Mono.just(url))
-                )
-                .block();
-    }
-
     /**
      * Downloads a remote stream in chunks and publishes it via WebSocket.
      *
@@ -69,10 +62,13 @@ public class PublishBinaryService {
      * @param serverBaseUrl   the base URL of the download server
      * @param remoteStreamUrl the URL of the remote stream to download
      * @param chunkSize       the target size of each chunk in bytes (uses default if &lt;= 0)
+     * @param chunkLimit      optional maximum number of chunks to download; if {@code null} or &lt;= 0,
+     *                        the entire stream is downloaded; otherwise downloading stops after this many
+     *                        chunks and the manifest is uploaded with whatever was received
      * @return a Mono that completes with the upload manifest result when the stream is fully processed
      * @throws IllegalArgumentException if serverBaseUrl or remoteStreamUrl is empty
      */
-    public Mono<String> publishRemoteStream(String serverBaseUrl, String remoteStreamUrl, int chunkSize) {
+    public Mono<String> publishRemoteStream(String serverBaseUrl, String remoteStreamUrl, int chunkSize, Integer chunkLimit) {
         if (StringUtils.isEmpty(serverBaseUrl)) {
             return Mono.error(new IllegalArgumentException("serverBaseUrl must be a non-empty string"));
         }
@@ -84,11 +80,11 @@ public class PublishBinaryService {
 
         // Normalize base URL (remove trailing slashes)
         String normalizedBase = serverBaseUrl.replaceAll("/+$", "");
-        // Note: URL encoding intentionally skipped - not supported by downstream service
-        String downloadUrl = normalizedBase + "/download?source_url=" + remoteStreamUrl;
+        String downloadUrl = normalizedBase + "/download";
 
-        return webClient.get()
+        return webClient.post()
                 .uri(downloadUrl)
+                .body(BodyInserters.fromValue(new PublishRemoteStreamRequest(remoteStreamUrl)))
                 .exchangeToFlux(
                         response -> {
                             if (!response.statusCode().is2xxSuccessful()) {
@@ -131,6 +127,11 @@ public class PublishBinaryService {
                                             }
                                     )
                                     .index()
+                                    // If chunkLimit is specified, take only that many chunks then complete
+                                    // (cancels upstream HTTP download and proceeds to manifest upload)
+                                    .transform(flux -> chunkLimit != null && chunkLimit > 0
+                                            ? flux.take(chunkLimit)
+                                            : flux)
                                     // Apply backpressure with bounded buffer to prevent memory issues
                                     .onBackpressureBuffer(
                                             DEFAULT_SEND_BUFFER_SIZE,

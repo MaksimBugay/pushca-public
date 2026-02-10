@@ -114,7 +114,8 @@ public class WsGateway {
             remoteUrl -> publishBinaryService.publishRemoteStream(
                 pushcaConfig.getPublishRemoteStreamServicePath(),
                 remoteUrl,
-                0
+                0,
+                    null
             )
         )
         .doOnNext(

@@ -152,7 +152,8 @@ public class ApiController {
     return publishBinaryService.publishRemoteStream(
             pushcaConfig.getPublishRemoteStreamServicePath(),
             request.url(),
-            0
+            0,
+            null
         )
         .map(PublishRemoteStreamResponse::new)
         .onErrorResume(
