@@ -311,7 +311,7 @@ public class WebsocketPool implements DisposableBean {
             throw new IllegalStateException("WebsocketPool is not ready yet");
         }
         try {
-            return wsPool.get();
+            return wsPool.get(NettyWsClient::isConnected);
         } catch (NoSuchElementException e) {
             throw new IllegalStateException("Pushca connection pool is exhausted", e);
         }

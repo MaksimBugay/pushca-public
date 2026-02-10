@@ -110,6 +110,9 @@ public class PublishBinaryService {
                             DataBufferChunker chunker = new DataBufferChunker(effectiveChunkSize);
 
                             return response.bodyToFlux(DataBuffer.class)
+                                    // Limit demand to the HTTP client so Netty does not buffer the entire response.
+                                    // Request one DataBuffer at a time (replenish when 0 pending).
+                                    .limitRate(128, 0)
                                     .doOnNext(buf -> LOGGER.debug("Received DataBuffer: {} bytes", buf.readableByteCount()))
                                     .doOnComplete(() -> LOGGER.debug("HTTP response body completed"))
                                     .doOnError(e -> LOGGER.error("HTTP response error", e))
@@ -178,7 +181,7 @@ public class PublishBinaryService {
                                     // Defer so uploadManifestAsync() runs only after this Flux completes (i.e. after
                                     // all chunks are processed), not at assembly time when datagrams are still empty
                                     .then(
-                                            Mono.defer(publisher::uploadManifestAsync)
+                                        Mono.defer(publisher::uploadManifestAsync)
                                     )
                                     .doFinally(
                                             ignoredSignal -> {
@@ -279,7 +282,7 @@ public class PublishBinaryService {
                 StringUtils.isBlank(mimeType) ? "application/octet-stream" : mimeType,
                 pushcaWsClientFactory.pushcaClient,
                 pushcaWsClientFactory.getPusherInstanceId(),
-                websocketPool.getConnection()
+                websocketPool::getConnection
         );
     }
 

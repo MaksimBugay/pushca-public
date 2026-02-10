@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
+import java.util.function.Function;
+
 import org.springframework.util.CollectionUtils;
 
 /**
@@ -15,7 +17,7 @@ import org.springframework.util.CollectionUtils;
  */
 public record ListWithRandomAccess<T>(List<T> list) {
 
-  private static final int MAX_RETRY_ATTEMPTS = 3;
+  private static final int MAX_RETRY_ATTEMPTS = 5;
 
   /**
    * Returns a random element from the list.
@@ -26,26 +28,30 @@ public record ListWithRandomAccess<T>(List<T> list) {
    * @return a random element from the list
    * @throws NoSuchElementException if the list is empty
    */
-  public T get() {
+  public T get(Function<T, Boolean> validator) {
     for (int attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
       int currentSize = list.size();
       if (currentSize == 0) {
         throw new NoSuchElementException("List is empty");
       }
+      T element = null;
       if (currentSize == 1) {
         try {
-          return list.get(0);
+          element = list.get(0);
         } catch (IndexOutOfBoundsException e) {
           // List was modified concurrently, retry
-          continue;
+        }
+      } else {
+        try {
+          // Use captured size to avoid IllegalArgumentException from nextInt(0)
+          // if list becomes empty between size() check and nextInt() call
+          element = list.get(ThreadLocalRandom.current().nextInt(currentSize));
+        } catch (IndexOutOfBoundsException e) {
+          // List was modified concurrently (element removed), retry with fresh size
         }
       }
-      try {
-        // Use captured size to avoid IllegalArgumentException from nextInt(0)
-        // if list becomes empty between size() check and nextInt() call
-        return list.get(ThreadLocalRandom.current().nextInt(currentSize));
-      } catch (IndexOutOfBoundsException e) {
-        // List was modified concurrently (element removed), retry with fresh size
+      if ((element != null) && validator.apply(element)) {
+        return element;
       }
     }
     // Final attempt - if list is still not empty, get first element as fallback
@@ -53,12 +59,16 @@ public record ListWithRandomAccess<T>(List<T> list) {
     if (finalSize == 0) {
       throw new NoSuchElementException("List is empty");
     }
+    T element = null;
     try {
-      return list.get(0);
+      element = list.get(0);
     } catch (IndexOutOfBoundsException e) {
       // List became empty between size check and get - this is a valid concurrent scenario
-      throw new NoSuchElementException("List became empty during access");
     }
+    if ((element != null) && validator.apply(element)) {
+      return element;
+    }
+    throw new NoSuchElementException("List has now elements matching the validator");
   }
 
   public boolean add(T element) {

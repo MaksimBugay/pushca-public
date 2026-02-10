@@ -22,7 +22,7 @@ public final class SendBinaryHelper {
     }
 
     public static Datagram toDatagram(int order, byte[] chunk) {
-      return new Datagram(chunk.length, calculateSha256(chunk),null, order, chunk);
+      return new Datagram(chunk.length, calculateSha256(chunk),null, order);
     }
 
     public static byte[] toDatagramPrefix(BinaryType binaryType, int destHashCode,

@@ -7,6 +7,8 @@ import static bmv.pushca.binary.proxy.pushca.util.SendBinaryHelper.toDatagram;
 import static bmv.pushca.binary.proxy.pushca.util.SendBinaryHelper.toDatagramPrefix;
 import static org.apache.commons.lang3.ArrayUtils.addAll;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -14,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import bmv.pushca.binary.proxy.pushca.SendBinaryAgent;
 import bmv.pushca.binary.proxy.pushca.connection.model.BinaryType;
@@ -41,7 +44,7 @@ public class BinaryStreamPublisher implements AutoCloseable {
 
   private final String pusherInstanceId;
 
-  private final SendBinaryAgent sendBinaryAgent;
+  private final Supplier<SendBinaryAgent> sendBinaryAgentSupplier;
 
   private final Map<Integer, Datagram> datagrams = new TreeMap<>();
 
@@ -50,8 +53,8 @@ public class BinaryStreamPublisher implements AutoCloseable {
                                   String mimeType,
                                   PClient sender,
                                   String pusherInstanceId,
-                                  SendBinaryAgent sendBinaryAgent) {
-    this.sendBinaryAgent = sendBinaryAgent;
+                                  Supplier<SendBinaryAgent> sendBinaryAgentSupplier) {
+    this.sendBinaryAgentSupplier = sendBinaryAgentSupplier;
     if (StringUtils.isBlank(id)) {
       binaryId = ID_GENERATOR.generate();
     } else {
@@ -77,7 +80,7 @@ public class BinaryStreamPublisher implements AutoCloseable {
         destHashCode, false,
         binaryId, index
     );
-    sendBinaryAgent.send(addAll(prefix, chunk));
+    sendBinaryAgentSupplier.get().send(addAll(prefix, chunk));
   }
 
   protected void processChunk(long index, DataBuffer chunkDataBuffer) throws SendBinaryError {
@@ -106,7 +109,7 @@ public class BinaryStreamPublisher implements AutoCloseable {
         destHashCode, false,
         binaryId, index
     );
-    return sendBinaryAgent.sendAsync(addAll(prefix, chunk));
+    return sendBinaryAgentSupplier.get().sendAsync(addAll(prefix, chunk));
   }
 
   /**
@@ -146,7 +149,13 @@ public class BinaryStreamPublisher implements AutoCloseable {
 
     datagrams.clear();
 
-    return String.format("https://secure.fileshare.ovh/binary/%s/%s", manifest.sender().workSpaceId(), binaryId);
+    return String.format(
+        "https://secure.fileshare.ovh/binary/%s/%s/%s",
+        //"http://localhost:8080/binary/%s/%s/%s",
+        manifest.sender().workSpaceId(),
+        binaryId,
+        URLEncoder.encode(manifest.name(), StandardCharsets.UTF_8)
+    );
   }
 
   /**
@@ -174,7 +183,13 @@ public class BinaryStreamPublisher implements AutoCloseable {
 
     datagrams.clear();
 
-    String url = String.format("https://secure.fileshare.ovh/binary/%s/%s", manifest.sender().workSpaceId(), binaryId);
+    String url = String.format(
+        "https://secure.fileshare.ovh/binary/%s/%s/%s",
+        //"http://localhost:8080/binary/%s/%s/%s",
+        manifest.sender().workSpaceId(),
+        binaryId,
+        URLEncoder.encode(manifest.name(), StandardCharsets.UTF_8)
+    );
 
     return processChunkAsync(MANIFEST_KEY_CHUNK_INDEX, objectToBase64Binary(manifest))
         .thenReturn(url);

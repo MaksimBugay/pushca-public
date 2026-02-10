@@ -10,20 +10,26 @@ import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.api.response.PublishRemoteStreamResponse;
 import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.pushca.model.Command;
+
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiFunction;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @Service
 public class WsGateway {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WsGateway.class);
+
+  public static final byte[] EMPTY_BYTES = new byte[0];
 
   private final IpGeoLookupService ipGeoLookupService;
 
@@ -39,82 +45,108 @@ public class WsGateway {
                    PublishBinaryService publishBinaryService) {
     this.ipGeoLookupService = ipGeoLookupService;
     this.websocketPool = websocketPool;
-      this.pushcaConfig = pushcaConfig;
-      this.publishBinaryService = publishBinaryService;
-      this.gatewayPathProcessors = Map.of(
+    this.pushcaConfig = pushcaConfig;
+    this.publishBinaryService = publishBinaryService;
+    this.gatewayPathProcessors = Map.of(
         Path.RESOLVE_IP_WITH_PROXY_CHECK.name(),
-        this::resolveIpWithProxyCheck,
+        this::resolveIpWithProxyCheckAsync,
         Path.PING.name(),
-        this::ping,
+        this::pingAsync,
         Path.PUBLISH_REMOTE_STREAM.name(),
         this::publishRemoteStream
     );
     this.websocketPool.setGatewayRequestHandler(
-        requestData -> websocketPool.runAsynchronously(() -> process(requestData))
-            .whenComplete((result, throwable) -> {
-              if (throwable != null) {
-                LOGGER.warn("Failed process gateway request attempt: {}", requestData, throwable);
-              }
-            })
+        requestData -> process(requestData)
+            .doOnError(
+                error -> LOGGER.warn("Failed process gateway request attempt: {}", requestData, error)
+            )
+            .subscribeOn(Schedulers.boundedElastic())
+            .subscribe()
     );
   }
 
   enum Path {RESOLVE_IP_WITH_PROXY_CHECK, PING, PUBLISH_REMOTE_STREAM}
 
-  private final Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayPathProcessors;
+  private final Map<String, BiFunction<GatewayRequestHeader, byte[], Mono<byte[]>>> gatewayPathProcessors;
 
-  public void process(GatewayRequestData requestData) {
+  public Mono<Void> process(GatewayRequestData requestData) {
     LOGGER.info("Gateway request was received: {}", requestData);
     GatewayRequestHeader header = fromJson(requestData.header(), GatewayRequestHeader.class);
-    byte[] requestPayload = new byte[0];
+    byte[] requestPayload;
     if (requestData.base64RequestBody != null) {
       requestPayload = Base64.getDecoder().decode(requestData.base64RequestBody);
+    } else {
+      requestPayload = new byte[0];
     }
-    BiFunction<GatewayRequestHeader, byte[], byte[]> gatewayProcessor =
-        gatewayPathProcessors.get(requestData.path);
-    if (gatewayProcessor != null) {
-      byte[] responsePayload = gatewayProcessor.apply(header, requestPayload);
-      if (responsePayload == null) {
-        responsePayload = new byte[0];
-      }
-      LOGGER.debug("Ready to send prepared gateway response");
-      sendGatewayResponse(
-          requestData.sequenceId,
-          Base64.getEncoder().encodeToString(responsePayload)
-      );
-    }
+
+    return Mono.justOrEmpty(
+            gatewayPathProcessors.get(requestData.path)
+        )
+        .flatMap(
+            operation -> operation.apply(header, requestPayload)
+        )
+        .doOnSuccess(
+            responsePayload -> {
+              byte[] responseForSending = (responsePayload == null) ? new byte[0] : responsePayload;
+              LOGGER.debug("Ready to send prepared gateway response");
+              sendGatewayResponse(
+                  requestData.sequenceId,
+                  Base64.getEncoder().encodeToString(responseForSending)
+              );
+            }
+        )
+        .then();
   }
 
-  private byte[] ping(GatewayRequestHeader header, byte[] ipAddress) {
-      return "PONG".getBytes(StandardCharsets.UTF_8);
+  private Mono<byte[]> pingAsync(GatewayRequestHeader header, byte[] ipAddress) {
+    return Mono.just(ping());
   }
 
-  private byte[] publishRemoteStream(GatewayRequestHeader header, byte[] requestBytes) {
-    String publicUrl;
-    String remoteUrl = "unknown";
-    try{
-        String requestJson = new String(requestBytes, StandardCharsets.UTF_8);
-        PublishRemoteStreamRequest request = fromJson(requestJson, PublishRemoteStreamRequest.class);
-        remoteUrl = request.url();
+  private byte[] ping() {
+    return "PONG".getBytes(StandardCharsets.UTF_8);
+  }
 
-        publicUrl = publishBinaryService.publishRemoteStreamBlocking(
+  private Mono<byte[]> publishRemoteStream(GatewayRequestHeader header, byte[] requestBytes) {
+    return Mono.fromCallable(
+            () -> extractRemoteStreamUrl(requestBytes)
+        )
+        .flatMap(
+            remoteUrl -> publishBinaryService.publishRemoteStream(
                 pushcaConfig.getPublishRemoteStreamServicePath(),
                 remoteUrl,
                 0
-        );
-    } catch (Exception ex) {
-      LOGGER.warn("Unexpected error during publish remote stream attempt: {}", remoteUrl, ex);
-      return new byte[0];
-    }
+            )
+        )
+        .doOnNext(
+            publicUrl -> LOGGER.info(
+                "Remote stream {} was successfully published to {}",
+                extractRemoteStreamUrl(requestBytes),
+                publicUrl
+            )
+        )
+        .map(
+            publicUrl -> {
+              PublishRemoteStreamResponse response = new PublishRemoteStreamResponse(publicUrl);
 
-    LOGGER.info(
-      "Remote stream {} was successfully published to {}",
-      remoteUrl,
-      publicUrl
+              return toJson(response).getBytes(StandardCharsets.UTF_8);
+            }
+        )
+        .doOnError(
+            error -> LOGGER.warn("Unexpected error during publish remote stream attempt", error)
+        )
+        .onErrorResume(error -> Mono.just(EMPTY_BYTES));
+  }
+
+  private String extractRemoteStreamUrl(byte[] requestBytes) {
+    String requestJson = new String(requestBytes, StandardCharsets.UTF_8);
+    PublishRemoteStreamRequest request = fromJson(requestJson, PublishRemoteStreamRequest.class);
+    return request.url();
+  }
+
+  private Mono<byte[]> resolveIpWithProxyCheckAsync(GatewayRequestHeader header, byte[] ipAddress) {
+    return Mono.fromCallable(
+        () -> resolveIpWithProxyCheck(header, ipAddress)
     );
-    PublishRemoteStreamResponse response = new PublishRemoteStreamResponse(publicUrl);
-
-    return toJson(response).getBytes(StandardCharsets.UTF_8);
   }
 
   private byte[] resolveIpWithProxyCheck(GatewayRequestHeader header, byte[] ipAddress) {
