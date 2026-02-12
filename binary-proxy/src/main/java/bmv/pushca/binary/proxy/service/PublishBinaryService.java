@@ -289,28 +289,60 @@ public class PublishBinaryService {
   }
 
   private String extractFilename(HttpHeaders headers, String sourceUrl) {
-    // Try to get filename from Content-Disposition header
+    // Priority 1: X-Filename-Encoded header (URL-encoded UTF-8, set by our downloader)
+    String filenameEncoded = headers.getFirst("X-Filename-Encoded");
+    if (StringUtils.isNotEmpty(filenameEncoded)) {
+      try {
+        String decoded = java.net.URLDecoder.decode(filenameEncoded, StandardCharsets.UTF_8);
+        if (StringUtils.isNotEmpty(decoded)) {
+          return decoded;
+        }
+      } catch (Exception e) {
+        LOGGER.warn("Failed to decode X-Filename-Encoded header: {}", filenameEncoded, e);
+      }
+    }
+
+    // Priority 2: Content-Disposition — prefer filename* (RFC 5987 UTF-8) over filename
     String contentDisposition = headers.getFirst(HttpHeaders.CONTENT_DISPOSITION);
-    if (contentDisposition != null && !contentDisposition.isEmpty()) {
-      // Parse filename from Content-Disposition: attachment; filename="example.pdf"
+    if (StringUtils.isNotEmpty(contentDisposition)) {
+      // First pass: look for filename*=UTF-8''<url-encoded-name>
       String[] parts = contentDisposition.split(";");
+      for (String part : parts) {
+        String trimmed = part.trim();
+        if (trimmed.toLowerCase().startsWith("filename*=")) {
+          String value = trimmed.substring(10).trim();
+          // Format: UTF-8''<percent-encoded-filename>
+          int quoteQuoteIdx = value.indexOf("''");
+          if (quoteQuoteIdx >= 0) {
+            String encoded = value.substring(quoteQuoteIdx + 2);
+            try {
+              return java.net.URLDecoder.decode(encoded, StandardCharsets.UTF_8);
+            } catch (Exception e) {
+              LOGGER.warn("Failed to decode filename* value: {}", encoded, e);
+            }
+          }
+        }
+      }
+
+      // Second pass: fall back to plain filename= (ASCII only)
       for (String part : parts) {
         String trimmed = part.trim();
         if (trimmed.toLowerCase().startsWith("filename=")) {
           String filename = trimmed.substring(9).trim();
-          // Remove surrounding quotes if present
           if (filename.startsWith("\"") && filename.endsWith("\"")) {
             filename = filename.substring(1, filename.length() - 1);
           }
           if (filename.startsWith("'") && filename.endsWith("'")) {
             filename = filename.substring(1, filename.length() - 1);
           }
-          return filename;
+          if (StringUtils.isNotEmpty(filename)) {
+            return filename;
+          }
         }
       }
     }
 
-    // Fall back to extracting filename from URL
+    // Priority 3: extract filename from URL path
     try {
       String path = java.net.URI.create(sourceUrl).getPath();
       if (StringUtils.isNotEmpty(path)) {
