@@ -152,6 +152,8 @@ public class ApiController {
     return publishBinaryService.publishRemoteStream(
             pushcaConfig.getPublishRemoteStreamServicePath(),
             request.url(),
+            request.forHuman(),
+            request.expiredAt(),
             0,
             null
         )

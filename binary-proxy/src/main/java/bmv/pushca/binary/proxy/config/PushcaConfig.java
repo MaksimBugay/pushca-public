@@ -15,67 +15,80 @@ import org.springframework.util.StringUtils;
 @Configuration
 public class PushcaConfig implements PushcaClusterSecretAware {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(PushcaConfig.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(PushcaConfig.class);
 
-    @Value("#{environment.PUSHCA_CLUSTER_URL}")
-    private String pushcaClusterUrlEnv;
+  @Value("#{environment.PUSHCA_CLUSTER_URL}")
+  private String pushcaClusterUrlEnv;
 
-    @Value("${binary-proxy.pushca.cluster.url:}")
-    private String pushcaClusterUrl;
+  @Value("${binary-proxy.pushca.cluster.url:}")
+  private String pushcaClusterUrl;
 
-    @Value("${binary-proxy.pushca.cluster.secret:}")
-    private String pushcaClusterSecret;
+  @Value("${binary-proxy.pushca.cluster.secret:}")
+  private String pushcaClusterSecret;
 
-    @Value("${binary-proxy.pushca.connection-pool.size:10}")
-    private int pushcaConnectionPoolSize;
+  @Value("#{environment.PUSHCA_GATEWAY_RATELIMIT_ENABLED}")
+  private Boolean pushcaGatewayRateLimitEnabledEnv;
 
-    @Value("#{environment.PUSHCA_PUBLISH_REMOTE_STREAM_URL}")
-    private String publishRemoteStreamServicePathEnv;
+  @Value("${binary-proxy.pushca.gateway.ratelimit.enabled:false}")
+  private boolean pushcaGatewayRateLimitEnabled;
 
-    @Value("${binary-proxy.pushca.publish-remote-stream.service.path:http://remote-stream-downloader:8000}")
-    private String publishRemoteStreamServicePath;
+  @Value("${binary-proxy.pushca.connection-pool.size:10}")
+  private int pushcaConnectionPoolSize;
 
-    private final SslContextProvider sslContextProvider;
+  @Value("#{environment.PUSHCA_PUBLISH_REMOTE_STREAM_URL}")
+  private String publishRemoteStreamServicePathEnv;
 
-    public PushcaConfig(Environment env) {
-        String tlsStorePath = env.getProperty("PUSHCA_TLS_STORE_PATH");
-        char[] tlsStorePassword =
-                Optional.ofNullable(env.getProperty("PUSHCA_TLS_STORE_PASSWORD"))
-                        .map(String::toCharArray).orElse(null);
-        try {
-            sslContextProvider = new SslContextProvider(
-                    tlsStorePath,
-                    tlsStorePassword
-            );
-        } catch (Exception ex) {
-            LOGGER.error("Cannot initialize tls context: {}", tlsStorePath, ex);
-            throw new RuntimeException(ex);
-        }
+  @Value("${binary-proxy.pushca.publish-remote-stream.service.path:http://remote-stream-downloader:8000}")
+  private String publishRemoteStreamServicePath;
+
+  private final SslContextProvider sslContextProvider;
+
+  public PushcaConfig(Environment env) {
+    String tlsStorePath = env.getProperty("PUSHCA_TLS_STORE_PATH");
+    char[] tlsStorePassword =
+        Optional.ofNullable(env.getProperty("PUSHCA_TLS_STORE_PASSWORD"))
+            .map(String::toCharArray).orElse(null);
+    try {
+      sslContextProvider = new SslContextProvider(
+          tlsStorePath,
+          tlsStorePassword
+      );
+    } catch (Exception ex) {
+      LOGGER.error("Cannot initialize tls context: {}", tlsStorePath, ex);
+      throw new RuntimeException(ex);
     }
+  }
 
-    public SslContext getNettySslContext() {
-        return sslContextProvider.getNettySslContext();
-    }
+  public SslContext getNettySslContext() {
+    return sslContextProvider.getNettySslContext();
+  }
 
-    public String getPushcaClusterUrl() {
-        if (StringUtils.hasText(pushcaClusterUrlEnv)) {
-            return pushcaClusterUrlEnv;
-        }
-        return pushcaClusterUrl;
+  public String getPushcaClusterUrl() {
+    if (StringUtils.hasText(pushcaClusterUrlEnv)) {
+      return pushcaClusterUrlEnv;
     }
+    return pushcaClusterUrl;
+  }
 
-    public String getPushcaClusterSecret() {
-        return pushcaClusterSecret;
+  public boolean isPushcaGatewayRateLimitEnabled() {
+    if (Boolean.TRUE.equals(pushcaGatewayRateLimitEnabledEnv)) {
+      return true;
     }
+    return pushcaGatewayRateLimitEnabled;
+  }
 
-    public int getPushcaConnectionPoolSize() {
-        return pushcaConnectionPoolSize;
-    }
+  public String getPushcaClusterSecret() {
+    return pushcaClusterSecret;
+  }
 
-    public String getPublishRemoteStreamServicePath() {
-        if (StringUtils.hasText(publishRemoteStreamServicePathEnv)) {
-            return publishRemoteStreamServicePathEnv;
-        }
-        return publishRemoteStreamServicePath;
+  public int getPushcaConnectionPoolSize() {
+    return pushcaConnectionPoolSize;
+  }
+
+  public String getPublishRemoteStreamServicePath() {
+    if (StringUtils.hasText(publishRemoteStreamServicePathEnv)) {
+      return publishRemoteStreamServicePathEnv;
     }
+    return publishRemoteStreamServicePath;
+  }
 }

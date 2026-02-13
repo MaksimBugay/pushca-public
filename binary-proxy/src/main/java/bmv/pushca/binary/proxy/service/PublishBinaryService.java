@@ -43,11 +43,19 @@ public class PublishBinaryService {
 
   private final PushcaWsClientFactory pushcaWsClientFactory;
 
-  private final WebClient webClient = WebClientFactory.createWebClient();
 
-  public PublishBinaryService(WebsocketPool websocketPool, PushcaWsClientFactory pushcaWsClientFactory) {
+
+  private final WebClient webClient;
+
+  public PublishBinaryService(WebsocketPool websocketPool,
+                              PushcaWsClientFactory pushcaWsClientFactory) {
     this.websocketPool = websocketPool;
     this.pushcaWsClientFactory = pushcaWsClientFactory;
+    this.webClient = WebClientFactory.createWebClient();
+  }
+
+  public WebClient getWebClient() {
+    return webClient;
   }
 
   public Mono<String> publishRemoteStreamThumbnail(String serverBaseUrl, String remoteStreamUrl, BinaryStreamPublisher publisher) {
@@ -110,7 +118,7 @@ public class PublishBinaryService {
                     sender,
                     manifest.pusherInstanceId(),
                     manifest.downloadSessionId(),
-                    null,
+                    false,
                     manifest.expireAt()
                 )
             )
@@ -145,7 +153,12 @@ public class PublishBinaryService {
    * @return a Mono that completes with the upload manifest result when the stream is fully processed
    * @throws IllegalArgumentException if serverBaseUrl or remoteStreamUrl is empty
    */
-  public Mono<String> publishRemoteStream(String serverBaseUrl, String remoteStreamUrl, int chunkSize, Integer chunkLimit) {
+  public Mono<String> publishRemoteStream(String serverBaseUrl,
+                                          String remoteStreamUrl,
+                                          boolean forHuman,
+                                          Long expiredAt,
+                                          int chunkSize,
+                                          Integer chunkLimit) {
     if (StringUtils.isEmpty(serverBaseUrl)) {
       return Mono.error(new IllegalArgumentException("serverBaseUrl must be a non-empty string"));
     }
@@ -269,6 +282,8 @@ public class PublishBinaryService {
                               filename,
                               mediaType,
                               sender,
+                              forHuman,
+                              expiredAt,
                               p -> publishRemoteStreamThumbnail(serverBaseUrl, remoteStreamUrl, p).then()
                           )
                       )

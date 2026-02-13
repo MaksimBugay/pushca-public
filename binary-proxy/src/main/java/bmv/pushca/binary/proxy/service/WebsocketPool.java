@@ -26,6 +26,7 @@ import bmv.pushca.binary.proxy.pushca.connection.model.BinaryWithHeader;
 import bmv.pushca.binary.proxy.pushca.connection.model.SimpleWsResponse;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.Command;
+import bmv.pushca.binary.proxy.pushca.model.PClient;
 import bmv.pushca.binary.proxy.pushca.model.ResponseWaiter;
 import bmv.pushca.binary.proxy.service.WsGateway.GatewayRequestData;
 
@@ -177,6 +178,10 @@ public class WebsocketPool implements DisposableBean {
             websocketScheduler.dispose();
             throw e;
         }
+    }
+
+    public PClient getHostPushcaClient() {
+        return this.pushcaWsClientFactory.pushcaClient;
     }
 
     public void setGatewayRequestHandler(
@@ -645,7 +650,7 @@ public class WebsocketPool implements DisposableBean {
         long totalMemory = runtime.totalMemory();
         long maxMemory = runtime.maxMemory();
 
-        LOGGER.debug("Free memory: {} MB, Used Memory: {} MB, Total memory: {} MB, Max memory: {} MB",
+        LOGGER.info("Free memory: {} MB, Used Memory: {} MB, Total memory: {} MB, Max memory: {} MB",
                 freeMemory / (1024 * 1024),
                 usedMemory / (1024 * 1024),
                 totalMemory / (1024 * 1024),

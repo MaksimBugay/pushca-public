@@ -98,6 +98,8 @@ public class BinaryStreamPublisher implements AutoCloseable {
                                           String name,
                                           String mimeType,
                                           PClient sender,
+                                          boolean forHuman,
+                                          Long expiredAt,
                                           Function<BinaryStreamPublisher, Mono<Void>> beforeSendHook) {
     BinaryManifest manifest = new BinaryManifest(
         binaryId.toString(),
@@ -109,8 +111,8 @@ public class BinaryStreamPublisher implements AutoCloseable {
         sender,
         pusherInstanceId,
         null,
-        null,
-        Instant.now().getEpochSecond() + Duration.ofDays(1).getSeconds()
+        forHuman,
+        expiredAt
     );
 
     manifestHolder.set(manifest);
@@ -124,6 +126,9 @@ public class BinaryStreamPublisher implements AutoCloseable {
         manifest.id(),
         ThumbnailUtils.buildThumbnailId(manifest.id())
     );
+    if (forHuman) {
+      url += "&human-only=true";
+    }
 
 
     return ((beforeSendHook == null) ? Mono.empty() : beforeSendHook.apply(this))

@@ -9,6 +9,7 @@ import bmv.pushca.binary.proxy.api.request.ResolveIpRequest;
 import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.api.response.PublishRemoteStreamResponse;
 import bmv.pushca.binary.proxy.config.PushcaConfig;
+import bmv.pushca.binary.proxy.pushca.PushcaRateLimitService;
 import bmv.pushca.binary.proxy.pushca.model.Command;
 
 import java.nio.charset.StandardCharsets;
@@ -18,6 +19,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiFunction;
 
+import bmv.pushca.binary.proxy.pushca.model.GatewayRequestor;
+import bmv.pushca.binary.proxy.pushca.model.PClient;
+import bmv.pushca.binary.proxy.pushca.model.WsGatewayRateLimitCheckData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,8 +33,6 @@ public class WsGateway {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WsGateway.class);
 
-  public static final byte[] EMPTY_BYTES = new byte[0];
-
   private final IpGeoLookupService ipGeoLookupService;
 
   private final WebsocketPool websocketPool;
@@ -38,6 +40,10 @@ public class WsGateway {
   private final PushcaConfig pushcaConfig;
 
   private final PublishBinaryService publishBinaryService;
+
+  private final RateLimitService rateLimitService;
+
+  private final PClient gatewayHostPushcaClient;
 
   public WsGateway(IpGeoLookupService ipGeoLookupService,
                    WebsocketPool websocketPool,
@@ -63,6 +69,12 @@ public class WsGateway {
             .subscribeOn(Schedulers.boundedElastic())
             .subscribe()
     );
+    this.rateLimitService = new PushcaRateLimitService(
+        this.publishBinaryService.getWebClient(),
+        pushcaConfig.getPushcaClusterUrl(),
+        pushcaConfig.isPushcaGatewayRateLimitEnabled()
+    );
+    this.gatewayHostPushcaClient = websocketPool.getHostPushcaClient();
   }
 
   enum Path {RESOLVE_IP_WITH_PROXY_CHECK, PING, PUBLISH_REMOTE_STREAM}
@@ -79,8 +91,24 @@ public class WsGateway {
       requestPayload = new byte[0];
     }
 
-    return Mono.justOrEmpty(
-            gatewayPathProcessors.get(requestData.path)
+    return rateLimitService.isAllowed(
+            new WsGatewayRateLimitCheckData(
+                gatewayHostPushcaClient,
+                requestData.path,
+                new GatewayRequestor(header.client, header.ip),
+                null
+            )
+        ).flatMap(
+            rtCheckResult -> {
+              if (rtCheckResult) {
+                return Mono.justOrEmpty(
+                    gatewayPathProcessors.get(requestData.path)
+                );
+              }
+              return Mono.error(
+                  new RuntimeException("Rate limit exceeded")
+              );
+            }
         )
         .flatMap(
             operation -> operation.apply(header, requestPayload)
@@ -95,6 +123,11 @@ public class WsGateway {
               );
             }
         )
+        .switchIfEmpty(
+            Mono.error(
+                new RuntimeException("Unknow gateway path: " + requestData.path)
+            )
+        )
         .then();
   }
 
@@ -108,26 +141,28 @@ public class WsGateway {
 
   private Mono<byte[]> publishRemoteStream(GatewayRequestHeader header, byte[] requestBytes) {
     return Mono.fromCallable(
-            () -> extractRemoteStreamUrl(requestBytes)
+            () -> extractPublishRemoteStreamRequest(requestBytes)
         )
         .flatMap(
-            remoteUrl -> publishBinaryService.publishRemoteStream(
+            request -> publishBinaryService.publishRemoteStream(
                 pushcaConfig.getPublishRemoteStreamServicePath(),
-                remoteUrl,
+                request.url(),
+                request.forHuman(),
+                request.expiredAt(),
                 0,
-                    null
+                null
             )
         )
         .doOnNext(
             publicUrl -> LOGGER.info(
                 "Remote stream {} was successfully published to {}",
-                extractRemoteStreamUrl(requestBytes),
+                extractPublishRemoteStreamRequest(requestBytes),
                 publicUrl
             )
         )
         .map(
             publicUrl -> {
-              PublishRemoteStreamResponse response = new PublishRemoteStreamResponse(publicUrl);
+              PublishRemoteStreamResponse response = new PublishRemoteStreamResponse(publicUrl, "");
 
               return toJson(response).getBytes(StandardCharsets.UTF_8);
             }
@@ -135,13 +170,18 @@ public class WsGateway {
         .doOnError(
             error -> LOGGER.warn("Unexpected error during publish remote stream attempt", error)
         )
-        .onErrorResume(error -> Mono.just(EMPTY_BYTES));
+        .onErrorResume(
+            error -> Mono.just(
+                toJson(
+                    new PublishRemoteStreamResponse("", error.getMessage())
+                ).getBytes(StandardCharsets.UTF_8)
+            )
+        );
   }
 
-  private String extractRemoteStreamUrl(byte[] requestBytes) {
+  private PublishRemoteStreamRequest extractPublishRemoteStreamRequest(byte[] requestBytes) {
     String requestJson = new String(requestBytes, StandardCharsets.UTF_8);
-    PublishRemoteStreamRequest request = fromJson(requestJson, PublishRemoteStreamRequest.class);
-    return request.url();
+    return fromJson(requestJson, PublishRemoteStreamRequest.class);
   }
 
   private Mono<byte[]> resolveIpWithProxyCheckAsync(GatewayRequestHeader header, byte[] ipAddress) {
