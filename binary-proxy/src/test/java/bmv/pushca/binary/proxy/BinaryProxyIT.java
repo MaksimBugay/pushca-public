@@ -1,5 +1,6 @@
 package bmv.pushca.binary.proxy;
 
+import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.ID_GENERATOR;
 import static bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory.BINARY_PROXY_CONNECTION_TO_PUSHER_APP_ID;
 import static bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory.PUSHCA_CLUSTER_WORKSPACE_ID;
 import static bmv.pushca.binary.proxy.util.serialisation.JsonUtility.toJson;
@@ -11,10 +12,8 @@ import bmv.pushca.binary.proxy.api.request.*;
 import bmv.pushca.binary.proxy.api.response.GeoLookupResponse;
 import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
-import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
-import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
-import bmv.pushca.binary.proxy.service.BinaryProxyService;
-import bmv.pushca.binary.proxy.service.IpGeoLookupService;
+import bmv.pushca.binary.proxy.pushca.model.*;
+import bmv.pushca.binary.proxy.service.*;
 
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
@@ -26,8 +25,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import bmv.pushca.binary.proxy.service.PublishBinaryService;
-import bmv.pushca.binary.proxy.service.WebClientFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -79,6 +76,9 @@ class BinaryProxyIT {
     @Autowired
     private PublishBinaryService publishBinaryService;
 
+    @Autowired
+    private WsGateway wsGateway;
+
     @DynamicPropertySource
     static void customProperties(DynamicPropertyRegistry registry) {
         // Core configuration
@@ -106,6 +106,8 @@ class BinaryProxyIT {
                 "binary-proxy.pushca.publish-remote-stream.service.path",
                 () -> "https://secure.fileshare.ovh/remote-stream"
         );
+
+        registry.add("binary-proxy.pushca.gateway.ratelimit.enabled", () -> "true");
     }
 
     @BeforeEach
@@ -354,6 +356,38 @@ class BinaryProxyIT {
         ).block();
         System.out.println(publicUrl);
         Thread.sleep(5000);
+    }
+
+    @Test
+    void gatewayRateLimitTest() throws Exception {
+        Thread.sleep(5000);
+
+        PClient hostClient = new PClient(
+                PUSHCA_CLUSTER_WORKSPACE_ID,
+                "admin",
+                ID_GENERATOR.generate().toString(),
+                BINARY_PROXY_CONNECTION_TO_PUSHER_APP_ID
+        );
+        PClient requestorClient = new PClient(
+                "TEST_WORKSPACE",
+                "client@test.ee",
+                ID_GENERATOR.generate().toString(),
+                "TEST_APP_ID"
+        );
+        WsGatewayRateLimitCheckData rateLimitKey = new WsGatewayRateLimitCheckData(
+                hostClient,
+                WsGateway.Path.PUBLISH_REMOTE_STREAM.name(),
+                new GatewayRequestor(requestorClient, "82.147.170.141"),
+                null
+        );
+        for (int i = 0; i < 50; i++) {
+            StepVerifier.create(wsGateway.isAllowed(rateLimitKey))
+                    .expectNextMatches(allowed -> allowed)
+                    .verifyComplete();
+        }
+        StepVerifier.create(wsGateway.isAllowed(rateLimitKey))
+                .expectNextMatches(allowed -> !allowed)
+                .verifyComplete();
     }
 
     @Test
