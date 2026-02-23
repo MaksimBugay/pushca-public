@@ -141,6 +141,20 @@ public class WsGateway implements RateLimitService {
                                 new RuntimeException("Unknow gateway path: " + requestData.path)
                         )
                 )
+                .doOnError(
+                        throwable -> {
+                            PublishRemoteStreamResponse errorResponse = new PublishRemoteStreamResponse(
+                                    null,
+                                    throwable.getMessage()
+                            );
+                            sendGatewayResponse(
+                                    requestData.sequenceId,
+                                    Base64.getEncoder().encodeToString(
+                                            toJson(errorResponse).getBytes(StandardCharsets.UTF_8)
+                                    )
+                            );
+                        }
+                )
                 .then();
     }
 
@@ -182,13 +196,6 @@ public class WsGateway implements RateLimitService {
                 )
                 .doOnError(
                         error -> LOGGER.warn("Unexpected error during publish remote stream attempt", error)
-                )
-                .onErrorResume(
-                        error -> Mono.just(
-                                toJson(
-                                        new PublishRemoteStreamResponse("", error.getMessage())
-                                ).getBytes(StandardCharsets.UTF_8)
-                        )
                 );
     }
 
