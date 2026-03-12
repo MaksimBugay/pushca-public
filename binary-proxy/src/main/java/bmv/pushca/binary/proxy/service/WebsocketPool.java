@@ -120,7 +120,7 @@ public class WebsocketPool implements DisposableBean {
                             if (shuttingDown.get()) {
                                 return;
                             }
-                            if (!poolIsReady.get()) {
+                            if (wsPool.isEmpty()) {
                                 return;
                             }
                             logHeapMemory();
@@ -151,7 +151,7 @@ public class WebsocketPool implements DisposableBean {
                             if (shuttingDown.get()) {
                                 return;
                             }
-                            if (!poolIsReady.get()) {
+                            if (wsPool.isEmpty()) {
                                 return;
                             }
                             runResponseWaiterRepeater();
@@ -312,7 +312,7 @@ public class WebsocketPool implements DisposableBean {
         if (shuttingDown.get()) {
             throw new IllegalStateException("WebsocketPool is shutting down");
         }
-        if (!poolIsReady.get()) {
+        if (wsPool.isEmpty()) {
             throw new IllegalStateException("WebsocketPool is not ready yet");
         }
         try {

@@ -44,7 +44,6 @@ public class PublishBinaryService {
   private final PushcaWsClientFactory pushcaWsClientFactory;
 
 
-
   private final WebClient webClient;
 
   public PublishBinaryService(WebsocketPool websocketPool,
@@ -170,7 +169,7 @@ public class PublishBinaryService {
 
     // Normalize base URL (remove trailing slashes)
     String normalizedBase = serverBaseUrl.replaceAll("/+$", "");
-    String downloadUrl = normalizedBase + "/download";
+    String downloadUrl = normalizedBase + "/download-for-web";
 
     return webClient.post()
         .uri(downloadUrl)
@@ -202,7 +201,7 @@ public class PublishBinaryService {
               return response.bodyToFlux(DataBuffer.class)
                   // Limit demand to the HTTP client so Netty does not buffer the entire response.
                   // Request one DataBuffer at a time (replenish when 0 pending).
-                  .limitRate(128, 0)
+                  .limitRate(64, 0)
                   .doOnNext(buf -> LOGGER.debug("Received DataBuffer: {} bytes", buf.readableByteCount()))
                   .doOnComplete(() -> LOGGER.debug("HTTP response body completed"))
                   .doOnError(e -> LOGGER.error("HTTP response error", e))
@@ -228,7 +227,7 @@ public class PublishBinaryService {
                       : flux)
                   // Apply backpressure with bounded buffer to prevent memory issues
                   .onBackpressureBuffer(
-                      DEFAULT_SEND_BUFFER_SIZE,
+                      2 * DEFAULT_SEND_BUFFER_SIZE,
                       dropped -> LOGGER.warn("Chunk {} dropped due to backpressure", dropped.getT1()),
                       BufferOverflowStrategy.ERROR
                   )
@@ -244,30 +243,32 @@ public class PublishBinaryService {
                   )
                   // Process each chunk with per-chunk timeout, waiting for actual WebSocket write
                   .concatMap(
-                      indexed -> {
-                        DataBuffer chunk = indexed.getT2();
-                        return publisher.processChunkAsync(binaryId, indexed.getT1(), chunk, true, sender)
-                            .doFinally(signal -> DataBufferUtils.release(chunk))
-                            .timeout(Duration.ofSeconds(30))
-                            .onErrorMap(
-                                TimeoutException.class,
-                                e -> new RuntimeException(
-                                    MessageFormat.format("Chunk send timeout at chunk {0}", indexed.getT1()),
-                                    e
-                                )
-                            )
-                            .doOnError(
-                                error -> LOGGER.error(
-                                    "Error during chunk processing: file name = {}, index = {}, error type = {}",
-                                    filename,
-                                    indexed.getT1(),
-                                    error.getClass().getName(),
-                                    error
-                                )
-                            )
-                            .doOnSuccess(v -> LOGGER.debug("Chunk {} sent successfully", indexed.getT1()))
-                            .thenReturn(indexed);
-                      }
+                      indexed -> Mono.defer(
+                              () -> {
+                                DataBuffer chunk = indexed.getT2();
+                                return publisher.processChunkAsync(binaryId, indexed.getT1(), chunk, true, sender)
+                                    .doFinally(signal -> DataBufferUtils.release(chunk))
+                                    .timeout(Duration.ofSeconds(30));
+                              }
+                          )
+                          .onErrorMap(
+                              TimeoutException.class,
+                              e -> new RuntimeException(
+                                  MessageFormat.format("Chunk send timeout at chunk {0}", indexed.getT1()),
+                                  e
+                              )
+                          )
+                          .doOnError(
+                              error -> LOGGER.error(
+                                  "Error during chunk processing: file name = {}, index = {}, error type = {}",
+                                  filename,
+                                  indexed.getT1(),
+                                  error.getClass().getName(),
+                                  error
+                              )
+                          )
+                          .doOnSuccess(v -> LOGGER.debug("Chunk {} sent successfully", indexed.getT1()))
+                          .thenReturn(indexed)
                   )
                   // Add overall timeout to prevent indefinite hanging on slow streams
                   .timeout(Duration.ofMinutes(30))
@@ -448,7 +449,6 @@ public class PublishBinaryService {
         } else {
           int splitIndex = dataBuffer.readPosition() + need;
           DataBuffer head = dataBuffer.split(splitIndex);
-          DataBufferUtils.retain(head);
           currentBuffers.add(head);
           currentSize += need;
           remaining = dataBuffer.readableByteCount();

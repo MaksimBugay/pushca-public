@@ -265,7 +265,8 @@ public class ApiController {
                 params.binaryId(),
                 null, null,
                 response, true,
-                NetworkUtils.getRealIP(xForwardedFor, xRealIp));
+                NetworkUtils.getRealIP(xForwardedFor, xRealIp),
+                false);
           } else {
             response.setStatusCode(HttpStatus.FORBIDDEN);
             return Mono.empty();
@@ -476,6 +477,7 @@ public class ApiController {
       @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
       @RequestParam(value = "page-id", required = false) String pageId,
       @RequestParam(value = "human-token", required = false) String humanToken,
+      @RequestParam(value = "for-download-only", required = false) String forDownloadOnly,
       ServerHttpResponse response) {
     return servePublicBinaryAsStream(
         workspaceId,
@@ -484,6 +486,7 @@ public class ApiController {
         xRealIp,
         pageId,
         humanToken,
+        forDownloadOnly,
         response
     );
   }
@@ -496,6 +499,7 @@ public class ApiController {
       @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
       @RequestParam(value = "page-id", required = false) String pageId,
       @RequestParam(value = "human-token", required = false) String humanToken,
+      @RequestParam(value = "for-download-only", required = false) String forDownloadOnly,
       ServerHttpResponse response) {
     String ip = NetworkUtils.getRealIP(xForwardedFor, xRealIp);
     LOGGER.debug("Download binary with id {} from workspace {} was received from {}", binaryId, workspaceId, ip);
@@ -506,7 +510,8 @@ public class ApiController {
         humanToken,
         response,
         false,
-        ip
+        ip,
+        "true".equals(forDownloadOnly)
     )
         .doOnError(
             throwable -> LOGGER.error(
@@ -562,7 +567,8 @@ public class ApiController {
 
   private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId,
                                            String pageId, String humanToken,
-                                           ServerHttpResponse response, boolean securePost, String receiverIP) {
+                                           ServerHttpResponse response,
+                                           boolean securePost, String receiverIP, boolean forceOctetStreamType) {
     final ConcurrentLinkedQueue<String> pendingChunks = new ConcurrentLinkedQueue<>();
     return binaryProxyService.requestBinaryManifestWithHumanOnlyCheck(
             workspaceId,
@@ -575,7 +581,7 @@ public class ApiController {
             new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
         .flatMapMany(binaryManifest -> {
               String mimeType = binaryManifest.mimeType();
-              if (mimeType == null) {
+              if ((mimeType == null) || forceOctetStreamType) {
                 mimeType = "application/octet-stream";
               }
               LOGGER.info("Transfer binary: sender IP {}, receiver IP {}, name {}, mime-type {}, size {}",
