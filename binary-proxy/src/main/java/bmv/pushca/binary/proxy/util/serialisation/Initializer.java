@@ -1,16 +1,12 @@
 package bmv.pushca.binary.proxy.util.serialisation;
 
-import static com.fasterxml.jackson.databind.DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT;
-import static com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES;
-import static com.fasterxml.jackson.databind.SerializationFeature.FAIL_ON_EMPTY_BEANS;
-import static com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS;
-
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
 import java.text.SimpleDateFormat;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.cfg.DateTimeFeature;
+import tools.jackson.databind.cfg.MapperBuilder;
+import tools.jackson.databind.json.JsonMapper;
 
 public final class Initializer {
 
@@ -20,24 +16,27 @@ public final class Initializer {
     private Initializer() {
     }
 
-    public static ObjectMapper init(ObjectMapper mapper) {
-        return init(mapper, JsonInclude.Include.NON_ABSENT, false);
+    public static JsonMapper init() {
+        return init(JsonMapper.builder(), JsonInclude.Include.NON_ABSENT, false).build();
     }
 
-    public static ObjectMapper init(ObjectMapper mapper,
-                                    JsonInclude.Include include,
-                                    boolean failOnUnknownProperties) {
-        return mapper
-                .setSerializationInclusion(include)
-                .setDefaultPropertyInclusion(include)
-                .registerModule(new JavaTimeModule())
-                .registerModule(new Jdk8Module())
-                .registerModule(new ParameterNamesModule())
-                .configure(FAIL_ON_EMPTY_BEANS, false)
-                .configure(FAIL_ON_UNKNOWN_PROPERTIES, failOnUnknownProperties)
-                .configure(ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true)
-                .configure(WRITE_DATES_AS_TIMESTAMPS, false)
-                .setDateFormat(
-                        new SimpleDateFormat(DATETIME_SECONDS_FORMAT_PATTERN));
+    public static JsonMapper initAsStrict() {
+        return init(JsonMapper.builder(), JsonInclude.Include.ALWAYS, true).build();
+    }
+
+    public static <B extends MapperBuilder<?, B>> B init(B builder,
+                                                        JsonInclude.Include include,
+                                                        boolean failOnUnknownProperties) {
+        // Jackson 3 mappers are immutable; configure JSON and CBOR before building.
+        return builder
+                .changeDefaultPropertyInclusion(inclusion -> inclusion
+                        .withValueInclusion(include)
+                        .withContentInclusion(include))
+                .disable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, failOnUnknownProperties)
+                .disable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
+                .enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT)
+                .disable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .defaultDateFormat(new SimpleDateFormat(DATETIME_SECONDS_FORMAT_PATTERN));
     }
 }

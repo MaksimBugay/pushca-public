@@ -2,12 +2,10 @@ package bmv.pushca.binary.proxy.util.serialisation;
 
 import static java.util.stream.Collectors.toMap;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JacksonException;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.json.JsonMapper;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -16,22 +14,21 @@ import java.util.Set;
 @SuppressWarnings("unused")
 public final class JsonUtility {
 
-    private static final ObjectMapper SIMPLE_MAPPER = getSimpleMapperInstance();
-    private static final ObjectMapper WITH_NULL_MAPPER = getWithNullMapperInstance();
+    private static final JsonMapper SIMPLE_MAPPER = getSimpleMapperInstance();
+    private static final JsonMapper WITH_NULL_MAPPER = getWithNullMapperInstance();
 
     private JsonUtility() {
     }
 
-    public static ObjectMapper getSimpleMapperInstance() {
-        return Initializer.init(new ObjectMapper());
+    public static JsonMapper getSimpleMapperInstance() {
+        return Initializer.init();
     }
 
-    public static ObjectMapper getWithNullMapperInstance() {
-        return Initializer.init(new ObjectMapper(), JsonInclude.Include.ALWAYS, true);
+    public static JsonMapper getWithNullMapperInstance() {
+        return Initializer.initAsStrict();
     }
 
-    public static String prettyPrintJson(String json, boolean writeNulls) throws
-            IOException {
+    public static String prettyPrintJson(String json, boolean writeNulls) {
         if (writeNulls) {
             Object object = WITH_NULL_MAPPER.readValue(json, Object.class);
             return WITH_NULL_MAPPER.writerWithDefaultPrettyPrinter()
@@ -78,7 +75,7 @@ public final class JsonUtility {
     public static <T> T fromJson(String jsonString, Class<T> clazz) {
         try {
             return SIMPLE_MAPPER.readValue(jsonString, clazz);
-        } catch (IOException jpe) {
+        } catch (JacksonException jpe) {
             throw new RuntimeException(jpe);
         }
     }
@@ -86,7 +83,7 @@ public final class JsonUtility {
     public static <T> T fromJsonStrict(String jsonString, Class<T> clazz) {
         try {
             return WITH_NULL_MAPPER.readValue(jsonString, clazz);
-        } catch (IOException jpe) {
+        } catch (JacksonException jpe) {
             throw new RuntimeException(jpe);
         }
     }
@@ -94,7 +91,7 @@ public final class JsonUtility {
     public static <T> T fromJson(InputStream is, Class<T> clazz) {
         try {
             return SIMPLE_MAPPER.readValue(is, clazz);
-        } catch (IOException jpe) {
+        } catch (JacksonException jpe) {
             throw new RuntimeException(jpe);
         }
     }
@@ -103,7 +100,7 @@ public final class JsonUtility {
                                                   JavaType resolvedType) {
         try {
             return SIMPLE_MAPPER.readValue(jsonString, resolvedType);
-        } catch (IOException jpe) {
+        } catch (JacksonException jpe) {
             throw new RuntimeException(jpe);
         }
     }
@@ -163,7 +160,7 @@ public final class JsonUtility {
         try {
             return SIMPLE_MAPPER.readValue(jsonInput,
                     SIMPLE_MAPPER.getTypeFactory().constructMapType(Map.class, clazzKey, clazzValue));
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             throw new RuntimeException(e);
         }
     }
@@ -172,11 +169,11 @@ public final class JsonUtility {
         return "{}";
     }
 
-    public static ObjectMapper getSimpleMapper() {
+    public static JsonMapper getSimpleMapper() {
         return SIMPLE_MAPPER;
     }
 
-    public static ObjectMapper getWithNullMapper() {
+    public static JsonMapper getWithNullMapper() {
         return WITH_NULL_MAPPER;
     }
 

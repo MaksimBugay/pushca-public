@@ -3,13 +3,13 @@ package bmv.pushca.binary.proxy.util.serialisation;
 import static bmv.pushca.binary.proxy.util.serialisation.Initializer.init;
 import static org.apache.commons.codec.binary.Hex.encodeHexString;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.type.TypeFactory;
-import com.fasterxml.jackson.dataformat.cbor.CBORFactory;
-import com.fasterxml.jackson.dataformat.cbor.CBORGenerator;
-import java.io.IOException;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JavaType;
+import tools.jackson.dataformat.cbor.CBORMapper;
+import tools.jackson.databind.type.TypeFactory;
+import tools.jackson.dataformat.cbor.CBORWriteFeature;
+
 import java.util.List;
 import org.apache.commons.lang3.ArrayUtils;
 
@@ -17,15 +17,15 @@ public final class CBorUtility {
 
     public static final String SELF_DESCRIBE_CBOR = "d9d9f7";
 
-    public static final ObjectMapper CBOR_OBJECT_MAPPER =
+    public static final CBORMapper CBOR_OBJECT_MAPPER =
             getCborMapperInstance();
 
     private CBorUtility() {
     }
 
-    public static ObjectMapper getCborMapperInstance() {
-        return init(new ObjectMapper(new CBORFactory().configure(
-                CBORGenerator.Feature.WRITE_TYPE_HEADER, true)));
+    public static CBORMapper getCborMapperInstance() {
+        return init(CBORMapper.builder().enable(CBORWriteFeature.WRITE_TYPE_HEADER),
+                JsonInclude.Include.NON_ABSENT, false).build();
     }
 
     public static boolean isCbor(byte[] bytes) {
@@ -36,12 +36,11 @@ public final class CBorUtility {
         return CBOR_OBJECT_MAPPER.getTypeFactory();
     }
 
-    public static byte[] toCBOR(Object obj) throws JsonProcessingException {
+    public static byte[] toCBOR(Object obj) throws JacksonException {
         return CBOR_OBJECT_MAPPER.writeValueAsBytes(obj);
     }
 
-    public static <T> T fromCBOR(byte[] cbor, Class<T> clazz)
-            throws IOException {
+    public static <T> T fromCBOR(byte[] cbor, Class<T> clazz) {
         return CBOR_OBJECT_MAPPER.readValue(cbor, clazz);
     }
 
@@ -49,7 +48,7 @@ public final class CBorUtility {
                                                   JavaType resolvedType) {
         try {
             return CBOR_OBJECT_MAPPER.readValue(cbor, resolvedType);
-        } catch (IOException jpe) {
+        } catch (JacksonException jpe) {
             throw new RuntimeException(jpe);
         }
     }
