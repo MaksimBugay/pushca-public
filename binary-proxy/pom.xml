@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.2.5</version>
+    <version>3.5.16</version>
     <relativePath/> <!-- lookup parent from repository -->
   </parent>
   <groupId>bmv.pushca</groupId>
@@ -16,31 +16,17 @@
   <description>Proxy binaries published via Pushca web socket</description>
   <properties>
     <java.version>17</java.version>
-    <fasterxml.jackson.version>2.14.2</fasterxml.jackson.version>
-    <testcontainers.version>1.20.0</testcontainers.version>
-    <java-websocket.version>1.5.6</java-websocket.version>
+    <testcontainers.version>2.0.5</testcontainers.version>
   </properties>
 
   <dependencyManagement>
     <dependencies>
-      <dependency>
-        <groupId>com.fasterxml.jackson</groupId>
-        <artifactId>jackson-bom</artifactId>
-        <version>${fasterxml.jackson.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
       <dependency>
         <groupId>org.testcontainers</groupId>
         <artifactId>testcontainers-bom</artifactId>
         <version>${testcontainers.version}</version>
         <type>pom</type>
         <scope>import</scope>
-      </dependency>
-      <dependency>
-        <groupId>org.java-websocket</groupId>
-        <artifactId>Java-WebSocket</artifactId>
-        <version>${java-websocket.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -85,42 +71,42 @@
     <dependency>
       <groupId>com.fasterxml.uuid</groupId>
       <artifactId>java-uuid-generator</artifactId>
-      <version>5.1.0</version>
+      <version>5.2.0</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-lang3</artifactId>
-      <version>3.12.0</version>
+      <version>3.20.0</version>
     </dependency>
     <dependency>
       <groupId>com.nimbusds</groupId>
       <artifactId>nimbus-jose-jwt</artifactId>
-      <version>9.40</version>
+      <version>10.9.1</version>
     </dependency>
     <dependency>
       <groupId>org.bouncycastle</groupId>
       <artifactId>bcprov-jdk18on</artifactId>
-      <version>1.78.1</version>
+      <version>1.85.2</version>
     </dependency>
     <dependency>
       <groupId>commons-codec</groupId>
       <artifactId>commons-codec</artifactId>
-      <version>1.17.1</version>
+      <version>1.22.1</version>
     </dependency>
     <dependency>
       <groupId>com.ip2location</groupId>
       <artifactId>ip2location-java</artifactId>
-      <version>8.12.0</version>
+      <version>8.13.0</version>
     </dependency>
     <dependency>
       <groupId>com.ip2proxy</groupId>
       <artifactId>ip2proxy-java</artifactId>
-      <version>3.4.0</version>
+      <version>3.6.0</version>
     </dependency>
     <dependency>
       <groupId>eu.eu-emi.security</groupId>
       <artifactId>canl</artifactId>
-      <version>2.8.3</version>
+      <version>2.9.0</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -144,7 +130,7 @@
       <plugin>
         <groupId>org.graalvm.buildtools</groupId>
         <artifactId>native-maven-plugin</artifactId>
-        <version>0.9.28</version>
+        <version>1.1.11</version>
         <configuration>
           <imageName>binary-proxy</imageName>
           <jvmArgs>

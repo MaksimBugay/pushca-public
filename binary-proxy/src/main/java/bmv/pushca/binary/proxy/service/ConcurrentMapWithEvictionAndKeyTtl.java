@@ -325,6 +325,7 @@ public class ConcurrentMapWithEvictionAndKeyTtl<K, V> implements Map<K, V>, Auto
     return executeWithReadLock(() -> insertionOrderMap.getOrDefault(key, defaultValue));
   }
 
+  @SuppressWarnings("unchecked")
   @Override
   public V remove(Object key) {
     return executeWithWriteLock(() -> {
@@ -503,6 +504,7 @@ public class ConcurrentMapWithEvictionAndKeyTtl<K, V> implements Map<K, V>, Auto
     });
   }
 
+  @SuppressWarnings("unchecked")
   @Override
   public boolean remove(Object key, Object value) {
     return executeWithWriteLock(() -> {
@@ -545,13 +547,10 @@ public class ConcurrentMapWithEvictionAndKeyTtl<K, V> implements Map<K, V>, Auto
   public void shutdown() {
     if (cleanupExecutor != null && running != null) {
       running.set(false);
-      cleanupExecutor.shutdown();
+      cleanupExecutor.shutdownNow();
       try {
         if (!cleanupExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-          cleanupExecutor.shutdownNow();
-          if (!cleanupExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-            LOGGER.warn("TTL cleanup thread did not terminate gracefully");
-          }
+          LOGGER.warn("TTL cleanup thread did not terminate gracefully");
         }
       } catch (InterruptedException e) {
         cleanupExecutor.shutdownNow();
