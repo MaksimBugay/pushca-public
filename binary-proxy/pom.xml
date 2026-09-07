@@ -15,7 +15,7 @@
   <name>binary-proxy</name>
   <description>Proxy binaries published via Pushca web socket</description>
   <properties>
-    <java.version>17</java.version>
+    <java.version>25</java.version>
     <testcontainers.version>2.0.5</testcontainers.version>
   </properties>
 
@@ -132,46 +132,22 @@
         <artifactId>native-maven-plugin</artifactId>
         <version>1.1.11</version>
         <configuration>
-          <imageName>binary-proxy</imageName>
           <jvmArgs>
             <arg>-Xss512k</arg>
             <arg>-XX:MaxRAMPercentage=80</arg>
-            <arg>-Djava.security.egd=file:/dev/./urandom</arg>
-            <arg>-Djava.security.properties=file:src/main/resources/security/java.security</arg>
-            <arg>-Dorg.graalvm.nativeimage.lang.charset=IncludeAllTimeZonesAndCharsets</arg>
+            <arg>-Djava.security.properties=file:src/main/resources/security/bouncycastle.security</arg>
           </jvmArgs>
           <buildArgs>
-            <buildArg>-H:IncludeResources=".*.yaml|.*.yml|.*.sh|.*.properties|.*.security"
-            </buildArg>
-            <buildArg>-H:+ReportUnsupportedElementsAtRuntime</buildArg>
-            <buildArg>-H:TraceClassInitialization=true</buildArg>
-            <buildArg>-H:+ReportExceptionStackTraces</buildArg>
-            <buildArg>-H:Path=/usr/bin/openssl</buildArg>
+            <!-- Enable temporarily when diagnosing class-initialization issues. -->
+            <!-- <buildArg>-H:+PrintClassInitialization</buildArg> -->
             <buildArg>-H:+AddAllCharsets</buildArg>
-            <buildArg>--allow-incomplete-classpath</buildArg>
-            <buildArg>--verbose</buildArg>
-            <buildArg>--enable-http</buildArg>
-            <buildArg>--enable-https</buildArg>
-            <buildArg>--enable-url-protocols=http,https</buildArg>
-            <buildArg>-H:ReflectionConfigurationFiles=src/main/resources/reflection-config.json
-            </buildArg>
-            <buildArg>
-              --initialize-at-build-time=redis.clients.jedis.Jedis,redis.clients.jedis.util.JedisMetaInfo,redis.clients.jedis.JedisMetaInfo,ch.qos.logback,org.slf4j,com.ctc.wstx,org.bouncycastle
-            </buildArg>
+            <buildArg>-H:AdditionalSecurityProviders=org.bouncycastle.jce.provider.BouncyCastleProvider</buildArg>
+            <buildArg>--initialize-at-build-time=io.netty.util.internal.shaded.org.jctools</buildArg>
+            <buildArg>--initialize-at-build-time=org.bouncycastle</buildArg>
             <buildArg>
               --initialize-at-run-time=bmv.pushca.binary.proxy.encryption,org.bouncycastle.jcajce.provider.drbg.DRBG$Default,org.bouncycastle.jcajce.provider.drbg.DRBG$NonceAndIV
             </buildArg>
-            <buildArg>
-              --trace-object-instantiation=org.bouncycastle.crypto.prng.SP800SecureRandom
-            </buildArg>
           </buildArgs>
-          <resourceIncludedPatterns>
-            <include>**/*.properties</include>
-            <include>**/*.xml</include>
-            <include>**/*.yaml</include>
-            <include>**/*.yml</include>
-            <include>security/java.security</include>
-          </resourceIncludedPatterns>
         </configuration>
       </plugin>
       <plugin>

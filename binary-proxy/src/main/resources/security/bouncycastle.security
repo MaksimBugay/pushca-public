@@ -1,0 +1,2 @@
+# Register Bouncy Castle for GraalVM native-image security service analysis.
+security.provider.13=org.bouncycastle.jce.provider.BouncyCastleProvider
