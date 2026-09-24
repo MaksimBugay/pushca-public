@@ -27,6 +27,7 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -194,11 +195,10 @@ public class ApiController {
     @PostMapping(value = "/binary/private/create-url-suffix")
     public Mono<String> createPrivateUrlSuffix(@RequestBody CreatePrivateUrlSuffixRequest request) {
         return Mono.just(MessageFormat.format("{0}{1}{2}",
-                        encryptionService.encryptBytes(
+                        Base64.getUrlEncoder().withoutPadding().encodeToString(
                                 binaryProxyService.generatePrivateUrlShortSuffix(
                                         request.workspaceId(), request.binaryId()
-                                ),
-                                RuntimeException::new
+                                )
                         ),
                         MESSAGE_PARTS_DELIMITER,
                         encryptionService.encrypt(request, RuntimeException::new)

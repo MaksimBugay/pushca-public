@@ -2,6 +2,7 @@ package bmv.pushca.binary.proxy.api;
 
 import static bmv.pushca.binary.proxy.pushca.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
 import static bmv.pushca.binary.proxy.util.BinaryUtils.patchPrivateUrlSuffix;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -21,6 +22,7 @@ import java.io.File;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
+import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -107,6 +109,11 @@ class ApiControllerIntegrationTest {
         String[] suffixParts = createdSuffix.get().split(MESSAGE_PARTS_DELIMITER, 2);
         assertEquals(2, suffixParts.length);
         String binaryCoordinates = suffixParts[0];
+        assertEquals(16, binaryCoordinates.length());
+        assertArrayEquals(
+                SHORT_SUFFIX_BYTES,
+                Base64.getUrlDecoder().decode(binaryCoordinates)
+        );
         String encryptedRequest = suffixParts[1];
         String fullSuffixSavedToPushca = URLEncoder.encode(
                 encryptedRequest + "|encryption-data|owner-signature",
