@@ -16,6 +16,7 @@ import bmv.pushca.binary.proxy.api.response.PublishRemoteStreamResponse;
 import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
+import bmv.pushca.binary.proxy.pushca.exception.DownloadLimitExceededException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
@@ -37,6 +38,8 @@ import java.util.stream.Collectors;
 import bmv.pushca.binary.proxy.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpStatus;
@@ -92,6 +95,11 @@ public class ApiController {
         this.ipGeoLookupService = ipGeoLookupService;
         this.pushcaConfig = pushcaConfig;
         this.publishBinaryService = publishBinaryService;
+    }
+
+    @GetMapping(value = "/binary/download-limit-exceeded.html", produces = MediaType.TEXT_HTML_VALUE)
+    public Resource downloadLimitExceededPage() {
+        return new ClassPathResource("static/binary/download-limit-exceeded.html");
     }
 
     @PostMapping(value = "/binary/admin/recreate-ws-pool")
@@ -666,6 +674,15 @@ public class ApiController {
                                         ((CannotDownloadBinaryChunkException) throwable).binaryId,
                                         ((CannotDownloadBinaryChunkException) throwable).downloadSessionId
                                 );
+                                if (throwable.getCause() instanceof DownloadLimitExceededException) {
+                                    response.getHeaders().remove("Content-Length");
+                                    response.getHeaders().remove("Content-Type");
+                                    response.getHeaders().remove("Content-Disposition");
+                                    response.getHeaders().remove("X-Total-Size");
+                                    response.setStatusCode(HttpStatus.FOUND);
+                                    response.getHeaders().setLocation(URI.create("/binary/download-limit-exceeded.html"));
+                                    return Mono.empty();
+                                }
                                 if ((throwable.getCause() != null)
                                         && (throwable.getCause() instanceof TimeoutException)) {
                                     LOGGER.error("Failed by timeout attempt to download binary with id {}",

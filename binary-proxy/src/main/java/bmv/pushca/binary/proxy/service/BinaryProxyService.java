@@ -16,6 +16,7 @@ import bmv.pushca.binary.proxy.api.request.DownloadProtectedBinaryRequest;
 import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.exception.InvalidHumanTokenException;
+import bmv.pushca.binary.proxy.pushca.exception.DownloadLimitExceededException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
@@ -149,7 +150,7 @@ public class BinaryProxyService {
                             return Mono.error(new InvalidHumanTokenException());
                         } else {
                             return validateHumanToken(pageId, humanToken).handle((isHuman, sink) -> {
-                                if (Boolean.TRUE.equals(isHuman)) {
+                                if (isHuman) {
                                     sink.next(binaryManifest);
                                 } else {
                                     sink.error(new InvalidHumanTokenException());
@@ -221,25 +222,24 @@ public class BinaryProxyService {
                 null,
                 MessageFormat.format("Invalid chunk {0} of binary with id {1} was received",
                         String.valueOf(datagram.order()), binaryId),
-                () -> sendUploadBinaryAppeal(
-                        workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order())
-                ),
+                () -> requestBinaryChunkAppeal(workspaceId, binaryId, datagram.order(),
+                        concatParts(datagramId, downloadSessionId), pendingChunks),
                 microserviceConfiguration.responseTimeoutMs,
                 (maxOrder + 1L) * microserviceConfiguration.responseTimeoutMs
         );
 
         final String waiterId = concatParts(datagramId, downloadSessionId);
 
-        responseWaiter.whenComplete((bytes, error) -> {
+        responseWaiter.whenComplete((_, error) -> {
             if (error == null) {
                 pendingChunks.remove(waiterId);
                 if (datagram.order() < maxOrder) {
                     final String nextDatagramId =
                             buildDatagramId(binaryId, datagram.order() + 1, pushcaClientHashCode);
-                    sendUploadBinaryAppeal(
-                            workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(datagram.order() + 1)
-                    );
-                    websocketPool.activateResponseWaiter(concatParts(nextDatagramId, downloadSessionId));
+                    String nextWaiterId = concatParts(nextDatagramId, downloadSessionId);
+                    websocketPool.activateResponseWaiter(nextWaiterId);
+                    requestBinaryChunkAppeal(workspaceId, binaryId, datagram.order() + 1,
+                            nextWaiterId, pendingChunks);
                 } else {
                     websocketPool.removeDownloadSession(binaryId, downloadSessionId);
                 }
@@ -252,14 +252,34 @@ public class BinaryProxyService {
         pendingChunks.add(waiterId);
 
         if (datagram.order() == 0) {
-            sendUploadBinaryAppeal(
-                    workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(0)
-            );
             websocketPool.registerDownloadSession(binaryId, downloadSessionId);
             websocketPool.activateResponseWaiter(waiterId);
+            requestBinaryChunkAppeal(workspaceId, binaryId, 0, waiterId, pendingChunks);
         }
 
         return responseWaiter;
+    }
+
+    private void requestBinaryChunkAppeal(String workspaceId, String binaryId, int order,
+                                         String chunkWaiterId, ConcurrentLinkedQueue<String> pendingChunks) {
+        // Register the command response before sending: a rejection arrives against the command ID,
+        // while the binary payload arrives against the chunk/session ID.
+        String commandId = ID_GENERATOR.generate().toString();
+        ResponseWaiter<Boolean> commandWaiter = new ResponseWaiter<>(microserviceConfiguration.responseTimeoutMs);
+        commandWaiter.whenComplete((_, error) -> {
+            pendingChunks.remove(commandId);
+            if (error instanceof DownloadLimitExceededException) {
+                websocketPool.completeWithError(chunkWaiterId, error);
+            }
+        });
+        pendingChunks.add(commandId);
+        websocketPool.registerResponseWaiter(commandId, commandWaiter);
+        try {
+            sendUploadBinaryAppeal(commandId, workspaceId, binaryId, DEFAULT_CHUNK_SIZE, false, List.of(order));
+        } catch (RuntimeException error) {
+            websocketPool.completeWithError(commandId, error);
+            websocketPool.completeWithError(chunkWaiterId, error);
+        }
     }
 
     public void removeDownloadSession(String binaryId, String sessionId) {
@@ -303,6 +323,11 @@ public class BinaryProxyService {
 
     public void sendUploadBinaryAppeal(String workspaceId, String binaryId, int chunkSize,
                                        boolean manifestOnly, List<Integer> requestedChunks) {
+        sendUploadBinaryAppeal(null, workspaceId, binaryId, chunkSize, manifestOnly, requestedChunks);
+    }
+
+    private void sendUploadBinaryAppeal(String commandId, String workspaceId, String binaryId, int chunkSize,
+                                       boolean manifestOnly, List<Integer> requestedChunks) {
         final ClientSearchData ownerFilter = buildClientFilter(workspaceId, false);
         Map<String, Object> metaData = new HashMap<>();
         metaData.put("owner", ownerFilter);
@@ -311,7 +336,7 @@ public class BinaryProxyService {
         metaData.put("manifestOnly", manifestOnly);
         metaData.put("requestedChunks", requestedChunks);
 
-        websocketPool.sendCommand(null, SEND_UPLOAD_BINARY_APPEAL, metaData);
+        websocketPool.sendCommand(commandId, SEND_UPLOAD_BINARY_APPEAL, metaData);
     }
 
 }

@@ -5,6 +5,11 @@ import static bmv.pushca.binary.proxy.util.BinaryUtils.patchPrivateUrlSuffix;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,21 +18,28 @@ import bmv.pushca.binary.proxy.api.request.CreatePrivateUrlSuffixRequest;
 import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.config.SecurityConfig;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
+import bmv.pushca.binary.proxy.pushca.exception.DownloadLimitExceededException;
+import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
+import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.IpGeoLookupService;
 import bmv.pushca.binary.proxy.service.PageIdService;
 import bmv.pushca.binary.proxy.service.PublishBinaryService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
+
 import java.io.File;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.context.annotation.Import;
@@ -81,6 +93,48 @@ class ApiControllerIntegrationTest {
     }
 
     @Test
+    void redirectsToDownloadLimitPageWithoutDownloadHeaders() {
+        var datagram = new Datagram(3, "hash", null, 0);
+        var manifest = new BinaryManifest(
+                "binary-a", "file.zip", "application/zip", null,
+                List.of(datagram), null, null, "session-a");
+        when(binaryProxyService.requestBinaryManifestWithHumanOnlyCheck(
+                eq("workspace-a"), eq("binary-a"),
+                isNull(), isNull(),
+                any()))
+                .thenReturn(Mono.just(manifest));
+        when(binaryProxyService.requestBinaryChunk(
+                anyString(), anyString(),
+                anyString(), any(),
+                anyInt(), any()))
+                .thenReturn(CompletableFuture.failedFuture(
+                        new DownloadLimitExceededException()));
+
+        client.get().uri("/binary/workspace-a/binary-a").exchange()
+                .expectStatus().isFound()
+                .expectHeader().location("/binary/download-limit-exceeded.html")
+                .expectHeader().doesNotExist("Content-Disposition")
+                .expectHeader().doesNotExist("X-Total-Size")
+                .expectBody().isEmpty();
+        verify(binaryProxyService).removeDownloadSession("binary-a", "session-a");
+    }
+
+    @Test
+    void servesDownloadLimitErrorPage() {
+        client.get().uri("/binary/download-limit-exceeded.html").exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentTypeCompatibleWith(MediaType.TEXT_HTML)
+                .expectBody(String.class).value(
+                        body -> {
+                            assertNotNull(body);
+                            assertTrue(
+                                    body.contains("Download limit for this file has been reached")
+                            );
+                        }
+                );
+    }
+
+    @Test
     void createsPrivateSuffixAndUnfoldsItIntoFullUrlUsingPushcaLookup() throws Exception {
         CreatePrivateUrlSuffixRequest request = new CreatePrivateUrlSuffixRequest(
                 "workspace-a",
@@ -92,7 +146,7 @@ class ApiControllerIntegrationTest {
                 .thenReturn(SHORT_SUFFIX_BYTES);
         when(binaryProxyService.getPrivateUrlSuffix(anyString()))
                 .thenAnswer(invocation -> CompletableFuture.completedFuture(
-                        suffixesSavedToPushca.get(invocation.getArgument(0))
+                        suffixesSavedToPushca.get(invocation.getArgument(0, String.class))
                 ));
 
         AtomicReference<String> createdSuffix = new AtomicReference<>();
@@ -135,9 +189,9 @@ class ApiControllerIntegrationTest {
                 .expectHeader().location(
                         "/protected-binary.html?suffix="
                                 + URLEncoder.encode(
-                                        patchPrivateUrlSuffix(fullSuffixSavedToPushca),
-                                        StandardCharsets.UTF_8
-                                )
+                                patchPrivateUrlSuffix(fullSuffixSavedToPushca),
+                                StandardCharsets.UTF_8
+                        )
                                 + "&workspace=" + request.workspaceId()
                 );
         verify(binaryProxyService).getPrivateUrlSuffix(binaryCoordinates);

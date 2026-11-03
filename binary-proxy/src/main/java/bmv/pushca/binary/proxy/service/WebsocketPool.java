@@ -24,6 +24,7 @@ import bmv.pushca.binary.proxy.pushca.connection.NettyWsClient;
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.connection.model.BinaryWithHeader;
 import bmv.pushca.binary.proxy.pushca.connection.model.SimpleWsResponse;
+import bmv.pushca.binary.proxy.pushca.exception.DownloadLimitExceededException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.Command;
 import bmv.pushca.binary.proxy.pushca.model.PClient;
@@ -68,8 +69,7 @@ public class WebsocketPool implements DisposableBean {
 
     private final AtomicBoolean poolIsReady = new AtomicBoolean(false);
 
-    @SuppressWarnings("rawtypes")
-    private final Map<String, ResponseWaiter> waitingHall = new ConcurrentMapWithEvictionAndKeyTtl<>(
+    private final Map<String, ResponseWaiter<?>> waitingHall = new ConcurrentMapWithEvictionAndKeyTtl<>(
             100_000,
             Duration.ofMinutes(30).toMillis()
     );
@@ -276,6 +276,10 @@ public class WebsocketPool implements DisposableBean {
                 if (parts.length > 2) {
                     try {
                         SimpleWsResponse wsResponse = fromJson(parts[2], SimpleWsResponse.class);
+                        if (DownloadLimitExceededException.CODE.equals(wsResponse.error())) {
+                            completeWithError(parts[0], new DownloadLimitExceededException());
+                            return;
+                        }
                         byte[] rawResponse = Base64.getDecoder().decode(wsResponse.body());
                         String json = new String(rawResponse, StandardCharsets.UTF_8);
                         BooleanResponse response = fromJson(json, BooleanResponse.class);
@@ -327,7 +331,7 @@ public class WebsocketPool implements DisposableBean {
             throw new IllegalStateException("WebsocketPool is shutting down");
         }
         // Use single atomic compute() to avoid race condition between putIfAbsent and computeIfPresent
-        activeDownloadSessions.compute(binaryId, (id, existingList) -> {
+        activeDownloadSessions.compute(binaryId, (_, existingList) -> {
             CopyOnWriteArrayList<String> list = (existingList != null) ?
                     (CopyOnWriteArrayList<String>) existingList
                     :
@@ -340,7 +344,7 @@ public class WebsocketPool implements DisposableBean {
     public void removeDownloadSession(String binaryId, String sessionId) {
         // Use compute() instead of computeIfPresent() to prevent race condition:
         // Another thread could call registerDownloadSession between isEmpty() check and entry removal
-        activeDownloadSessions.compute(binaryId, (id, uuids) -> {
+        activeDownloadSessions.compute(binaryId, (_, uuids) -> {
             if (uuids == null) {
                 return null;
             }
@@ -375,7 +379,7 @@ public class WebsocketPool implements DisposableBean {
         if (shuttingDown.get()) {
             throw new IllegalStateException("WebsocketPool is shutting down");
         }
-        waitingHall.computeIfPresent(waiterId, (wId, waiter) -> {
+        waitingHall.computeIfPresent(waiterId, (_, waiter) -> {
             waiter.activate();
             return waiter;
         });
@@ -391,13 +395,12 @@ public class WebsocketPool implements DisposableBean {
      * IMPORTANT: Callbacks are executed OUTSIDE the map operation to prevent
      * ConcurrentModificationException if callbacks re-enter the map.
      */
-    @SuppressWarnings({"rawtypes"})
     public <T> void completeWithResponse(String id, T responseObject) {
         // Capture waiter atomically, then execute callbacks outside the map operation
-        ResponseWaiter[] waiterHolder = new ResponseWaiter[1];
+        ResponseWaiter<?>[] waiterHolder = new ResponseWaiter<?>[1];
         boolean[] shouldComplete = new boolean[1];
 
-        waitingHall.computeIfPresent(id, (wId, waiter) -> {
+        waitingHall.computeIfPresent(id, (_, waiter) -> {
             if (waiter.isDone() || waiter.isNotActivated()) {
                 return waiter;
             }
@@ -410,7 +413,10 @@ public class WebsocketPool implements DisposableBean {
 
         // Execute callbacks OUTSIDE the map operation to prevent re-entrancy issues
         if (shouldComplete[0]) {
-            ResponseWaiter waiter = waiterHolder[0];
+            // The protocol's correlation ID associates this response with the registered type.
+            // Keep the unchecked cast at this boundary of the heterogeneous registry.
+            @SuppressWarnings("unchecked")
+            ResponseWaiter<T> waiter = (ResponseWaiter<T>) waiterHolder[0];
             try {
                 if (waiter.isResponseValid(responseObject)) {
                     waiter.complete(responseObject);
@@ -436,12 +442,11 @@ public class WebsocketPool implements DisposableBean {
      * IMPORTANT: Callbacks are executed OUTSIDE the map operation to prevent
      * ConcurrentModificationException if callbacks re-enter the map.
      */
-    @SuppressWarnings("rawtypes")
     public void completeWithTimeout(String id) {
         // Capture waiter atomically, then execute callbacks outside the map operation
-        ResponseWaiter[] waiterHolder = new ResponseWaiter[1];
+        ResponseWaiter<?>[] waiterHolder = new ResponseWaiter<?>[1];
 
-        waitingHall.computeIfPresent(id, (wId, waiter) -> {
+        waitingHall.computeIfPresent(id, (_, waiter) -> {
             if (!waiter.isDone()) {
                 waiterHolder[0] = waiter;
                 return null; // Remove from map
@@ -456,6 +461,13 @@ public class WebsocketPool implements DisposableBean {
             } catch (Exception e) {
                 LOGGER.error("Error completing timeout for waiter id = {}", id, e);
             }
+        }
+    }
+
+    public void completeWithError(String id, Throwable error) {
+        ResponseWaiter<?> waiter = waitingHall.remove(id);
+        if (waiter != null) {
+            waiter.completeExceptionally(error);
         }
     }
 
@@ -491,6 +503,7 @@ public class WebsocketPool implements DisposableBean {
         }
     }
 
+    @SuppressWarnings("unused")
     public CompletableFuture<Void> runAsynchronously(Runnable task) {
         if (shuttingDown.get()) {
             throw new IllegalStateException("WebsocketPool is shutting down");
@@ -632,7 +645,7 @@ public class WebsocketPool implements DisposableBean {
         }
         IllegalStateException shutdownException =
                 new IllegalStateException("WebsocketPool is shutting down");
-        waitingHall.forEach((id, waiter) -> {
+        waitingHall.forEach((_, waiter) -> {
             if (!waiter.isDone()) {
                 waiter.completeExceptionally(shutdownException);
             }
