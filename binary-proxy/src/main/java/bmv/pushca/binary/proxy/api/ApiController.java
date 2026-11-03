@@ -607,7 +607,12 @@ public class ApiController {
                 pageId,
                 humanToken,
                 response::setStatusCode
-        ).onErrorResume(BinaryNotFoundException.class, _ -> Mono.empty());
+        ).onErrorResume(BinaryNotFoundException.class, _ -> {
+            response.setStatusCode(HttpStatus.FOUND);
+            response.getHeaders().setLocation(URI.create(
+                    "/binary/download-limit-exceeded.html?error=" + BinaryNotFoundException.CODE));
+            return Mono.empty();
+        });
     }
 
     private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId,

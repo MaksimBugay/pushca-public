@@ -119,7 +119,7 @@ class ApiControllerIntegrationTest {
     }
 
     @Test
-    void missingManifestAndDescriptionReturnNotFound() {
+    void missingManifestRedirectsAndDescriptionReturnsNotFound() {
         when(binaryProxyService.requestBinaryManifestWithHumanOnlyCheck(
                 eq("workspace-a"), eq("missing"), isNull(), isNull(), any()))
                 .thenAnswer(invocation -> {
@@ -131,7 +131,14 @@ class ApiControllerIntegrationTest {
         when(binaryProxyService.requestBinaryManifest("workspace-a", "missing"))
                 .thenReturn(CompletableFuture.failedFuture(new BinaryNotFoundException()));
         client.get().uri("/binary/m/workspace-a/missing").exchange()
-                .expectStatus().isNotFound().expectBody().isEmpty();
+                .expectStatus().isFound()
+                .expectHeader().location("/binary/download-limit-exceeded.html?error=binary-not-found")
+                .expectBody().isEmpty();
+        client.post().uri("/binary/m/public").contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(java.util.Map.of("workspaceId", "workspace-a", "binaryId", "missing"))
+                .exchange().expectStatus().isFound()
+                .expectHeader().location("/binary/download-limit-exceeded.html?error=binary-not-found")
+                .expectBody().isEmpty();
         client.get().uri("/binary/binary-manifest/workspace-a/missing").exchange()
                 .expectStatus().isNotFound().expectBody().isEmpty();
     }
