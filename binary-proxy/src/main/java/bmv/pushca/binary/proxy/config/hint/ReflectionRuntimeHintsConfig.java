@@ -26,7 +26,6 @@ import bmv.pushca.binary.proxy.pushca.model.UploadBinaryAppeal;
 import bmv.pushca.binary.proxy.pushca.model.WsGatewayRateLimitCheckData;
 import java.util.HashSet;
 
-import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.aot.hint.TypeReference;
@@ -35,7 +34,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ImportRuntimeHints;
 
 @Configuration
-@ImportRuntimeHints(ReflectionRuntimeHintsConfig.NettyRuntimeHints.class)
+@ImportRuntimeHints({
+    ReflectionRuntimeHintsConfig.NettyRuntimeHints.class,
+    ReflectionRuntimeHintsConfig.StaticResourcesRuntimeHints.class
+})
 @RegisterReflectionForBinding(
     {
         BinaryManifest.class,
@@ -67,19 +69,25 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 )
 public class ReflectionRuntimeHintsConfig {
 
+  static class StaticResourcesRuntimeHints implements RuntimeHintsRegistrar {
+
+    @Override
+    public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+      hints.resources().registerPattern("static/binary/download-limit-exceeded.html");
+    }
+  }
+
   static class NettyRuntimeHints implements RuntimeHintsRegistrar {
 
     @Override
     public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+      // Spring 7 includes member introspection when a type hint is registered.
       hints.reflection().registerType(
-          TypeReference.of("io.netty.util.ReferenceCountUtil"),
-          MemberCategory.INTROSPECT_DECLARED_METHODS);
+          TypeReference.of("io.netty.util.ReferenceCountUtil"));
       hints.reflection().registerType(
-          TypeReference.of("io.netty.buffer.AbstractByteBufAllocator"),
-          MemberCategory.INTROSPECT_DECLARED_METHODS);
+          TypeReference.of("io.netty.buffer.AbstractByteBufAllocator"));
       hints.reflection().registerType(
-          TypeReference.of("io.netty.buffer.AdvancedLeakAwareByteBuf"),
-          MemberCategory.INTROSPECT_DECLARED_METHODS);
+          TypeReference.of("io.netty.buffer.AdvancedLeakAwareByteBuf"));
     }
   }
 }

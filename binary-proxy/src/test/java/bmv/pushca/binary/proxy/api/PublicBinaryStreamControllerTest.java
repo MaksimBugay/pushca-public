@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import bmv.pushca.binary.proxy.pushca.exception.BinaryNotFoundException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
@@ -46,6 +47,20 @@ class PublicBinaryStreamControllerTest {
             data.get(invocation.<Datagram>getArgument(3).order())));
     client = WebTestClient.bindToController(controller,
         new ApiController(pool, service, null, null, null, null, null)).build();
+  }
+
+  @Test
+  void missingManifestRedirectsBeforeFetchingChunks() {
+    when(service.requestBinaryManifestWithHumanOnlyCheck(eq("workspace"), eq("video"),
+        any(), any(), any())).thenReturn(Mono.error(new BinaryNotFoundException()));
+
+    client.get().uri("/binary/stream/workspace/video/video.mp4").exchange()
+        .expectStatus().isFound()
+        .expectHeader().location("/binary/download-limit-exceeded.html?error=binary-not-found")
+        .expectBody().isEmpty();
+
+    verify(chunkService, never()).requestBinaryChunk(any(), any(), any(), any(), any());
+    verify(service).removeDownloadSession(eq("video"), anyString());
   }
 
   @ParameterizedTest

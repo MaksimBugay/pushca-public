@@ -19,6 +19,7 @@ import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.config.SecurityConfig;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.DownloadLimitExceededException;
+import bmv.pushca.binary.proxy.pushca.exception.BinaryNotFoundException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
@@ -90,6 +91,49 @@ class ApiControllerIntegrationTest {
                 .toString() + File.separator;
         registry.add("binary-proxy.encryption.keys.path", () -> keysPath);
         registry.add("binary-proxy.encryption.private-key.pwd", () -> "password123");
+    }
+
+    @Test
+    void missingFileRedirectsToSharedErrorPage() {
+        when(binaryProxyService.requestBinaryManifestWithHumanOnlyCheck(
+                eq("workspace-a"), eq("missing"), isNull(), isNull(), any()))
+                .thenReturn(Mono.error(new BinaryNotFoundException()));
+        client.get().uri("/binary/workspace-a/missing").exchange()
+                .expectStatus().isFound()
+                .expectHeader().location("/binary/download-limit-exceeded.html?error=binary-not-found")
+                .expectBody().isEmpty();
+    }
+
+    @Test
+    void sharedErrorPageDisplaysNotFoundMessage() {
+        client.get().uri("/binary/download-limit-exceeded.html?error=binary-not-found").exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentTypeCompatibleWith(MediaType.TEXT_HTML)
+                .expectBody(String.class).value(body -> {
+                    assertNotNull(body);
+                    assertTrue(body.contains("This file could not be found"));
+                    assertTrue(body.contains("File not found | Secure FileShare"));
+                    org.junit.jupiter.api.Assertions.assertFalse(
+                            body.contains("Download limit for this file has been reached"));
+                });
+    }
+
+    @Test
+    void missingManifestAndDescriptionReturnNotFound() {
+        when(binaryProxyService.requestBinaryManifestWithHumanOnlyCheck(
+                eq("workspace-a"), eq("missing"), isNull(), isNull(), any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Consumer<org.springframework.http.HttpStatus> statusConsumer =
+                            invocation.getArgument(4);
+                    statusConsumer.accept(org.springframework.http.HttpStatus.NOT_FOUND);
+                    return Mono.error(new BinaryNotFoundException());
+                });
+        when(binaryProxyService.requestBinaryManifest("workspace-a", "missing"))
+                .thenReturn(CompletableFuture.failedFuture(new BinaryNotFoundException()));
+        client.get().uri("/binary/m/workspace-a/missing").exchange()
+                .expectStatus().isNotFound().expectBody().isEmpty();
+        client.get().uri("/binary/binary-manifest/workspace-a/missing").exchange()
+                .expectStatus().isNotFound().expectBody().isEmpty();
     }
 
     @Test

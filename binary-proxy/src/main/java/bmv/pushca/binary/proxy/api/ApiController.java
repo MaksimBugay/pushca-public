@@ -17,11 +17,13 @@ import bmv.pushca.binary.proxy.config.PushcaConfig;
 import bmv.pushca.binary.proxy.encryption.EncryptionService;
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
 import bmv.pushca.binary.proxy.pushca.exception.DownloadLimitExceededException;
+import bmv.pushca.binary.proxy.pushca.exception.BinaryNotFoundException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.util.NetworkUtils;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
@@ -39,7 +41,6 @@ import bmv.pushca.binary.proxy.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpStatus;
@@ -98,8 +99,15 @@ public class ApiController {
     }
 
     @GetMapping(value = "/binary/download-limit-exceeded.html", produces = MediaType.TEXT_HTML_VALUE)
-    public Resource downloadLimitExceededPage() {
-        return new ClassPathResource("static/binary/download-limit-exceeded.html");
+    public String downloadLimitExceededPage(@RequestParam(value = "error", required = false) String error)
+            throws IOException {
+        String page = new ClassPathResource("static/binary/download-limit-exceeded.html")
+                .getContentAsString(StandardCharsets.UTF_8);
+        if (BinaryNotFoundException.CODE.equals(error)) {
+            return page.replace("Download limit reached | Secure FileShare", "File not found | Secure FileShare")
+                    .replace("Download limit for this file has been reached", "This file could not be found");
+        }
+        return page;
     }
 
     @PostMapping(value = "/binary/admin/recreate-ws-pool")
@@ -486,7 +494,10 @@ public class ApiController {
                         : "No description")
                 .onErrorResume(
                         throwable -> {
-                            if ((throwable.getCause() != null)
+                            if (throwable instanceof BinaryNotFoundException) {
+                                response.setStatusCode(HttpStatus.NOT_FOUND);
+                                return Mono.empty();
+                            } else if ((throwable.getCause() != null)
                                     && (throwable.getCause() instanceof TimeoutException)) {
                                 LOGGER.error("Failed by timeout attempt to download manifest for binary with id {}",
                                         binaryId, throwable);
@@ -596,7 +607,7 @@ public class ApiController {
                 pageId,
                 humanToken,
                 response::setStatusCode
-        );
+        ).onErrorResume(BinaryNotFoundException.class, _ -> Mono.empty());
     }
 
     private Flux<byte[]> serveBinaryAsStream(String workspaceId, String binaryId,
@@ -611,8 +622,6 @@ public class ApiController {
                         humanToken,
                         response::setStatusCode
                 )
-                .onErrorResume(throwable -> Mono.error(
-                        new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
                 .flatMapMany(binaryManifest -> {
                             String mimeType = binaryManifest.mimeType();
                             if ((mimeType == null) || forceOctetStreamType) {
@@ -669,6 +678,12 @@ public class ApiController {
                 )
                 .onErrorResume(
                         throwable -> {
+                            if (throwable instanceof BinaryNotFoundException) {
+                                response.setStatusCode(HttpStatus.FOUND);
+                                response.getHeaders().setLocation(URI.create(
+                                        "/binary/download-limit-exceeded.html?error=" + BinaryNotFoundException.CODE));
+                                return Mono.empty();
+                            }
                             if (throwable instanceof CannotDownloadBinaryChunkException) {
                                 binaryProxyService.removeDownloadSession(
                                         ((CannotDownloadBinaryChunkException) throwable).binaryId,

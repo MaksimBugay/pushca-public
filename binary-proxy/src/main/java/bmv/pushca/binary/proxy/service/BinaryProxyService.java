@@ -17,6 +17,7 @@ import bmv.pushca.binary.proxy.config.MicroserviceConfiguration;
 import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.exception.InvalidHumanTokenException;
 import bmv.pushca.binary.proxy.pushca.exception.DownloadLimitExceededException;
+import bmv.pushca.binary.proxy.pushca.exception.BinaryNotFoundException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.ClientSearchData;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
@@ -167,6 +168,8 @@ public class BinaryProxyService {
                         LOGGER.error("Failed by timeout attempt to download binary with id {}",
                                 binaryIdString, throwable);
                         httpStatusConsumer.accept(HttpStatus.NOT_FOUND);
+                    } else if (throwable instanceof BinaryNotFoundException) {
+                        httpStatusConsumer.accept(HttpStatus.NOT_FOUND);
                     } else if (throwable instanceof InvalidHumanTokenException) {
                         LOGGER.warn("Invalid human token: page id {}, token {}", pageId, humanToken);
                         httpStatusConsumer.accept(HttpStatus.FORBIDDEN);
@@ -176,6 +179,8 @@ public class BinaryProxyService {
                             if ((throwable.getCause() != null)
                                     && (throwable.getCause() instanceof TimeoutException)) {
                                 return Mono.empty();
+                            } else if (throwable instanceof BinaryNotFoundException) {
+                                return Mono.error(throwable);
                             } else if (throwable instanceof InvalidHumanTokenException) {
                                 return Mono.empty();
                             } else {
@@ -202,13 +207,26 @@ public class BinaryProxyService {
 
     public CompletableFuture<BinaryManifest> requestBinaryManifest(String workspaceId,
                                                                    String binaryId) {
-        sendUploadBinaryAppeal(
-                workspaceId, binaryId, DEFAULT_CHUNK_SIZE, true, null
-        );
-
-        return websocketPool.registerResponseWaiter(
+        String commandId = ID_GENERATOR.generate().toString();
+        ResponseWaiter<BinaryManifest> manifestWaiter = websocketPool.registerResponseWaiter(
                 binaryId, microserviceConfiguration.responseTimeoutMs
         );
+        ResponseWaiter<Boolean> commandWaiter = new ResponseWaiter<>(microserviceConfiguration.responseTimeoutMs);
+        commandWaiter.whenComplete((_, error) -> {
+            if (error instanceof BinaryNotFoundException) {
+                websocketPool.completeWithError(binaryId, error);
+            }
+        });
+        websocketPool.registerResponseWaiter(commandId, commandWaiter);
+        manifestWaiter.whenComplete((_, _) -> websocketPool.removeResponseWaiter(commandId));
+        // Both waiters must exist before sending, including when Pushca responds immediately.
+        try {
+            sendUploadBinaryAppeal(commandId, workspaceId, binaryId, DEFAULT_CHUNK_SIZE, true, null);
+        } catch (RuntimeException error) {
+            websocketPool.completeWithError(commandId, error);
+            websocketPool.completeWithError(binaryId, error);
+        }
+        return manifestWaiter;
     }
 
     public CompletableFuture<byte[]> requestBinaryChunk(String workspaceId, String downloadSessionId,

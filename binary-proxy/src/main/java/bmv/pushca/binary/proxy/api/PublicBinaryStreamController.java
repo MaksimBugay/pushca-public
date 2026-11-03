@@ -4,12 +4,14 @@ import static bmv.pushca.binary.proxy.util.BinaryUtils.canPlayTypeInBrowser;
 import static org.apache.commons.lang3.StringUtils.isNotEmpty;
 
 import bmv.pushca.binary.proxy.pushca.exception.CannotDownloadBinaryChunkException;
+import bmv.pushca.binary.proxy.pushca.exception.BinaryNotFoundException;
 import bmv.pushca.binary.proxy.pushca.model.Datagram;
 import bmv.pushca.binary.proxy.pushca.util.NetworkUtils;
 import bmv.pushca.binary.proxy.service.BinaryProxyService;
 import bmv.pushca.binary.proxy.service.PublicBinaryChunkService;
 import bmv.pushca.binary.proxy.service.WebsocketPool;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -59,7 +61,7 @@ public class PublicBinaryStreamController {
     public Flux<byte[]> servePublicBinaryAsStreamWithName(
             @PathVariable("workspaceId") String workspaceId,
             @PathVariable("binaryId") String binaryId,
-            @PathVariable("binaryName") String binaryName,
+            @PathVariable("binaryName") String ignoredBinaryName,
             @RequestHeader(value = "X-Forwarded-For", required = false) String xForwardedFor,
             @RequestHeader(value = "X-Real-IP", required = false) String xRealIp,
             @RequestParam(value = "page-id", required = false) String pageId,
@@ -82,8 +84,6 @@ public class PublicBinaryStreamController {
                         humanToken,
                         response::setStatusCode
                 )
-                .onErrorResume(throwable -> Mono.error(
-                        new RuntimeException("Error fetching binary manifest: " + binaryId, throwable)))
                 .flatMapMany(binaryManifest -> {
                             String mimeType = binaryManifest.mimeType();
                             if (mimeType == null || "true".equals(forDownloadOnly)) {
@@ -177,6 +177,12 @@ public class PublicBinaryStreamController {
                 )
                 .onErrorResume(
                         throwable -> {
+                            if (throwable instanceof BinaryNotFoundException) {
+                                response.setStatusCode(HttpStatus.FOUND);
+                                response.getHeaders().setLocation(URI.create(
+                                        "/binary/download-limit-exceeded.html?error=" + BinaryNotFoundException.CODE));
+                                return Mono.empty();
+                            }
                             if (throwable instanceof CannotDownloadBinaryChunkException) {
                                 if ((throwable.getCause() != null)
                                         && (throwable.getCause() instanceof TimeoutException)) {

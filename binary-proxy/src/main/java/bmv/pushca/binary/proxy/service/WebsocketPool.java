@@ -25,6 +25,7 @@ import bmv.pushca.binary.proxy.pushca.connection.PushcaWsClientFactory;
 import bmv.pushca.binary.proxy.pushca.connection.model.BinaryWithHeader;
 import bmv.pushca.binary.proxy.pushca.connection.model.SimpleWsResponse;
 import bmv.pushca.binary.proxy.pushca.exception.DownloadLimitExceededException;
+import bmv.pushca.binary.proxy.pushca.exception.BinaryNotFoundException;
 import bmv.pushca.binary.proxy.pushca.model.BinaryManifest;
 import bmv.pushca.binary.proxy.pushca.model.Command;
 import bmv.pushca.binary.proxy.pushca.model.PClient;
@@ -278,6 +279,10 @@ public class WebsocketPool implements DisposableBean {
                         SimpleWsResponse wsResponse = fromJson(parts[2], SimpleWsResponse.class);
                         if (DownloadLimitExceededException.CODE.equals(wsResponse.error())) {
                             completeWithError(parts[0], new DownloadLimitExceededException());
+                            return;
+                        }
+                        if (BinaryNotFoundException.CODE.equals(wsResponse.error())) {
+                            completeWithError(parts[0], new BinaryNotFoundException());
                             return;
                         }
                         byte[] rawResponse = Base64.getDecoder().decode(wsResponse.body());
