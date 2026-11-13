@@ -5,7 +5,7 @@
   <groupId>io.github.maksimbugay</groupId>
   <artifactId>pushca-client</artifactId>
   <packaging>jar</packaging>
-  <version>1.3.8</version>
+  <version>1.5.0</version>
   <name>pushca-client</name>
   <url>https://github.com/MaksimBugay/pushca-public/tree/master/client/java</url>
   <description>
@@ -42,25 +42,55 @@
   </developers>
 
   <properties>
-    <java.version>8</java.version>
-    <maven.compiler.source>8</maven.compiler.source>
-    <maven.compiler.target>8</maven.compiler.target>
-    <fasterxml.jackson.version>2.16.1</fasterxml.jackson.version>
+    <!-- Jackson 3.x requires Java 17+ -->
+    <java.version>17</java.version>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+    <!-- Main dependencies -->
+    <java-websocket.version>1.6.0</java-websocket.version>
+    <jetbrains-annotations.version>26.1.0</jetbrains-annotations.version>
+    <apache.commons.lang3.version>3.22.0</apache.commons.lang3.version>
+    <commons-io.version>2.22.0</commons-io.version>
+    <fasterxml.jackson.version>3.2.4</fasterxml.jackson.version>
+    <java-uuid-generator.version>5.2.0</java-uuid-generator.version>
+
+    <!-- Test dependencies -->
+    <slf4j.version>2.0.20</slf4j.version>
+    <junit-jupiter.version>6.1.3</junit-jupiter.version>
+    <mockito.version>5.24.0</mockito.version>
+
+    <!-- Plugin versions -->
+    <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
+    <maven-surefire-plugin.version>3.6.1</maven-surefire-plugin.version>
+    <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
+    <maven-assembly-plugin.version>3.8.0</maven-assembly-plugin.version>
+    <nexus-staging-maven-plugin.version>1.7.0</nexus-staging-maven-plugin.version>
+    <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
+    <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
+    <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
   </properties>
 
   <dependencyManagement>
     <dependencies>
       <dependency>
-        <groupId>com.fasterxml.jackson</groupId>
+        <groupId>tools.jackson</groupId>
         <artifactId>jackson-bom</artifactId>
         <version>${fasterxml.jackson.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
       <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit-jupiter.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
         <groupId>org.mockito</groupId>
         <artifactId>mockito-bom</artifactId>
-        <version>4.8.1</version>
+        <version>${mockito.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -76,39 +106,34 @@
     <dependency>
       <groupId>org.java-websocket</groupId>
       <artifactId>Java-WebSocket</artifactId>
-      <version>1.5.6</version>
+      <version>${java-websocket.version}</version>
     </dependency>
     <dependency>
       <groupId>org.jetbrains</groupId>
       <artifactId>annotations</artifactId>
-      <version>13.0</version>
+      <version>${jetbrains-annotations.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-lang3</artifactId>
-      <version>3.14.0</version>
+      <version>${apache.commons.lang3.version}</version>
     </dependency>
     <dependency>
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
-      <version>2.15.1</version>
+      <version>${commons-io.version}</version>
     </dependency>
     <dependency>
-      <groupId>com.fasterxml.jackson.dataformat</groupId>
+      <groupId>tools.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>tools.jackson.dataformat</groupId>
       <artifactId>jackson-dataformat-xml</artifactId>
     </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.datatype</groupId>
-      <artifactId>jackson-datatype-jdk8</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.datatype</groupId>
-      <artifactId>jackson-datatype-jsr310</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.module</groupId>
-      <artifactId>jackson-module-parameter-names</artifactId>
-    </dependency>
+    <!-- In Jackson 3.x, jdk8, jsr310, and parameter-names modules are merged into jackson-databind -->
+    <!-- Annotations still use com.fasterxml.jackson.annotation package for backward compatibility -->
+    <!-- Version managed by tools.jackson:jackson-bom -->
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-annotations</artifactId>
@@ -116,28 +141,22 @@
     <dependency>
       <groupId>com.fasterxml.uuid</groupId>
       <artifactId>java-uuid-generator</artifactId>
-      <version>4.2.0</version>
+      <version>${java-uuid-generator.version}</version>
     </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-simple</artifactId>
-      <version>2.0.11</version>
+      <version>${slf4j.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-api</artifactId>
-      <version>5.9.1</version>
+      <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.mockito</groupId>
       <artifactId>mockito-core</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.mockito</groupId>
-      <artifactId>mockito-inline</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -151,18 +170,30 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.0.0-M7</version>
-        <dependencies>
-          <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
-            <version>5.9.1</version>
-          </dependency>
-        </dependencies>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${maven-compiler-plugin.version}</version>
       </plugin>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${maven-surefire-plugin.version}</version>
+      </plugin>
+      <!-- Local test applications are not part of the published library -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>${maven-jar-plugin.version}</version>
+        <configuration>
+          <excludes>
+            <exclude>bmv/org/pushca/PApplication*.class</exclude>
+            <exclude>bmv/org/pushca/ChannelTestApplication*.class</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-assembly-plugin</artifactId>
+        <version>${maven-assembly-plugin.version}</version>
         <configuration>
           <archive>
             <manifest>
@@ -196,8 +227,7 @@
           <plugin>
             <groupId>org.sonatype.plugins</groupId>
             <artifactId>nexus-staging-maven-plugin</artifactId>
-            <!--<version>1.6.7</version>-->
-            <version>1.6.13</version>
+            <version>${nexus-staging-maven-plugin.version}</version>
             <extensions>true</extensions>
             <configuration>
               <serverId>ossrh</serverId>
@@ -208,7 +238,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-source-plugin</artifactId>
-            <version>2.2.1</version>
+            <version>${maven-source-plugin.version}</version>
             <executions>
               <execution>
                 <id>attach-sources</id>
@@ -217,11 +247,17 @@
                 </goals>
               </execution>
             </executions>
+            <configuration>
+              <excludes>
+                <exclude>bmv/org/pushca/PApplication.java</exclude>
+                <exclude>bmv/org/pushca/ChannelTestApplication.java</exclude>
+              </excludes>
+            </configuration>
           </plugin>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-javadoc-plugin</artifactId>
-            <version>2.9.1</version>
+            <version>${maven-javadoc-plugin.version}</version>
             <executions>
               <execution>
                 <id>attach-javadocs</id>
@@ -230,11 +266,17 @@
                 </goals>
               </execution>
             </executions>
+            <configuration>
+              <sourceFileExcludes>
+                <sourceFileExclude>bmv/org/pushca/PApplication.java</sourceFileExclude>
+                <sourceFileExclude>bmv/org/pushca/ChannelTestApplication.java</sourceFileExclude>
+              </sourceFileExcludes>
+            </configuration>
           </plugin>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-gpg-plugin</artifactId>
-            <version>1.5</version>
+            <version>${maven-gpg-plugin.version}</version>
             <executions>
               <execution>
                 <id>sign-artifacts</id>

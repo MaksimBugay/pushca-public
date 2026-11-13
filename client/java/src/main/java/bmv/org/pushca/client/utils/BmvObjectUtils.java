@@ -5,7 +5,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.serialization.json.JsonUtility;
-import com.fasterxml.jackson.databind.type.MapType;
+import tools.jackson.databind.type.MapType;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;

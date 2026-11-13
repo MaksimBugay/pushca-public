@@ -9,6 +9,7 @@ import static bmv.org.pushca.client.utils.BmvObjectUtils.createScheduler;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.deepClone;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.isEmpty;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.toBinary;
+import static bmv.org.pushca.client.utils.SendBinaryHelper.isBinaryPing;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toBinaryObjectData;
 import static bmv.org.pushca.client.utils.SendBinaryHelper.toDatagramPrefix;
 import static bmv.org.pushca.core.Command.ACKNOWLEDGE;
@@ -17,11 +18,13 @@ import static bmv.org.pushca.core.Command.ADD_MEMBERS_TO_CHANNEL;
 import static bmv.org.pushca.core.Command.CREATE_CHANNEL;
 import static bmv.org.pushca.core.Command.GET_CHANNELS;
 import static bmv.org.pushca.core.Command.GET_CHANNELS_PUBLIC_INFO;
+import static bmv.org.pushca.core.Command.GET_CHANNEL_HISTORY;
 import static bmv.org.pushca.core.Command.GET_CHANNEL_MEMBERS;
 import static bmv.org.pushca.core.Command.GET_IMPRESSION_STAT;
 import static bmv.org.pushca.core.Command.MARK_CHANNEL_AS_READ;
 import static bmv.org.pushca.core.Command.REFRESH_TOKEN;
 import static bmv.org.pushca.core.Command.REGISTER_FILTER;
+import static bmv.org.pushca.core.Command.REMOVE_CHANNEL;
 import static bmv.org.pushca.core.Command.REMOVE_FILTER;
 import static bmv.org.pushca.core.Command.REMOVE_ME_FROM_CHANNEL;
 import static bmv.org.pushca.core.Command.SEND_BINARY_MANIFEST;
@@ -37,6 +40,7 @@ import static bmv.org.pushca.core.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
 import static bmv.org.pushca.core.PushcaMessageFactory.isValidMessageType;
 import static org.apache.commons.lang3.ArrayUtils.addAll;
 
+import bmv.org.pushca.client.exception.PushcaCommandException;
 import bmv.org.pushca.client.exception.WebsocketConnectionIsBrokenException;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
@@ -53,9 +57,11 @@ import bmv.org.pushca.client.transformation.BinaryPayloadTransformer;
 import bmv.org.pushca.client.utils.BmvObjectUtils;
 import bmv.org.pushca.client.utils.SendBinaryHelper.BinaryType;
 import bmv.org.pushca.core.ChannelEvent;
+import bmv.org.pushca.core.ChannelHistoryPage;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.Command;
+import bmv.org.pushca.core.GetChannelHistoryWsResponse;
 import bmv.org.pushca.core.GetChannelMembersWsResponse;
 import bmv.org.pushca.core.GetChannelsWsResponse;
 import bmv.org.pushca.core.GetImpressionStatWsResponse;
@@ -261,6 +267,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       BiConsumer<PushcaWebSocketApi, String> messageConsumer,
       BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer) {
 
+    // latency probe, the server expects the same bytes back
+    if (isBinaryPing(binary)) {
+      ws.send(binary);
+      return;
+    }
+
     BinaryWithHeader binaryWithHeader = new BinaryWithHeader(binary);
 
 /*
@@ -346,7 +358,6 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     byte[] bytes =
         binaryData.getDatagrams().stream().collect(Collectors.toMap(d -> d.order, d -> d.data))
             .entrySet().stream()
-            .filter(e -> e.getValue() != null)
             .sorted(Comparator.comparingInt(Entry::getKey))
             .map(Entry::getValue)
             .reduce(ArrayUtils::addAll)
@@ -682,7 +693,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
                 dest.hashCode(), withAcknowledge,
                 binaryId, datagram.order
             ))
-        .collect(Collectors.toList());
+        .toList();
 
     for (Datagram datagram : datagrams) {
       final String responseId =
@@ -735,26 +746,29 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public synchronized PChannel createChannel(String id, @NotNull String name,
       ClientFilter... filters) {
+    return createChannel(id, name, false, filters);
+  }
+
+  public synchronized PChannel createChannel(String id, @NotNull String name,
+      boolean closePrivate, ClientFilter... filters) {
     String channelId = StringUtils.isEmpty(id) ? ID_GENERATOR.generate().toString() : id;
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("id", channelId);
     metaData.put("name", name);
     metaData.put("filters", filters);
-    String response = sendCommand(CREATE_CHANNEL, metaData);
-    if (!"SUCCESS".equals(response)) {
-      throw new IllegalStateException("Cannot create channel " + name);
+    if (closePrivate) {
+      metaData.put("closePrivate", true);
     }
-    return new PChannel(channelId, name);
+    requireSuccess(sendCommand(CREATE_CHANNEL, metaData), "Cannot create channel " + name);
+    return new PChannel(channelId, name, closePrivate ? Boolean.TRUE : null);
   }
 
   public synchronized void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters) {
     Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channel);
+    metaData.put("channel", channelReference(channel));
     metaData.put("filters", filters);
-    String response = sendCommand(ADD_MEMBERS_TO_CHANNEL, metaData);
-    if (!"SUCCESS".equals(response)) {
-      throw new IllegalStateException("Cannot add members to channel " + channel.name);
-    }
+    requireSuccess(sendCommand(ADD_MEMBERS_TO_CHANNEL, metaData),
+        "Cannot add members to channel " + channel.name);
   }
 
   public synchronized List<ChannelWithInfo> getChannels(@NotNull ClientFilter filter) {
@@ -762,9 +776,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     metaData.put("filter", filter);
     String responseJson = sendCommand(GET_CHANNELS, metaData);
     GetChannelsWsResponse response = fromJson(responseJson, GetChannelsWsResponse.class);
-    if (StringUtils.isNotEmpty(response.error)) {
-      throw new IllegalStateException("Cannot retrieve list of channels: " + response.error);
-    }
+    requireNoError(response.error, "Cannot retrieve list of channels");
     return response.body.channels;
   }
 
@@ -773,39 +785,46 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     metaData.put("ids", ids);
     String responseJson = sendCommand(GET_CHANNELS_PUBLIC_INFO, metaData);
     GetChannelsWsResponse response = fromJson(responseJson, GetChannelsWsResponse.class);
-    if (StringUtils.isNotEmpty(response.error)) {
-      throw new IllegalStateException("Cannot retrieve list of channels: " + response.error);
-    }
+    requireNoError(response.error, "Cannot retrieve list of channels");
     return response.body.channels;
   }
 
   public synchronized Set<ClientFilter> getChannelMembers(@NotNull PChannel channel) {
     Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channel);
+    metaData.put("channel", channelReference(channel));
     String responseJson = sendCommand(GET_CHANNEL_MEMBERS, metaData);
     GetChannelMembersWsResponse response =
         fromJson(responseJson, GetChannelMembersWsResponse.class);
-    if (StringUtils.isNotEmpty(response.error)) {
-      throw new IllegalStateException("Cannot list channel members: " + response.error);
-    }
+    requireNoError(response.error, "Cannot list channel members");
     return response.body;
   }
 
+  public synchronized ChannelHistoryPage getChannelHistory(@NotNull PChannel channel,
+      Integer offset) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("channel", channelReference(channel));
+    if (offset != null) {
+      metaData.put("offset", offset);
+    }
+    String responseJson = sendCommand(GET_CHANNEL_HISTORY, metaData);
+    GetChannelHistoryWsResponse response =
+        fromJson(responseJson, GetChannelHistoryWsResponse.class);
+    requireNoError(response.error, "Cannot load history of channel " + channel.name);
+    return response.body;
+  }
 
   public synchronized void markChannelAsRead(@NotNull PChannel channel, ClientFilter filter) {
     Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channel);
+    metaData.put("channel", channelReference(channel));
     metaData.put("filter", filter);
-    String response = sendCommand(MARK_CHANNEL_AS_READ, metaData);
-    if (!"SUCCESS".equals(response)) {
-      throw new IllegalStateException("Cannot mark channel as read: " + channel.name);
-    }
+    requireSuccess(sendCommand(MARK_CHANNEL_AS_READ, metaData),
+        "Cannot mark channel as read: " + channel.name);
   }
 
   public synchronized String sendMessageToChannel(@NotNull PChannel channel,
       List<ClientFilter> mentioned, String message) {
     Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channel);
+    metaData.put("channel", channelReference(channel));
     if (!isEmpty(mentioned)) {
       metaData.put("mentioned", mentioned);
     }
@@ -814,10 +833,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
     SendMessageToChannelWsResponse response =
         fromJson(responseJson, SendMessageToChannelWsResponse.class);
-    if (StringUtils.isNotEmpty(response.error)) {
-      throw new IllegalStateException(
-          "Cannot send message to channel " + channel.name + ":" + response.error);
-    }
+    requireNoError(response.error, "Cannot send message to channel " + channel.name);
     return response.body.messageId;
   }
 
@@ -835,33 +851,34 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public synchronized void removeMeFromChannel(@NotNull PChannel channel) {
     Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channel);
-    String response = sendCommand(REMOVE_ME_FROM_CHANNEL, metaData);
-    if (!"SUCCESS".equals(response)) {
-      throw new IllegalStateException("Cannot remove myself from channel " + channel.name);
-    }
+    metaData.put("channel", channelReference(channel));
+    requireSuccess(sendCommand(REMOVE_ME_FROM_CHANNEL, metaData),
+        "Cannot remove myself from channel " + channel.name);
+  }
+
+  public synchronized void removeChannel(@NotNull PChannel channel) {
+    Map<String, Object> metaData = new HashMap<>();
+    metaData.put("channel", channelReference(channel));
+    requireSuccess(sendCommand(REMOVE_CHANNEL, metaData),
+        "Cannot remove channel " + channel.name);
   }
 
   public synchronized void addImpression(@NotNull PChannel channel,
       @NotNull PImpression impression) {
     Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channel);
+    metaData.put("channel", channelReference(channel));
     metaData.put("impression", impression);
-    String response = sendCommand(ADD_IMPRESSION, metaData);
-    if (!"SUCCESS".equals(response)) {
-      throw new IllegalStateException("Cannot add impression for channel " + channel.name);
-    }
+    requireSuccess(sendCommand(ADD_IMPRESSION, metaData),
+        "Cannot add impression for channel " + channel.name);
   }
 
   public synchronized void removeImpression(@NotNull PChannel channel,
       @NotNull PImpression impression) {
     Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channel);
+    metaData.put("channel", channelReference(channel));
     metaData.put("impression", impression);
-    String response = sendCommand(Command.REMOVE_IMPRESSION, metaData);
-    if (!"SUCCESS".equals(response)) {
-      throw new IllegalStateException("Cannot remove impression in channel " + channel.name);
-    }
+    requireSuccess(sendCommand(Command.REMOVE_IMPRESSION, metaData),
+        "Cannot remove impression in channel " + channel.name);
   }
 
   public synchronized List<ResourceImpressionCounters> getImpressionStat(
@@ -871,10 +888,37 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     String responseJson = sendCommand(GET_IMPRESSION_STAT, metaData);
     GetImpressionStatWsResponse response =
         fromJson(responseJson, GetImpressionStatWsResponse.class);
-    if (StringUtils.isNotEmpty(response.error)) {
-      throw new IllegalStateException("Cannot load impression statistic: " + response.error);
-    }
+    requireNoError(response.error, "Cannot load impression statistic");
     return response.body;
+  }
+
+  /**
+   * close private flag is assigned on creation only, so it is never sent with other commands
+   */
+  private static PChannel channelReference(PChannel channel) {
+    return new PChannel(channel.id, channel.name);
+  }
+
+  private static void requireSuccess(String response, String failureMessage) {
+    if (DEFAULT_RESPONSE.equals(response)) {
+      return;
+    }
+    String error = response;
+    try {
+      SimpleWsResponse errorResponse = fromJson(response, SimpleWsResponse.class);
+      if (StringUtils.isNotEmpty(errorResponse.error)) {
+        error = errorResponse.error;
+      }
+    } catch (Exception ex) {
+      // not a json, keep raw response as error
+    }
+    throw new PushcaCommandException(failureMessage, error);
+  }
+
+  private static void requireNoError(String error, String failureMessage) {
+    if (StringUtils.isNotEmpty(error)) {
+      throw new PushcaCommandException(failureMessage, error);
+    }
   }
 
   public void removeUnusedFilters() {
@@ -1046,7 +1090,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     List<String> ids = binaries.values().stream()
         .filter(b -> (now - b.created) > Duration.ofMinutes(30).toMillis())
         .map(b -> b.id)
-        .collect(Collectors.toList());
+        .toList();
     ids.forEach(binaries::remove);
   }
 
@@ -1054,6 +1098,6 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   public void close() {
     Optional.ofNullable(refreshAndCleanupScheduler).ifPresent(ExecutorService::shutdown);
     Optional.ofNullable(keepAliveScheduler).ifPresent(ExecutorService::shutdown);
-    webSocket.close();
+    closeWebSocketConnection();
   }
 }

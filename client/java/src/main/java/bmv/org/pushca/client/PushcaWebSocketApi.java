@@ -1,5 +1,6 @@
 package bmv.org.pushca.client;
 
+import bmv.org.pushca.client.exception.PushcaCommandException;
 import bmv.org.pushca.client.exception.WebsocketConnectionIsBrokenException;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
@@ -8,6 +9,7 @@ import bmv.org.pushca.client.model.ClientFilter;
 import bmv.org.pushca.client.model.PClient;
 import bmv.org.pushca.client.model.UploadBinaryAppeal;
 import bmv.org.pushca.core.ChannelEvent;
+import bmv.org.pushca.core.ChannelHistoryPage;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
@@ -313,10 +315,32 @@ public interface PushcaWebSocketApi {
   PChannel createChannel(String id, @NotNull String name, ClientFilter... filters);
 
   /**
-   * Add new members into existing channel
+   * Create a new channel, optionally as a close private one. Close private channel rules:
+   * <ul>
+   *   <li>it can be created only with a new id, a second create with the same id is rejected,
+   *   even for the owner</li>
+   *   <li>every member filter must contain account id</li>
+   *   <li>only the owner (creator) can add members or remove the channel</li>
+   *   <li>only members can send messages, read history, members and impressions</li>
+   *   <li>members cannot leave and the owner cannot be removed</li>
+   * </ul>
+   *
+   * @param id           - channel id (if null then will be assigned by Pushca)
+   * @param name         - channel name
+   * @param closePrivate - create close private channel
+   * @param filters      - channel members
+   * @return - channel object for future communications
+   * @throws PushcaCommandException if the server rejected the command
+   */
+  PChannel createChannel(String id, @NotNull String name, boolean closePrivate,
+      ClientFilter... filters);
+
+  /**
+   * Add new members into existing channel, for close private channel only the owner can do that
    *
    * @param channel - channel object
    * @param filters - new members
+   * @throws PushcaCommandException if the server rejected the command
    */
   void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters);
 
@@ -348,6 +372,16 @@ public interface PushcaWebSocketApi {
   Set<ClientFilter> getChannelMembers(@NotNull PChannel channel);
 
   /**
+   * Return a page of channel message history, for close private channel only members have access
+   *
+   * @param channel - channel object
+   * @param offset  - page offset (if null then the latest page is returned)
+   * @return - page of channel messages
+   * @throws PushcaCommandException if the server rejected the command
+   */
+  ChannelHistoryPage getChannelHistory(@NotNull PChannel channel, Integer offset);
+
+  /**
    * Change read status of provided channel to true (already red)
    *
    * @param channel - channel object
@@ -357,7 +391,8 @@ public interface PushcaWebSocketApi {
   void markChannelAsRead(@NotNull PChannel channel, ClientFilter filter);
 
   /**
-   * Send text message to channel, all members will receive a notification
+   * Send text message to channel, all members will receive a notification. For close private
+   * channel only members can send messages
    *
    * @param channel   - channel object
    * @param mentioned - channel members that were directly mentioned in message
@@ -386,6 +421,14 @@ public interface PushcaWebSocketApi {
    * @param channel - channel object
    */
   void removeMeFromChannel(@NotNull PChannel channel);
+
+  /**
+   * Remove channel for all members, for close private channel only the owner can do that
+   *
+   * @param channel - channel object
+   * @throws PushcaCommandException if the server rejected the command
+   */
+  void removeChannel(@NotNull PChannel channel);
 
   /**
    * Add impression to channel itself or to some message in channel

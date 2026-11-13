@@ -2,42 +2,51 @@ package bmv.org.pushca.client.serialization.json;
 
 import static java.util.stream.Collectors.toMap;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JacksonException;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.type.MapType;
+import bmv.org.pushca.client.exception.BmvSerializationException;
+
+@SuppressWarnings("unused")
 public final class JsonUtility {
 
-  private static final ObjectMapper SIMPLE_MAPPER = getSimpleMapperInstance();
-  private static final ObjectMapper WITH_NULL_MAPPER = getWithNullMapperInstance();
+  private static final JsonMapper SIMPLE_MAPPER = getSimpleMapperInstance();
+  public static final MapType MAP_TYPE = SIMPLE_MAPPER.getTypeFactory().constructMapType(Map.class, String.class,
+      Object.class);
+  public static final MapType STRING_MAP_TYPE = SIMPLE_MAPPER.getTypeFactory().constructMapType(Map.class, String.class,
+      String.class);
+  private static final JsonMapper WITH_NULL_MAPPER = getWithNullMapperInstance();
+  private static final String EMPTY_JSON = "{}";
 
   private JsonUtility() {
   }
 
-  public static ObjectMapper getSimpleMapperInstance() {
-    return Initializer.init(new ObjectMapper());
+  public static JsonMapper getSimpleMapperInstance() {
+    return Initializer.init();
   }
 
-  public static ObjectMapper getWithNullMapperInstance() {
-    return Initializer.init(new ObjectMapper(), JsonInclude.Include.ALWAYS, true);
+  public static JsonMapper getWithNullMapperInstance() {
+    return Initializer.initAsStrict();
   }
 
-  public static String prettyPrintJson(String json, boolean writeNulls) throws
-      IOException {
-    if (writeNulls) {
-      Object object = WITH_NULL_MAPPER.readValue(json, Object.class);
-      return WITH_NULL_MAPPER.writerWithDefaultPrettyPrinter()
-          .writeValueAsString(object);
-    } else {
-      Object object = SIMPLE_MAPPER.readValue(json, Object.class);
-      return SIMPLE_MAPPER.writerWithDefaultPrettyPrinter()
-          .writeValueAsString(object);
+  public static String prettyPrintJson(String json, boolean writeNulls) {
+    try {
+      if (writeNulls) {
+        Object object = WITH_NULL_MAPPER.readValue(json, Object.class);
+        return WITH_NULL_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(object);
+      } else {
+        Object object = SIMPLE_MAPPER.readValue(json, Object.class);
+        return SIMPLE_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(object);
+      }
+    } catch (JacksonException e) {
+      throw new BmvSerializationException(e);
     }
   }
 
@@ -53,7 +62,7 @@ public final class JsonUtility {
         return SIMPLE_MAPPER.writeValueAsString(object);
       }
     } catch (Exception jpe) {
-      throw new RuntimeException(jpe);
+      throw new BmvSerializationException(jpe);
     }
   }
 
@@ -69,103 +78,138 @@ public final class JsonUtility {
         return SIMPLE_MAPPER.writeValueAsBytes(object);
       }
     } catch (Exception jpe) {
-      throw new RuntimeException(jpe);
+      throw new BmvSerializationException(jpe);
+    }
+  }
+
+  public static <T> T fromJson(byte[] jsonBytes, Class<T> clazz) {
+    try {
+      return SIMPLE_MAPPER.readValue(jsonBytes, clazz);
+    } catch (JacksonException jpe) {
+      throw new BmvSerializationException(jpe);
+    }
+  }
+
+  public static <T> T fromJsonStrict(byte[] jsonBytes, Class<T> clazz) {
+    try {
+      return WITH_NULL_MAPPER.readValue(jsonBytes, clazz);
+    } catch (JacksonException jpe) {
+      throw new BmvSerializationException(jpe);
     }
   }
 
   public static <T> T fromJson(String jsonString, Class<T> clazz) {
     try {
       return SIMPLE_MAPPER.readValue(jsonString, clazz);
-    } catch (IOException jpe) {
-      throw new RuntimeException(jpe);
+    } catch (JacksonException jpe) {
+      throw new BmvSerializationException(jpe);
     }
   }
 
   public static <T> T fromJsonStrict(String jsonString, Class<T> clazz) {
     try {
       return WITH_NULL_MAPPER.readValue(jsonString, clazz);
-    } catch (IOException jpe) {
-      throw new RuntimeException(jpe);
+    } catch (JacksonException jpe) {
+      throw new BmvSerializationException(jpe);
     }
   }
 
   public static <T> T fromJson(InputStream is, Class<T> clazz) {
     try {
       return SIMPLE_MAPPER.readValue(is, clazz);
-    } catch (IOException jpe) {
-      throw new RuntimeException(jpe);
+    } catch (JacksonException jpe) {
+      throw new BmvSerializationException(jpe);
     }
   }
 
-  public static <T> T fromJsonWithTypeReference(String jsonString,
-      JavaType resolvedType) {
+  public static <T> T fromJsonStrict(InputStream is, Class<T> clazz) {
+    try {
+      return WITH_NULL_MAPPER.readValue(is, clazz);
+    } catch (JacksonException jpe) {
+      throw new BmvSerializationException(jpe);
+    }
+  }
+
+  public static <T> T fromJsonWithTypeReference(String jsonString, JavaType resolvedType) {
     try {
       return SIMPLE_MAPPER.readValue(jsonString, resolvedType);
-    } catch (IOException jpe) {
-      throw new RuntimeException(jpe);
+    } catch (JacksonException jpe) {
+      throw new BmvSerializationException(jpe);
     }
   }
 
   public static <T> Set<T> fromJsonToSet(String jsonInput, Class<T> clazz) {
     try {
       return SIMPLE_MAPPER.readValue(jsonInput,
-          SIMPLE_MAPPER.getTypeFactory()
-              .constructCollectionType(Set.class, clazz));
-    } catch (Exception e) {
-      throw new RuntimeException(e);
+          SIMPLE_MAPPER.getTypeFactory().constructCollectionType(Set.class, clazz));
+    } catch (JacksonException e) {
+      throw new BmvSerializationException(e);
+    }
+  }
+
+  public static <T> Set<T> fromJsonToSet(byte[] jsonInput, Class<T> clazz) {
+    try {
+      return SIMPLE_MAPPER.readValue(jsonInput,
+          SIMPLE_MAPPER.getTypeFactory().constructCollectionType(Set.class, clazz));
+    } catch (JacksonException e) {
+      throw new BmvSerializationException(e);
+    }
+  }
+
+  public static <K, V> Map<K, V> fromJsonToMap(byte[] jsonInput, Class<K> clazzKey, Class<V> clazzValue) {
+    try {
+      return SIMPLE_MAPPER.readValue(jsonInput,
+          SIMPLE_MAPPER.getTypeFactory().constructMapType(Map.class, clazzKey, clazzValue));
+    } catch (JacksonException e) {
+      throw new BmvSerializationException(e);
     }
   }
 
   public static <T> List<T> fromJsonToList(String jsonInput, Class<T> clazz) {
     try {
       return SIMPLE_MAPPER.readValue(jsonInput,
-          SIMPLE_MAPPER.getTypeFactory()
-              .constructCollectionType(List.class, clazz));
-    } catch (Exception e) {
-      throw new RuntimeException(e);
+          SIMPLE_MAPPER.getTypeFactory().constructCollectionType(List.class, clazz));
+    } catch (JacksonException e) {
+      throw new BmvSerializationException(e);
     }
   }
 
-  public static <T> List<T> fromJsonToList(String jsonInput,
-      JavaType javaType) {
+  public static <T> List<T> fromJsonToList(String jsonInput, JavaType javaType) {
     try {
       return SIMPLE_MAPPER.readValue(jsonInput,
-          SIMPLE_MAPPER.getTypeFactory()
-              .constructCollectionType(List.class, javaType));
-    } catch (Exception e) {
-      throw new RuntimeException(e);
+          SIMPLE_MAPPER.getTypeFactory().constructCollectionType(List.class, javaType));
+    } catch (JacksonException e) {
+      throw new BmvSerializationException(e);
     }
   }
 
   public static Map<String, Object> convertToMap(Object content) {
     String jsonString = JsonUtility.toJson(content);
-    return JsonUtility.fromJsonWithTypeReference(
-        jsonString,
-        SIMPLE_MAPPER.getTypeFactory()
-            .constructMapType(Map.class, String.class, Object.class)
-    );
+    return JsonUtility.fromJsonWithTypeReference(jsonString, MAP_TYPE);
   }
 
-  public static Map<String, Object> convertToFilteredMap(
-      Object content, List<String> filter) {
+  public static <T> T convertToObjectFromMap(Map<String, ?> map, Class<T> clazz) {
+    return SIMPLE_MAPPER.convertValue(map, clazz);
+  }
+
+  public static Map<String, Object> convertToFilteredMap(Object content, List<String> filter) {
     if (content == null) {
-      return null;
+      return Collections.emptyMap();
     }
     Map<String, Object> filteredMap = convertToMap(content);
-    return filteredMap.entrySet().stream()
-        .filter(entry -> filter.contains(entry.getKey()))
+    return filteredMap.entrySet().stream().filter(entry -> filter.contains(entry.getKey()))
         .collect(toMap(Map.Entry::getKey, Map.Entry::getValue));
   }
 
   public static String emptyJson() {
-    return "{}";
+    return EMPTY_JSON;
   }
 
-  public static ObjectMapper getSimpleMapper() {
+  public static JsonMapper getSimpleMapper() {
     return SIMPLE_MAPPER;
   }
 
-  public static ObjectMapper getWithNullMapper() {
+  public static JsonMapper getWithNullMapper() {
     return WITH_NULL_MAPPER;
   }
 

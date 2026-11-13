@@ -16,9 +16,21 @@ import java.util.UUID;
 
 public final class SendBinaryHelper {
 
-  public enum BinaryType {FILE, MEDIA_STREAM, BINARY_MESSAGE}
+  // must stay in sync with the server, the ordinal is sent as the first byte of every binary
+  public enum BinaryType {
+    FILE, MEDIA_STREAM, BINARY_MESSAGE, FILE_TRANSFER, CACHE_BINARY, PING, CAPTCHA_SET,
+    PUZZLE_CAPTCHA_SET, REMOTE_CALL_VIDEO_STREAM, REMOTE_CALL_AUDIO_STREAM
+  }
 
   public static final int BINARY_HEADER_LENGTH = 26;
+
+  // type (1 byte) + client hash (4 bytes) + server time in nanoseconds (8 bytes)
+  public static final int BINARY_PING_LENGTH = 13;
+
+  public static boolean isBinaryPing(byte[] binary) {
+    return binary.length == BINARY_PING_LENGTH
+        && binary[0] == (byte) BinaryType.PING.ordinal();
+  }
 
   private SendBinaryHelper() {
   }
