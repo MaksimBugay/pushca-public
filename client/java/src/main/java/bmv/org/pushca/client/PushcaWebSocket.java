@@ -1098,6 +1098,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   public void close() {
     Optional.ofNullable(refreshAndCleanupScheduler).ifPresent(ExecutorService::shutdown);
     Optional.ofNullable(keepAliveScheduler).ifPresent(ExecutorService::shutdown);
+    // without this their threads outlive the client; shutdown, not shutdownNow, so commands and
+    // incoming messages already in progress still complete
+    acknowledgeTimeoutScheduler.shutdown();
+    if (asyncExecutor instanceof ExecutorService executorService) {
+      executorService.shutdown();
+    }
     closeWebSocketConnection();
   }
 }

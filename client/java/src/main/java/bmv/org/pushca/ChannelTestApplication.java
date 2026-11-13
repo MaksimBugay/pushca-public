@@ -32,7 +32,8 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
- * End-to-end check of close private channels: 4 connections, the first one is the channel owner.
+ * End-to-end check of close private channels: 4 accounts, the first one is the channel owner,
+ * member1 account is connected from two devices.
  * Usage: ChannelTestApplication [pushcaApiUrl]
  */
 @SuppressWarnings("resource")
@@ -81,24 +82,26 @@ public class ChannelTestApplication {
       System.out.println("Workspace " + workSpaceId + " was registered, api key "
           + apiKey.substring(0, Math.min(8, apiKey.length())) + "...");
       for (String role : List.of("owner", "member1", "member2", "outsider")) {
-        PClient client = new PClient(
+        participants.add(connect(pushcaApiUrl, apiKey, role, new PClient(
             workSpaceId,
             role + "-" + runId + "@test.ee",
             UUID.randomUUID().toString(),
             applicationId
-        );
-        PushcaWebSocket ws = new PushcaWebSocketBuilder(pushcaApiUrl, apiKey, client, null)
-            .withChannelMessageConsumer((socket, message) -> received
-                .computeIfAbsent(role, k -> new CopyOnWriteArrayList<>()).add(message))
-            .build();
-        participants.add(new Participant(role, client, ws));
-        if (ws.getPusherInstanceId() == null) {
-          throw new IllegalStateException("Cannot open connection for " + role);
-        }
+        ), received));
       }
+      // the same account as member1 signed in from another device
+      PClient member1 = participants.get(1).client();
+      participants.add(connect(pushcaApiUrl, apiKey, "member1-device2", new PClient(
+          member1.workSpaceId,
+          member1.accountId,
+          UUID.randomUUID().toString(),
+          member1.applicationId
+      ), received));
       delay(Duration.ofSeconds(1));
       runScenario(participants.get(0), participants.get(1), participants.get(2),
           participants.get(3), received, runId);
+      runMultiDeviceScenario(participants.get(0), participants.get(1), participants.get(4),
+          participants.get(2), participants.get(3), received, runId);
     } catch (Exception ex) {
       fail("scenario was aborted: " + ex);
     } finally {
@@ -110,6 +113,20 @@ public class ChannelTestApplication {
         "Channel test finished: " + passed + " passed, " + failures.size() + " failed");
     failures.forEach(f -> System.out.println("  FAILED: " + f));
     System.exit(failures.isEmpty() ? 0 : 1);
+  }
+
+  private static Participant connect(String pushcaApiUrl, String apiKey, String role,
+      PClient client, Map<String, List<ChannelMessage>> received) {
+    PushcaWebSocket ws = new PushcaWebSocketBuilder(pushcaApiUrl, apiKey, client, null)
+        .withChannelMessageConsumer((socket, message) -> received
+            .computeIfAbsent(role, k -> new CopyOnWriteArrayList<>()).add(message))
+        .build();
+    Participant participant = new Participant(role, client, ws);
+    if (ws.getPusherInstanceId() == null) {
+      ws.close();
+      throw new IllegalStateException("Cannot open connection for " + role);
+    }
+    return participant;
   }
 
   /**
@@ -197,6 +214,39 @@ public class ChannelTestApplication {
     });
     delay(PROPAGATION_DELAY);
     check("channel is gone after owner removal", !channelExists(owner, channel));
+  }
+
+  /**
+   * a member added by account id without device id has access from every device of the account
+   */
+  private static void runMultiDeviceScenario(Participant owner, Participant device1,
+      Participant device2, Participant otherMember, Participant outsider,
+      Map<String, List<ChannelMessage>> received, String runId) {
+    //---------------------------owner adds member by account id only------------------------------
+    PChannel channel = expectSuccess("owner creates close private channel without members",
+        () -> owner.ws().createChannel(null, "closePrivateMultiDeviceTest-" + runId, true));
+    if (channel == null) {
+      return;
+    }
+    System.out.println("Close private channel was created: " + channel.id);
+    PClient member = device1.client();
+    expectSuccess("owner adds member by account id without device id", () -> {
+      owner.ws().addMembersToChannel(channel, new ClientFilter(
+          member.workSpaceId, member.accountId, null, member.applicationId));
+      return null;
+    });
+    delay(PROPAGATION_DELAY);
+    checkMembers(owner, channel, Set.of(owner, device1), Set.of(otherMember, outsider));
+
+    // both devices of the member account send, receive and read history,
+    // each device receives messages of the other one
+    verifyAccess("two devices", channel, List.of(owner, device1, device2),
+        List.of(otherMember, outsider), received);
+
+    expectSuccess("owner removes multi device channel", () -> {
+      owner.ws().removeChannel(channel);
+      return null;
+    });
   }
 
   private static boolean channelExists(Participant viewer, PChannel channel) {
