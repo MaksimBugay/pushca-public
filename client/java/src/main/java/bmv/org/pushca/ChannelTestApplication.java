@@ -1,6 +1,8 @@
 package bmv.org.pushca;
 
 import static bmv.org.pushca.client.model.ClientFilter.fromClientWithoutDeviceId;
+import static bmv.org.pushca.client.serialization.json.JsonUtility.fromJson;
+import static bmv.org.pushca.client.serialization.json.JsonUtility.toJson;
 import static bmv.org.pushca.client.utils.BmvObjectUtils.delay;
 
 import bmv.org.pushca.client.PushcaWebSocket;
@@ -12,6 +14,10 @@ import bmv.org.pushca.core.ChannelHistoryPage;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.ChannelWithInfo;
 import bmv.org.pushca.core.PChannel;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -46,6 +52,14 @@ public class ChannelTestApplication {
   private static final List<String> failures = new ArrayList<>();
   private static int passed;
 
+  private record RegisterApiRequest(String organizationName, String authenticationEndpointUrl) {
+
+  }
+
+  private record RegisterApiResponse(String apiKey) {
+
+  }
+
   private record Participant(String role, PClient client, PushcaWebSocket ws) {
 
     ClientFilter filter() {
@@ -57,19 +71,23 @@ public class ChannelTestApplication {
     String pushcaApiUrl = args.length > 0 ? args[0] : "https://secure.fileshare.ovh/pushca";
     String runId = UUID.randomUUID().toString().substring(0, 8);
     String applicationId = "PUSHCA_CHANNEL_TEST_" + runId;
+    String workSpaceId = "channelTest-" + runId;
     System.out.println("Channel test was started: " + pushcaApiUrl + ", run " + runId);
 
     Map<String, List<ChannelMessage>> received = new ConcurrentHashMap<>();
     List<Participant> participants = new ArrayList<>();
     try {
+      String apiKey = registerWorkspace(pushcaApiUrl, workSpaceId);
+      System.out.println("Workspace " + workSpaceId + " was registered, api key "
+          + apiKey.substring(0, Math.min(8, apiKey.length())) + "...");
       for (String role : List.of("owner", "member1", "member2", "outsider")) {
         PClient client = new PClient(
-            "workSpaceMain",
+            workSpaceId,
             role + "-" + runId + "@test.ee",
             UUID.randomUUID().toString(),
             applicationId
         );
-        PushcaWebSocket ws = new PushcaWebSocketBuilder(pushcaApiUrl, null, client, null)
+        PushcaWebSocket ws = new PushcaWebSocketBuilder(pushcaApiUrl, apiKey, client, null)
             .withChannelMessageConsumer((socket, message) -> received
                 .computeIfAbsent(role, k -> new CopyOnWriteArrayList<>()).add(message))
             .build();
@@ -92,6 +110,32 @@ public class ChannelTestApplication {
         "Channel test finished: " + passed + " passed, " + failures.size() + " failed");
     failures.forEach(f -> System.out.println("  FAILED: " + f));
     System.exit(failures.isEmpty() ? 0 : 1);
+  }
+
+  /**
+   * Registers a new workspace (organization) and returns its API key. Clients signing in with the
+   * key are authenticated by Pushca built-in gateway sign-in endpoint
+   */
+  private static String registerWorkspace(String pushcaApiUrl, String workSpaceId)
+      throws Exception {
+    HttpRequest request = HttpRequest.newBuilder(URI.create(pushcaApiUrl + "/register-api"))
+        .timeout(Duration.ofSeconds(30))
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString(toJson(
+            new RegisterApiRequest(workSpaceId, pushcaApiUrl + "/gateway/sign-in"))))
+        .build();
+    HttpResponse<String> response = HttpClient.newHttpClient()
+        .send(request, HttpResponse.BodyHandlers.ofString());
+    if (response.statusCode() != 200) {
+      throw new IllegalStateException(
+          "Cannot register workspace " + workSpaceId + ": HTTP " + response.statusCode());
+    }
+    String apiKey = fromJson(response.body(), RegisterApiResponse.class).apiKey();
+    if (apiKey == null || apiKey.isEmpty()) {
+      throw new IllegalStateException("Empty api key for workspace " + workSpaceId);
+    }
+    return apiKey;
   }
 
   private static void runScenario(Participant owner, Participant member1, Participant member2,
