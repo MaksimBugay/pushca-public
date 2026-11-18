@@ -40,8 +40,10 @@ import static bmv.org.pushca.core.PushcaMessageFactory.MESSAGE_PARTS_DELIMITER;
 import static bmv.org.pushca.core.PushcaMessageFactory.isValidMessageType;
 import static org.apache.commons.lang3.ArrayUtils.addAll;
 
+import bmv.org.pushca.client.exception.PushcaAuthenticationException;
 import bmv.org.pushca.client.exception.PushcaCommandException;
 import bmv.org.pushca.client.exception.WebsocketConnectionIsBrokenException;
+import bmv.org.pushca.client.exception.WebsocketConnectionIsNotOpenException;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.model.BinaryWithHeader;
@@ -81,6 +83,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -125,7 +128,10 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PushcaWebSocket.class);
   private static final Duration REFRESH_TOKEN_INTERVAL_MS = Duration.ofMinutes(10);
-  private static final Duration KEEP_ALIVE_INTERVAL_MS = Duration.ofSeconds(5);
+  /**
+   * How often the connection is checked, and signed in or reconnected when it isn't open, by default.
+   */
+  public static final Duration DEFAULT_KEEP_ALIVE_INTERVAL = Duration.ofSeconds(5);
   public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
   public static final int MAX_REPEAT_ATTEMPT_NUMBER = 3;
   public static final int CALLBACK_TIMEOUT_SEC = 10;
@@ -138,7 +144,10 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   private final PClient client;
   private final String apiKey;
   private final String passwordHash;
-  private WebSocketApi webSocket;
+  // replaced by the keep-alive job, read by every command
+  private volatile WebSocketApi webSocket;
+  // set when Pushca refused to sign the client in: no more attempts
+  private volatile PushcaAuthenticationException signInError;
   private final ScheduledExecutorService refreshAndCleanupScheduler;
   private final ScheduledExecutorService keepAliveScheduler;
   private final Map<String, BinaryObjectData> binaries = new ConcurrentHashMap<>();
@@ -165,6 +174,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   PushcaWebSocket(String pushcaApiUrl, String pusherId,
       String apiKey, PClient client, String passwordHash,
       int connectTimeoutMs,
+      Duration keepAliveInterval,
       BiConsumer<PushcaWebSocketApi, String> messageConsumer,
       BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
       BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer,
@@ -200,10 +210,15 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     );
     keepAliveScheduler = createScheduler(
         this::keepAliveJob,
-        KEEP_ALIVE_INTERVAL_MS,
+        keepAliveInterval,
         Duration.ofSeconds(10)
     );
     doSignIn();
+    // wrong API key or password: retrying can't help, fail now
+    if (signInError != null) {
+      close();
+      throw signInError;
+    }
   }
 
   private void doSignIn() {
@@ -211,11 +226,15 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     try {
       openConnectionResponse =
           openConnection(pushcaApiUrl, requestedPusherId, apiKey, client, passwordHash);
+    } catch (PushcaAuthenticationException e) {
+      LOGGER.error("{}, no more sign in attempts", e.getMessage());
+      signInError = e;
     } catch (IOException e) {
       LOGGER.error(
-          "Cannot acquire ws connection parameters during sign in attempt: client {}, pusher id {}",
+          "Cannot acquire ws connection parameters during sign in attempt: client {}, pusher id {}: {}",
           toJson(client),
-          pusherId);
+          pusherId,
+          e.getMessage());
     }
 
     if (openConnectionResponse != null) {
@@ -255,6 +274,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   public String getClientInfo() {
     return MessageFormat.format("{0}[{1}]", this.client.accountId, this.client.deviceId);
+  }
+
+  @Override
+  public boolean isOpen() {
+    WebSocketApi current = webSocket;
+    return current != null && current.isOpen();
   }
 
   public String getPusherInstanceId() {
@@ -470,8 +495,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public synchronized void sendAcknowledge(String id) {
-    if (!webSocket.isOpen()) {
-      throw new IllegalStateException("Web socket connection is broken");
+    if (!isOpen()) {
+      throw new WebsocketConnectionIsNotOpenException();
     }
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("messageId", id);
@@ -480,8 +505,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public void sendGatewayResponse(String id, byte[] response) {
-    if (!webSocket.isOpen()) {
-      throw new IllegalStateException("Web socket connection is broken");
+    if (!isOpen()) {
+      throw new WebsocketConnectionIsNotOpenException();
     }
     Map<String, Object> metaData = new HashMap<>();
     metaData.put("id", id);
@@ -990,7 +1015,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   private void refreshAndCleanupJob() {
-    if (webSocket.isOpen()) {
+    if (isOpen()) {
       refreshToken();
       removeExpiredManifests();
       removeUnusedFilters();
@@ -1003,7 +1028,11 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   private void keepAliveJob() {
-    if (this.webSocket == null || webSocket.getWebSocketState() == CLOSED) {
+    if (signInError != null) {
+      return;
+    }
+    WebSocketApi current = webSocket;
+    if (current == null || current.getWebSocketState() == CLOSED) {
       closeWebSocketConnection();
       if (this.baseWsUrl == null) {
         doSignIn();
@@ -1057,6 +1086,12 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       byte[] input = toJson(request).getBytes(StandardCharsets.UTF_8);
       os.write(input, 0, input.length);
     }
+    if (httpsConn instanceof HttpURLConnection httpConn) {
+      int status = httpConn.getResponseCode();
+      if (status == HttpURLConnection.HTTP_UNAUTHORIZED || status == HttpURLConnection.HTTP_FORBIDDEN) {
+        throw new PushcaAuthenticationException(getClientInfo(), status);
+      }
+    }
     StringBuilder responseJson = new StringBuilder();
     try (BufferedReader br = new BufferedReader(
         new InputStreamReader(httpsConn.getInputStream(), StandardCharsets.UTF_8))) {
@@ -1073,8 +1108,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   }
 
   public String sendCommand(String id, Command command, Map<String, Object> metaData) {
-    if (!webSocket.isOpen()) {
-      throw new IllegalStateException("Web socket connection is broken");
+    if (!isOpen()) {
+      throw new WebsocketConnectionIsNotOpenException();
     }
     CommandWithId cmd = (metaData == null) ? PushcaMessageFactory.buildCommandMessage(id, command) :
         PushcaMessageFactory.buildCommandMessage(id, command, metaData);

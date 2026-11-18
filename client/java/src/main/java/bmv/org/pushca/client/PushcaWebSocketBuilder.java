@@ -9,6 +9,7 @@ import bmv.org.pushca.client.transformation.base64.Base64PayloadTransformer;
 import bmv.org.pushca.core.ChannelEvent;
 import bmv.org.pushca.core.ChannelMessage;
 import bmv.org.pushca.core.gateway.GatewayRequestHeader;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -23,6 +24,7 @@ public class PushcaWebSocketBuilder {
   private final String apiKey;
   private final String passwordHash;
   private int connectTimeoutMs = 0;
+  private Duration keepAliveInterval = PushcaWebSocket.DEFAULT_KEEP_ALIVE_INTERVAL;
   private BiConsumer<PushcaWebSocketApi, String> messageConsumer;
   private BiConsumer<PushcaWebSocketApi, Binary> dataConsumer;
   private BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer;
@@ -51,6 +53,15 @@ public class PushcaWebSocketBuilder {
 
   public PushcaWebSocketBuilder withConnectTimeoutMs(int connectTimeoutMs) {
     this.connectTimeoutMs = connectTimeoutMs;
+    return this;
+  }
+
+  /**
+   * How often the connection is checked, and signed in or reconnected when it isn't open;
+   * {@link PushcaWebSocket#DEFAULT_KEEP_ALIVE_INTERVAL} by default.
+   */
+  public PushcaWebSocketBuilder withKeepAliveInterval(Duration keepAliveInterval) {
+    this.keepAliveInterval = keepAliveInterval;
     return this;
   }
 
@@ -118,9 +129,16 @@ public class PushcaWebSocketBuilder {
     return this;
   }
 
+  /**
+   * Creates the client and signs it in. When Pushca can't be reached, the client is returned all the same and signs
+   * in by itself later.
+   *
+   * @throws bmv.org.pushca.client.exception.PushcaAuthenticationException when Pushca refuses the API key or
+   *                                                                        password
+   */
   public PushcaWebSocket build() {
     return new PushcaWebSocket(pushcaApiUrl, pusherId, apiKey, client, passwordHash,
-        connectTimeoutMs, messageConsumer, dataConsumer, unknownDatagramConsumer,
+        connectTimeoutMs, keepAliveInterval, messageConsumer, dataConsumer, unknownDatagramConsumer,
         binaryManifestConsumer, channelEventConsumer, channelMessageConsumer, gatewayProcessors,
         binaryPayloadTransformer, onCloseListener, sslContext, wsConnectionFactory);
   }

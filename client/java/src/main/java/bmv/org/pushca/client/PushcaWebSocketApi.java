@@ -32,6 +32,13 @@ public interface PushcaWebSocketApi {
   String getPusherInstanceId();
 
   /**
+   * @return whether the connection is open now: signed in and connected. While it isn't, commands throw
+   * {@link bmv.org.pushca.client.exception.WebsocketConnectionIsNotOpenException}, and the client signs in or
+   * reconnects by itself
+   */
+  boolean isOpen();
+
+  /**
    * processes an incoming binary message from Pushca
    *
    * @param ws                      - websocket connection object
