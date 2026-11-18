@@ -128,6 +128,9 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PushcaWebSocket.class);
   private static final Duration REFRESH_TOKEN_INTERVAL_MS = Duration.ofMinutes(10);
+  // a token refreshed on schedule is never older than one refresh interval (and a run); one older than two missed
+  // its refreshes, so a broken connection signs in again rather than reconnecting with it before it expires (30 min)
+  private static final Duration TOKEN_REUSE_LIMIT = REFRESH_TOKEN_INTERVAL_MS.multipliedBy(2);
   /**
    * How often the connection is checked, and signed in or reconnected when it isn't open, by default.
    */
@@ -252,12 +255,6 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
         reConnect();
       }
     }
-  }
-
-  private void doSignOut() {
-    this.baseWsUrl = null;
-    this.tokenHolder.set(null);
-    closeWebSocketConnection();
   }
 
   private void closeWebSocketConnection() {
@@ -1016,14 +1013,14 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
   private void refreshAndCleanupJob() {
     if (isOpen()) {
-      refreshToken();
+      try {
+        refreshToken();
+      } catch (RuntimeException e) {
+        // the next run tries again; a token that stays unrefreshed is replaced by a new sign in (keepAliveJob)
+        LOGGER.warn("Token refresh of {} failed: {}", getClientInfo(), e.getMessage());
+      }
       removeExpiredManifests();
       removeUnusedFilters();
-      return;
-    }
-    if (Instant.now().toEpochMilli() - tokenHolder.getTime()
-        > REFRESH_TOKEN_INTERVAL_MS.toMillis()) {
-      doSignOut();
     }
   }
 
@@ -1034,12 +1031,21 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     WebSocketApi current = webSocket;
     if (current == null || current.getWebSocketState() == CLOSED) {
       closeWebSocketConnection();
-      if (this.baseWsUrl == null) {
+      if (this.baseWsUrl == null
+          || isTokenOutdated(tokenHolder.getTime(), Instant.now().toEpochMilli())) {
         doSignIn();
       } else {
         reConnect();
       }
     }
+  }
+
+  /**
+   * Whether a token set or refreshed at {@code tokenTime} has missed its refreshes by {@code now}: reconnecting with
+   * it would soon fail, so the client signs in again instead.
+   */
+  static boolean isTokenOutdated(long tokenTime, long now) {
+    return now - tokenTime > TOKEN_REUSE_LIMIT.toMillis();
   }
 
   private void refreshToken() {

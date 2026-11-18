@@ -5,6 +5,8 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import bmv.org.pushca.client.model.Binary;
 import bmv.org.pushca.client.model.BinaryObjectData;
 import bmv.org.pushca.client.serialization.json.JsonUtility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.type.MapType;
 import java.io.File;
 import java.io.IOException;
@@ -34,6 +36,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 public final class BmvObjectUtils {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(BmvObjectUtils.class);
 
   public static final MapType CONSTRUCT_MAP_TYPE = JsonUtility.getSimpleMapper().getTypeFactory()
       .constructMapType(Map.class,
@@ -84,11 +88,21 @@ public final class BmvObjectUtils {
     return JsonUtility.fromJsonWithTypeReference(json, CONSTRUCT_MAP_TYPE);
   }
 
+  /**
+   * Runs {@code task} every {@code repeatInterval}. A run that fails is logged, and the task runs again on schedule:
+   * a scheduled executor would otherwise drop the task for good after its first failure.
+   */
   public static ScheduledExecutorService createScheduler(Runnable task, Duration repeatInterval,
       Duration initialDelay) {
     ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
     scheduler.scheduleAtFixedRate(
-        task,
+        () -> {
+          try {
+            task.run();
+          } catch (RuntimeException e) {
+            LOGGER.error("Scheduled task failed, it runs again on schedule", e);
+          }
+        },
         initialDelay.toMillis(),
         repeatInterval.toMillis(),
         MILLISECONDS

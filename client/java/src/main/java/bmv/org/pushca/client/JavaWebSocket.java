@@ -42,7 +42,8 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
 
   @Override
   public void onOpen(ServerHandshake handshakeData) {
-    LOGGER.info("Web socket connection was open: url {}", this.uri.toString());
+    // never the full url: its path is the connection's token
+    LOGGER.debug("Web socket connection open: {}:{}", this.uri.getHost(), this.uri.getPort());
   }
 
   @Override
@@ -62,6 +63,11 @@ public class JavaWebSocket extends WebSocketClient implements WebSocketApi {
 
   @Override
   public void onClose(int code, String reason, boolean remote) {
+    if (remote) {
+      LOGGER.warn("Web socket connection closed by the server: code {}, reason {}", code, reason);
+    } else {
+      LOGGER.debug("Web socket connection closed: code {}, reason {}", code, reason);
+    }
     Optional.ofNullable(onCloseListener).ifPresent(l -> l.accept(code, reason));
   }
 
