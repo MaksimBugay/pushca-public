@@ -78,6 +78,7 @@ import bmv.org.pushca.core.ResourceImpressionCounters;
 import bmv.org.pushca.core.SendMessageToChannelWsResponse;
 import bmv.org.pushca.core.SimpleWsResponse;
 import bmv.org.pushca.core.gateway.GatewayRequestHeader;
+
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.File;
@@ -113,11 +114,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -127,1039 +130,1052 @@ import org.slf4j.LoggerFactory;
 
 public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(PushcaWebSocket.class);
-  private static final Duration REFRESH_TOKEN_INTERVAL_MS = Duration.ofMinutes(10);
-  // a token refreshed on schedule is never older than one refresh interval (and a run); one older than two missed
-  // its refreshes, so a broken connection signs in again rather than reconnecting with it before it expires (30 min)
-  private static final Duration TOKEN_REUSE_LIMIT = REFRESH_TOKEN_INTERVAL_MS.multipliedBy(2);
-  /**
-   * How often the connection is checked, and signed in or reconnected when it isn't open, by default.
-   */
-  public static final Duration DEFAULT_KEEP_ALIVE_INTERVAL = Duration.ofSeconds(5);
-  public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
-  public static final int MAX_REPEAT_ATTEMPT_NUMBER = 3;
-  public static final int CALLBACK_TIMEOUT_SEC = 10;
-  // the server's answer to PING
-  private static final String PONG = "PONG";
-  public static final String INTERNAL_BINARY_FILE_NAME_PATTERN = "binaries//{0}.pushca";
-  private final String requestedPusherId;
-  private String pusherId;
-  private final String pushcaApiUrl;
-  private String baseWsUrl;
-  private final TokenHolder tokenHolder = new TokenHolder();
-  private final PClient client;
-  private final String apiKey;
-  private final String passwordHash;
-  // replaced by the keep-alive job, read by every command
-  private volatile WebSocketApi webSocket;
-  // set when Pushca refused to sign the client in: no more attempts
-  private volatile PushcaAuthenticationException signInError;
-  private final ScheduledExecutorService refreshAndCleanupScheduler;
-  private final ScheduledExecutorService keepAliveScheduler;
-  private final Map<String, BinaryObjectData> binaries = new ConcurrentHashMap<>();
-  private final Map<String, CompletableFuture<String>> waitingHall = new ConcurrentHashMap<>();
-  private final Map<ClientFilter, Long> filterRegistry = new ConcurrentHashMap<>();
-  private final BiConsumer<WebSocketApi, String> wsMessageConsumer;
-  private final BiConsumer<WebSocketApi, byte[]> wsDataConsumer;
-  private final BinaryPayloadTransformer binaryPayloadTransformer;
-  private final BiConsumer<Integer, String> wsOnCloseListener;
-  private final SSLContext wsSslContext;
-  private final int wsConnectTimeoutMs;
-  private final WsConnectionFactory wsConnectionFactory;
+    private static final Logger LOGGER = LoggerFactory.getLogger(PushcaWebSocket.class);
+    private static final Duration REFRESH_TOKEN_INTERVAL_MS = Duration.ofMinutes(10);
+    // a token refreshed on schedule is never older than one refresh interval (and a run); one older than two missed
+    // its refreshes, so a broken connection signs in again rather than reconnecting with it before it expires (30 min)
+    private static final Duration TOKEN_REUSE_LIMIT = REFRESH_TOKEN_INTERVAL_MS.multipliedBy(2);
+    /**
+     * How often the connection is checked, and signed in or reconnected when it isn't open, by default.
+     */
+    public static final Duration DEFAULT_KEEP_ALIVE_INTERVAL = Duration.ofSeconds(5);
+    // how often the keep-alive job pings an open connection
+    static final Duration PING_INTERVAL = Duration.ofMinutes(1);
+    public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
+    public static final int MAX_REPEAT_ATTEMPT_NUMBER = 3;
+    public static final int CALLBACK_TIMEOUT_SEC = 10;
+    // the server's answer to PING
+    private static final String PONG = "PONG";
+    public static final String INTERNAL_BINARY_FILE_NAME_PATTERN = "binaries//{0}.pushca";
+    private final String requestedPusherId;
+    private String pusherId;
+    private final String pushcaApiUrl;
+    private String baseWsUrl;
+    private final TokenHolder tokenHolder = new TokenHolder();
+    // read and set by the keep-alive job; the tests move it back to make a ping due
+    final AtomicLong lastIdlePingSentTimestamp = new AtomicLong(Instant.now().toEpochMilli());
+    private final PClient client;
+    private final String apiKey;
+    private final String passwordHash;
+    // replaced by the keep-alive job, read by every command
+    private volatile WebSocketApi webSocket;
+    // set when Pushca refused to sign the client in: no more attempts
+    private volatile PushcaAuthenticationException signInError;
+    private final ScheduledExecutorService refreshAndCleanupScheduler;
+    private final ScheduledExecutorService keepAliveScheduler;
+    private final Map<String, BinaryObjectData> binaries = new ConcurrentHashMap<>();
+    private final Map<String, CompletableFuture<String>> waitingHall = new ConcurrentHashMap<>();
+    private final Map<ClientFilter, Long> filterRegistry = new ConcurrentHashMap<>();
+    private final BiConsumer<WebSocketApi, String> wsMessageConsumer;
+    private final BiConsumer<WebSocketApi, byte[]> wsDataConsumer;
+    private final BinaryPayloadTransformer binaryPayloadTransformer;
+    private final BiConsumer<Integer, String> wsOnCloseListener;
+    private final SSLContext wsSslContext;
+    private final int wsConnectTimeoutMs;
+    private final WsConnectionFactory wsConnectionFactory;
 
-  private final ScheduledExecutorService acknowledgeTimeoutScheduler =
-      Executors.newScheduledThreadPool(10);
+    private final ScheduledExecutorService acknowledgeTimeoutScheduler =
+            Executors.newScheduledThreadPool(10);
 
-  private final Executor asyncExecutor;
+    private final Executor asyncExecutor;
 
-  public static String buildAcknowledgeId(String binaryId, int order, int clientHash) {
-    return MessageFormat.format("{0}-{1}-{2}", binaryId, String.valueOf(order),
-        String.valueOf(clientHash));
-  }
-
-  PushcaWebSocket(String pushcaApiUrl, String pusherId,
-      String apiKey, PClient client, String passwordHash,
-      int connectTimeoutMs,
-      Duration keepAliveInterval,
-      BiConsumer<PushcaWebSocketApi, String> messageConsumer,
-      BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
-      BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer,
-      BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer,
-      BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer,
-      BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer,
-      Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors,
-      BinaryPayloadTransformer binaryPayloadTransformer,
-      BiConsumer<Integer, String> onCloseListener,
-      SSLContext sslContext,
-      WsConnectionFactory wsConnectionFactory) {
-    this.wsConnectionFactory = wsConnectionFactory;
-    this.pushcaApiUrl = pushcaApiUrl;
-    this.requestedPusherId = pusherId;
-    this.client = client;
-    this.apiKey = apiKey;
-    this.passwordHash = passwordHash;
-    this.wsMessageConsumer =
-        (ws, message) -> processMessage(ws, message, messageConsumer, channelEventConsumer,
-            channelMessageConsumer, binaryManifestConsumer, gatewayProcessors);
-    this.wsDataConsumer =
-        (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer, unknownDatagramConsumer,
-            messageConsumer, channelMessageConsumer);
-    this.binaryPayloadTransformer = binaryPayloadTransformer;
-    this.wsOnCloseListener = onCloseListener;
-    this.wsSslContext = sslContext;
-    this.wsConnectTimeoutMs = connectTimeoutMs;
-    this.asyncExecutor = createAsyncExecutor(10);
-    refreshAndCleanupScheduler = createScheduler(
-        this::refreshAndCleanupJob,
-        REFRESH_TOKEN_INTERVAL_MS,
-        Duration.ofSeconds(5)
-    );
-    keepAliveScheduler = createScheduler(
-        this::keepAliveJob,
-        keepAliveInterval,
-        Duration.ofSeconds(10)
-    );
-    doSignIn();
-    // wrong API key or password: retrying can't help, fail now
-    if (signInError != null) {
-      close();
-      throw signInError;
-    }
-  }
-
-  private void doSignIn() {
-    OpenConnectionResponse openConnectionResponse = null;
-    try {
-      openConnectionResponse =
-          openConnection(pushcaApiUrl, requestedPusherId, apiKey, client, passwordHash);
-    } catch (PushcaAuthenticationException e) {
-      LOGGER.error("{}, no more sign in attempts", e.getMessage());
-      signInError = e;
-    } catch (IOException e) {
-      LOGGER.error(
-          "Cannot acquire ws connection parameters during sign in attempt: client {}, pusher id {}: {}",
-          toJson(client),
-          pusherId,
-          e.getMessage());
+    public static String buildAcknowledgeId(String binaryId, int order, int clientHash) {
+        return MessageFormat.format("{0}-{1}-{2}", binaryId, String.valueOf(order),
+                String.valueOf(clientHash));
     }
 
-    if (openConnectionResponse != null) {
-      this.pusherId = openConnectionResponse.pusherInstanceId;
-
-      URI wsUrl = null;
-      try {
-        wsUrl = new URI(openConnectionResponse.externalAdvertisedUrl);
-      } catch (URISyntaxException e) {
-        LOGGER.error("Malformed web socket url: {}", openConnectionResponse.externalAdvertisedUrl);
-      }
-      if (wsUrl != null) {
-        this.baseWsUrl = wsUrl.toString().substring(0, wsUrl.toString().lastIndexOf('/') + 1);
-        this.tokenHolder.set(wsUrl.toString().substring(wsUrl.toString().lastIndexOf('/') + 1));
-        reConnect();
-      }
-    }
-  }
-
-  private void closeWebSocketConnection() {
-    if (this.webSocket == null) {
-      return;
-    }
-    try {
-      this.webSocket.close();
-    } catch (Exception ex) {
-      LOGGER.error("Failed close ws connection attempt", ex);
-    }
-    this.webSocket = null;
-  }
-
-  public String getClientInfo() {
-    return MessageFormat.format("{0}[{1}]", this.client.accountId, this.client.deviceId);
-  }
-
-  @Override
-  public boolean isOpen() {
-    WebSocketApi current = webSocket;
-    return current != null && current.isOpen();
-  }
-
-  public String getPusherInstanceId() {
-    return pusherId;
-  }
-
-  @Override
-  public void sendPing() {
-    if (!isOpen()) {
-      throw new WebsocketConnectionIsNotOpenException();
-    }
-    webSocket.send(PushcaMessageFactory.buildCommandMessage(null, PING).commandBody);
-  }
-
-  public void processBinary(WebSocketApi ws, byte[] binary,
-      BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
-      BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer,
-      BiConsumer<PushcaWebSocketApi, String> messageConsumer,
-      BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer) {
-
-    // latency probe, the server expects the same bytes back
-    if (isBinaryPing(binary)) {
-      ws.send(binary);
-      return;
+    PushcaWebSocket(String pushcaApiUrl, String pusherId,
+                    String apiKey, PClient client, String passwordHash,
+                    int connectTimeoutMs,
+                    Duration keepAliveInterval,
+                    BiConsumer<PushcaWebSocketApi, String> messageConsumer,
+                    BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
+                    BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer,
+                    BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer,
+                    BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer,
+                    BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer,
+                    Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors,
+                    BinaryPayloadTransformer binaryPayloadTransformer,
+                    BiConsumer<Integer, String> onCloseListener,
+                    SSLContext sslContext,
+                    WsConnectionFactory wsConnectionFactory) {
+        this.wsConnectionFactory = wsConnectionFactory;
+        this.pushcaApiUrl = pushcaApiUrl;
+        this.requestedPusherId = pusherId;
+        this.client = client;
+        this.apiKey = apiKey;
+        this.passwordHash = passwordHash;
+        this.wsMessageConsumer =
+                (ws, message) -> processMessage(ws, message, messageConsumer, channelEventConsumer,
+                        channelMessageConsumer, binaryManifestConsumer, gatewayProcessors);
+        this.wsDataConsumer =
+                (ws, byteBuffer) -> processBinary(ws, byteBuffer, dataConsumer, unknownDatagramConsumer,
+                        messageConsumer, channelMessageConsumer);
+        this.binaryPayloadTransformer = binaryPayloadTransformer;
+        this.wsOnCloseListener = onCloseListener;
+        this.wsSslContext = sslContext;
+        this.wsConnectTimeoutMs = connectTimeoutMs;
+        this.asyncExecutor = createAsyncExecutor(10);
+        refreshAndCleanupScheduler = createScheduler(
+                this::refreshAndCleanupJob,
+                REFRESH_TOKEN_INTERVAL_MS,
+                Duration.ofSeconds(5)
+        );
+        keepAliveScheduler = createScheduler(
+                this::keepAliveJob,
+                keepAliveInterval,
+                Duration.ofSeconds(10)
+        );
+        doSignIn();
+        // wrong API key or password: retrying can't help, fail now
+        if (signInError != null) {
+            close();
+            throw signInError;
+        }
     }
 
-    BinaryWithHeader binaryWithHeader = new BinaryWithHeader(binary);
+    private void doSignIn() {
+        OpenConnectionResponse openConnectionResponse = null;
+        try {
+            openConnectionResponse =
+                    openConnection(pushcaApiUrl, requestedPusherId, apiKey, client, passwordHash);
+        } catch (PushcaAuthenticationException e) {
+            LOGGER.error("{}, no more sign in attempts", e.getMessage());
+            signInError = e;
+        } catch (IOException e) {
+            LOGGER.error(
+                    "Cannot acquire ws connection parameters during sign in attempt: client {}, pusher id {}: {}",
+                    toJson(client),
+                    pusherId,
+                    e.getMessage());
+        }
+
+        if (openConnectionResponse != null) {
+            this.pusherId = openConnectionResponse.pusherInstanceId;
+
+            URI wsUrl = null;
+            try {
+                wsUrl = new URI(openConnectionResponse.externalAdvertisedUrl);
+            } catch (URISyntaxException e) {
+                LOGGER.error("Malformed web socket url: {}", openConnectionResponse.externalAdvertisedUrl);
+            }
+            if (wsUrl != null) {
+                this.baseWsUrl = wsUrl.toString().substring(0, wsUrl.toString().lastIndexOf('/') + 1);
+                this.tokenHolder.set(wsUrl.toString().substring(wsUrl.toString().lastIndexOf('/') + 1));
+                reConnect();
+            }
+        }
+    }
+
+    private void closeWebSocketConnection() {
+        if (this.webSocket == null) {
+            return;
+        }
+        try {
+            this.webSocket.close();
+        } catch (Exception ex) {
+            LOGGER.error("Failed close ws connection attempt", ex);
+        }
+        this.webSocket = null;
+    }
+
+    public String getClientInfo() {
+        return MessageFormat.format("{0}[{1}]", this.client.accountId, this.client.deviceId);
+    }
+
+    @Override
+    public boolean isOpen() {
+        WebSocketApi current = webSocket;
+        return current != null && current.isOpen();
+    }
+
+    public String getPusherInstanceId() {
+        return pusherId;
+    }
+
+    @Override
+    public void sendPing() {
+        if (!isOpen()) {
+            throw new WebsocketConnectionIsNotOpenException();
+        }
+        webSocket.send(PushcaMessageFactory.buildCommandMessage(null, PING).commandBody);
+    }
+
+    public void processBinary(WebSocketApi ws, byte[] binary,
+                              BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
+                              BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer,
+                              BiConsumer<PushcaWebSocketApi, String> messageConsumer,
+                              BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer) {
+
+        // latency probe, the server expects the same bytes back
+        if (isBinaryPing(binary)) {
+            ws.send(binary);
+            return;
+        }
+
+        BinaryWithHeader binaryWithHeader = new BinaryWithHeader(binary);
 
 /*
     LOGGER.debug(MessageFormat.format(
         "binary data received: id {0}, order {1}, with ack {2}", binaryId.toString(),
         String.valueOf(order), String.valueOf(withAcknowledge)));
 */
-    //binary message was received
-    if (binaryWithHeader.isBinaryMessage()) {
-      final String decodedMessage = binaryPayloadTransformer.getDecoder().apply(
-          binaryWithHeader.getPayload()
-      );
-      ChannelMessage channelMessage;
-      try {
-        channelMessage = JsonUtility.fromJson(decodedMessage, ChannelMessage.class);
-      } catch (Exception ex) {
-        channelMessage = null;
-      }
-      if (channelMessage != null) {
-        final ChannelMessage chm = channelMessage;
-        Optional.ofNullable(channelMessageConsumer).ifPresent(c -> c.accept(this, chm));
-      } else {
-        Optional.ofNullable(messageConsumer).ifPresent(c -> c.accept(this, decodedMessage));
-      }
-      if (binaryWithHeader.withAcknowledge) {
-        sendAcknowledge(binaryWithHeader.binaryId.toString());
-      }
-      return;
-    }
-
-    BinaryObjectData binaryData =
-        binaries.computeIfPresent(binaryWithHeader.binaryId.toString(), (k, v) -> {
-          v.fillWithReceivedData(
-              binaryWithHeader.order, binaryWithHeader.getPayload());
-          return v;
-        });
-    if (binaryData == null) {
-      if (unknownDatagramConsumer != null) {
-        unknownDatagramConsumer.accept(this, binaryWithHeader);
-        return;
-      }
-      throw new IllegalStateException("Unknown binary with id = " + binaryWithHeader.binaryId);
-    }
-    Datagram datagram = binaryData.getDatagram(binaryWithHeader.order);
-    if (datagram == null) {
-      throw new IllegalArgumentException(
-          MessageFormat.format("Unknown datagram: binaryId={0}, order={1}",
-              binaryWithHeader.binaryId.toString(),
-              String.valueOf(binaryWithHeader.order))
-      );
-    }
-    if (!datagram.md5.equals(calculateSha256(datagram.data))) {
-      throw new IllegalArgumentException(
-          MessageFormat.format("Md5 validation was not passed: binaryId={0}, order={1}",
-              binaryWithHeader.binaryId.toString(),
-              String.valueOf(binaryWithHeader.order))
-      );
-    }
-    if (datagram.size != datagram.data.length) {
-      throw new IllegalArgumentException(
-          MessageFormat.format("Size validation was not passed: binaryId={0}, order={1}",
-              binaryWithHeader.binaryId.toString(),
-              String.valueOf(binaryWithHeader.order))
-      );
-    }
-    if (binaryWithHeader.withAcknowledge) {
-      sendAcknowledge(binaryWithHeader.binaryId, binaryWithHeader.order,
-          binaryWithHeader.clientHash);
-    }
-    if (binaryData.isCompleted()) {
-      Optional.ofNullable(dataConsumer).ifPresent(
-          c -> asyncExecutor.execute(
-              () -> c.accept(this, toBinary(binaryData, storeBinary(binaryData)))
-          )
-      );
-      binaries.remove(binaryData.id);
-      LOGGER.info("Binary was successfully received: id {}, name {}", binaryData.id,
-          binaryData.name);
-    }
-  }
-
-  private String storeBinary(BinaryObjectData binaryData) {
-    byte[] bytes =
-        binaryData.getDatagrams().stream().collect(Collectors.toMap(d -> d.order, d -> d.data))
-            .entrySet().stream()
-            .sorted(Comparator.comparingInt(Entry::getKey))
-            .map(Entry::getValue)
-            .reduce(ArrayUtils::addAll)
-            .orElse(null);
-
-    return storeBinary(binaryData.id, bytes);
-  }
-
-  private static String storeBinary(String id, byte[] bytes) {
-    if (ArrayUtils.isEmpty(bytes)) {
-      return null;
-    }
-    String fileName = MessageFormat.format(INTERNAL_BINARY_FILE_NAME_PATTERN, id);
-    if (Files.exists(Paths.get(fileName))) {
-      return fileName;
-    }
-    try {
-      FileUtils.writeByteArrayToFile(new File(fileName), bytes);
-    } catch (IOException e) {
-      throw new IllegalStateException("Cannot store binary with id = " + id);
-    }
-    return fileName;
-  }
-
-  public void processMessage(WebSocketApi ws, String inMessage,
-      BiConsumer<PushcaWebSocketApi, String> messageConsumer,
-      BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer,
-      BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer,
-      BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer,
-      Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors) {
-    if (StringUtils.isEmpty(inMessage)) {
-      return;
-    }
-    if (PONG.equals(inMessage)) {
-      LOGGER.debug("Pong was received: client {}", getClientInfo());
-      return;
-    }
-    String message = inMessage;
-    String[] parts = message.split(MESSAGE_PARTS_DELIMITER);
-    if (parts.length > 1) {
-      if (isValidMessageType(parts[1])) {
-        MessageType type = MessageType.valueOf(parts[1]);
-        switch (type) {
-          case ACKNOWLEDGE:
-            LOGGER.debug(MessageFormat.format("Acknowledge was received: {0}", parts[0]));
-            waitingHall.computeIfPresent(parts[0], (key, callback) -> {
-              callback.complete(DEFAULT_RESPONSE);
-              return callback;
-            });
-            return;
-          case GATEWAY_REQUEST:
-            String path = parts[2];
-            GatewayRequestHeader header = fromJson(parts[3], GatewayRequestHeader.class);
-            byte[] requestPayload = new byte[0];
-            if (parts.length == 5) {
-              requestPayload = Base64.getDecoder().decode(parts[4]);
-            }
-            BiFunction<GatewayRequestHeader, byte[], byte[]> gatewayProcessor =
-                gatewayProcessors.get(path);
-            if (gatewayProcessor != null) {
-              byte[] responsePayload = gatewayProcessor.apply(header, requestPayload);
-              if (responsePayload == null) {
-                responsePayload = new byte[0];
-              }
-              sendGatewayResponse(parts[0], responsePayload);
-            }
-            return;
-          case BINARY_MANIFEST:
-            processBinaryManifest(parts[2], binaryManifestConsumer);
-            sendAcknowledge(parts[0]);
-            return;
-          case CHANNEL_MESSAGE:
-            if (channelMessageConsumer != null) {
-              channelMessageConsumer.accept(this, fromJson(parts[2], ChannelMessage.class));
-            }
-            return;
-          case CHANNEL_EVENT:
-            if (channelEventConsumer != null) {
-              channelEventConsumer.accept(this, fromJson(parts[2], ChannelEvent.class));
-            }
-            return;
-          case RESPONSE:
-            LOGGER.debug(MessageFormat.format("Response was received: {0}", parts[0]));
-            waitingHall.computeIfPresent(parts[0], (key, callback) -> {
-              callback.complete(parts.length < 3 ? DEFAULT_RESPONSE : parts[2]);
-              return callback;
-            });
-            return;
-          case UPLOAD_BINARY_APPEAL:
-            UploadBinaryAppeal appeal = fromJson(parts[2], UploadBinaryAppeal.class);
-            asyncExecutor.execute(
-                () -> sendBinary(appeal)
+        //binary message was received
+        if (binaryWithHeader.isBinaryMessage()) {
+            final String decodedMessage = binaryPayloadTransformer.getDecoder().apply(
+                    binaryWithHeader.getPayload()
             );
+            ChannelMessage channelMessage;
+            try {
+                channelMessage = JsonUtility.fromJson(decodedMessage, ChannelMessage.class);
+            } catch (Exception ex) {
+                channelMessage = null;
+            }
+            if (channelMessage != null) {
+                final ChannelMessage chm = channelMessage;
+                Optional.ofNullable(channelMessageConsumer).ifPresent(c -> c.accept(this, chm));
+            } else {
+                Optional.ofNullable(messageConsumer).ifPresent(c -> c.accept(this, decodedMessage));
+            }
+            if (binaryWithHeader.withAcknowledge) {
+                sendAcknowledge(binaryWithHeader.binaryId.toString());
+            }
             return;
         }
-      }
-      sendAcknowledge(parts[0]);
-      message = parts[1];
+
+        BinaryObjectData binaryData =
+                binaries.computeIfPresent(binaryWithHeader.binaryId.toString(), (k, v) -> {
+                    v.fillWithReceivedData(
+                            binaryWithHeader.order, binaryWithHeader.getPayload());
+                    return v;
+                });
+        if (binaryData == null) {
+            if (unknownDatagramConsumer != null) {
+                unknownDatagramConsumer.accept(this, binaryWithHeader);
+                return;
+            }
+            throw new IllegalStateException("Unknown binary with id = " + binaryWithHeader.binaryId);
+        }
+        Datagram datagram = binaryData.getDatagram(binaryWithHeader.order);
+        if (datagram == null) {
+            throw new IllegalArgumentException(
+                    MessageFormat.format("Unknown datagram: binaryId={0}, order={1}",
+                            binaryWithHeader.binaryId.toString(),
+                            String.valueOf(binaryWithHeader.order))
+            );
+        }
+        if (!datagram.md5.equals(calculateSha256(datagram.data))) {
+            throw new IllegalArgumentException(
+                    MessageFormat.format("Md5 validation was not passed: binaryId={0}, order={1}",
+                            binaryWithHeader.binaryId.toString(),
+                            String.valueOf(binaryWithHeader.order))
+            );
+        }
+        if (datagram.size != datagram.data.length) {
+            throw new IllegalArgumentException(
+                    MessageFormat.format("Size validation was not passed: binaryId={0}, order={1}",
+                            binaryWithHeader.binaryId.toString(),
+                            String.valueOf(binaryWithHeader.order))
+            );
+        }
+        if (binaryWithHeader.withAcknowledge) {
+            sendAcknowledge(binaryWithHeader.binaryId, binaryWithHeader.order,
+                    binaryWithHeader.clientHash);
+        }
+        if (binaryData.isCompleted()) {
+            Optional.ofNullable(dataConsumer).ifPresent(
+                    c -> asyncExecutor.execute(
+                            () -> c.accept(this, toBinary(binaryData, storeBinary(binaryData)))
+                    )
+            );
+            binaries.remove(binaryData.id);
+            LOGGER.info("Binary was successfully received: id {}, name {}", binaryData.id,
+                    binaryData.name);
+        }
     }
-    if (messageConsumer != null) {
-      messageConsumer.accept(this, message);
+
+    private String storeBinary(BinaryObjectData binaryData) {
+        byte[] bytes =
+                binaryData.getDatagrams().stream().collect(Collectors.toMap(d -> d.order, d -> d.data))
+                        .entrySet().stream()
+                        .sorted(Comparator.comparingInt(Entry::getKey))
+                        .map(Entry::getValue)
+                        .reduce(ArrayUtils::addAll)
+                        .orElse(null);
+
+        return storeBinary(binaryData.id, bytes);
     }
-  }
 
-  private void processBinaryManifest(String json,
-      BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer) {
-    BinaryObjectData binaryObjectData = fromJson(json, BinaryObjectData.class);
-    if (!binaryObjectData.redOnly) {
-      binaries.putIfAbsent(binaryObjectData.id, binaryObjectData);
-    }
-    if (binaryManifestConsumer != null) {
-      binaryManifestConsumer.accept(this, binaryObjectData);
-    }
-  }
-
-  public synchronized void sendAcknowledge(String id) {
-    if (!isOpen()) {
-      throw new WebsocketConnectionIsNotOpenException();
-    }
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("messageId", id);
-    CommandWithId cmd = PushcaMessageFactory.buildCommandMessage(id, ACKNOWLEDGE, metaData);
-    webSocket.send(cmd.commandBody);
-  }
-
-  public void sendGatewayResponse(String id, byte[] response) {
-    if (!isOpen()) {
-      throw new WebsocketConnectionIsNotOpenException();
-    }
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("id", id);
-    metaData.put("payload", Base64.getEncoder().encodeToString(response));
-    webSocket.send(
-        PushcaMessageFactory.buildCommandMessage(
-            id,
-            SEND_GATEWAY_RESPONSE,
-            metaData
-        ).commandBody
-    );
-  }
-
-  public void sendAcknowledge(UUID binaryId, int order, int clientHash) {
-    String id = buildAcknowledgeId(binaryId.toString(), order, clientHash);
-    sendAcknowledge(id);
-  }
-
-  public synchronized void sendMessageWithAcknowledge(String msgId, @NotNull PClient dest,
-      boolean preserveOrder, String message) {
-    String id = StringUtils.isEmpty(msgId) ? ID_GENERATOR.generate().toString() : msgId;
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("id", id);
-    metaData.put("client", dest);
-    metaData.put("sender", client);
-    metaData.put("message", message);
-    metaData.put("preserveOrder", preserveOrder);
-
-    sendCommand(id, SEND_MESSAGE_WITH_ACKNOWLEDGE, metaData);
-  }
-
-  public synchronized byte[] sendGatewayRequest(@NotNull ClientFilter dest,
-      boolean preserveOrder, String path, byte[] requestPayload) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("receiver", dest);
-    metaData.put("preserveOrder", preserveOrder);
-    metaData.put("path", path);
-    byte[] payload = requestPayload == null ? new byte[0] : requestPayload;
-    metaData.put("payload", Base64.getEncoder().encodeToString(payload));
-
-    String responseJson = sendCommand(SEND_GATEWAY_REQUEST, metaData);
-    SimpleWsResponse response = fromJson(responseJson, SimpleWsResponse.class);
-    if (StringUtils.isNotEmpty(response.error)) {
-      throw new IllegalStateException("Failed attempt to send gateway request: " + response.error);
-    }
-    return Base64.getDecoder().decode(response.body);
-  }
-
-
-  public void sendMessageWithAcknowledge(String id, PClient dest, String message) {
-    sendMessageWithAcknowledge(id, dest, false, message);
-  }
-
-  public synchronized void broadcastMessage(String id, @NotNull ClientFilter dest,
-      boolean preserveOrder, String message) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("id", id);
-    metaData.put("filter", dest);
-    metaData.put("sender", client);
-    metaData.put("message", message);
-    metaData.put("preserveOrder", preserveOrder);
-
-    sendCommand(SEND_MESSAGE, metaData);
-  }
-
-  public void broadcastMessage(@NotNull ClientFilter dest, String message) {
-    broadcastMessage(null, dest, false, message);
-  }
-
-  public void sendMessage(String id, @NotNull PClient dest, boolean preserveOrder, String message) {
-    broadcastMessage(id, new ClientFilter(dest), preserveOrder, message);
-  }
-
-  public void sendMessage(PClient dest, String message) {
-    sendMessage(null, dest, false, message);
-  }
-
-  public void broadcastAsBinaryMessage(@NotNull ClientFilter dest, String message, UUID id) {
-    filterRegistry.computeIfAbsent(dest, filter -> {
-      registerFilter(filter);
-      return Instant.now().toEpochMilli();
-    });
-    filterRegistry.computeIfPresent(dest, (filter, time) -> Instant.now().toEpochMilli());
-    sendAsBinaryMessage(dest.hashCode(), message, id, false);
-  }
-
-  public void broadcastAsBinaryMessage(@NotNull ClientFilter dest, String message) {
-    broadcastAsBinaryMessage(dest, message, null);
-  }
-
-  public void sendAsBinaryMessage(UUID id, @NotNull PClient dest, String message,
-      boolean withAcknowledge) {
-    sendAsBinaryMessage(dest.hashCode(), message, id, withAcknowledge);
-  }
-
-  public synchronized void sendAsBinaryMessage(int destHashCode, String strMessage, UUID id,
-      boolean withAcknowledge) {
-    byte[] message = binaryPayloadTransformer.getEncoder().apply(strMessage);
-    UUID binaryMsgId = (id == null) ? ID_GENERATOR.generate() : id;
-    byte[] prefix = toDatagramPrefix(
-        BinaryType.BINARY_MESSAGE,
-        destHashCode,
-        withAcknowledge,
-        binaryMsgId,
-        0
-    );
-    byte[] binary = addAll(prefix, message);
-    executeWithRepeatOnFailure(
-        binaryMsgId.toString(),
-        () -> webSocket.send(binary)
-    );
-  }
-
-  public void sendAsBinaryMessage(@NotNull PClient dest, String message) {
-    sendAsBinaryMessage(null, dest, message, false);
-  }
-
-  public byte[] loadBinaryById(String binaryId) throws IOException {
-    String fileName = MessageFormat.format(INTERNAL_BINARY_FILE_NAME_PATTERN, binaryId);
-    File file = new File(fileName);
-    return Files.readAllBytes(file.toPath());
-  }
-
-  public BinaryObjectData prepareBinaryManifest(byte[] data, String name, String id,
-      int chunkSize) {
-    String binaryId = id;
-    if (StringUtils.isEmpty(binaryId)) {
-      binaryId = StringUtils.isEmpty(name) ? ID_GENERATOR.generate().toString() :
-          UUID.nameUUIDFromBytes(name.getBytes(StandardCharsets.UTF_8)).toString();
-    }
-    final String binaryIdFinal = binaryId;
-    return binaries.computeIfAbsent(binaryId, v -> {
-      byte[] binaryBytes = data;
-      if (ArrayUtils.isEmpty(binaryBytes)) {
+    private static String storeBinary(String id, byte[] bytes) {
+        if (ArrayUtils.isEmpty(bytes)) {
+            return null;
+        }
+        String fileName = MessageFormat.format(INTERNAL_BINARY_FILE_NAME_PATTERN, id);
+        if (Files.exists(Paths.get(fileName))) {
+            return fileName;
+        }
         try {
-          binaryBytes = loadBinaryById(id);
+            FileUtils.writeByteArrayToFile(new File(fileName), bytes);
         } catch (IOException e) {
-          throw new IllegalArgumentException("Cannot load binary with id = " + id, e);
+            throw new IllegalStateException("Cannot store binary with id = " + id);
         }
-        if (ArrayUtils.isEmpty(binaryBytes)) {
-          throw new IllegalArgumentException(
-              MessageFormat.format("Binary with id {0} was not found", id));
+        return fileName;
+    }
+
+    public void processMessage(WebSocketApi ws, String inMessage,
+                               BiConsumer<PushcaWebSocketApi, String> messageConsumer,
+                               BiConsumer<PushcaWebSocketApi, ChannelEvent> channelEventConsumer,
+                               BiConsumer<PushcaWebSocketApi, ChannelMessage> channelMessageConsumer,
+                               BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer,
+                               Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors) {
+        if (StringUtils.isEmpty(inMessage)) {
+            return;
         }
-      }
-      return toBinaryObjectData(
-          binaryIdFinal,
-          name,
-          client,
-          BmvObjectUtils.splitToChunks(binaryBytes, chunkSize),
-          pusherId
-      );
-    });
-  }
-
-  @Override
-  public synchronized void sendBinaryManifest(@NotNull ClientFilter dest,
-      BinaryObjectData manifest) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("dest", dest);
-    metaData.put("manifest", manifest);
-
-    sendCommand(manifest.id, SEND_BINARY_MANIFEST, metaData);
-  }
-
-  public void sendBinary(@NotNull PClient dest, byte[] data) {
-    sendBinary(dest, data, false);
-  }
-
-  public void sendBinary(@NotNull PClient dest, byte[] data, boolean withAcknowledge) {
-    sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, withAcknowledge, null);
-  }
-
-  public synchronized void sendBinary(@NotNull PClient dest, byte[] data, String name, String id,
-      int chunkSize, boolean withAcknowledge, List<Integer> requestedChunks) {
-    BinaryObjectData manifest = prepareBinaryManifest(data, name, id, chunkSize);
-    asyncExecutor.execute(() -> storeBinary(manifest.id, data));
-    sendBinaryManifest(new ClientFilter(dest),
-        deepClone(manifest, BinaryObjectData.class).setRedOnly(false));
-    sendBinary(dest, manifest, withAcknowledge, requestedChunks);
-  }
-
-  public void sendBinary(UploadBinaryAppeal uploadBinaryAppeal) {
-    BinaryObjectData manifest = prepareBinaryManifest(
-        null, "", uploadBinaryAppeal.binaryId, uploadBinaryAppeal.chunkSize);
-    if (uploadBinaryAppeal.manifestOnly || isEmpty(uploadBinaryAppeal.requestedChunks)) {
-      sendBinaryManifest(new ClientFilter(uploadBinaryAppeal.sender),
-          deepClone(manifest, BinaryObjectData.class).setRedOnly(false));
-    }
-    if (uploadBinaryAppeal.manifestOnly) {
-      return;
-    }
-    sendBinary(
-        uploadBinaryAppeal.sender,
-        manifest, true,
-        uploadBinaryAppeal.requestedChunks
-    );
-  }
-
-  private void sendBinary(PClient dest, BinaryObjectData binaryObjectData, boolean withAcknowledge,
-      List<Integer> requestedChunks) {
-    UUID binaryId = UUID.fromString(binaryObjectData.id);
-    Predicate<Datagram> filter =
-        requestedChunks == null ? dgm -> Boolean.TRUE : dgm -> requestedChunks.contains(dgm.order);
-    List<Datagram> datagrams = binaryObjectData.getDatagrams().stream()
-        .filter(filter)
-        .peek(datagram -> datagram.prefix =
-            toDatagramPrefix(
-                BinaryType.FILE,
-                dest.hashCode(), withAcknowledge,
-                binaryId, datagram.order
-            ))
-        .toList();
-
-    for (Datagram datagram : datagrams) {
-      final String responseId =
-          buildAcknowledgeId(binaryObjectData.id, datagram.order, dest.hashCode());
-      executeWithRepeatOnFailure(
-          responseId,
-          () -> webSocket.send(addAll(datagram.prefix, datagram.data))
-      );
-    }
-  }
-
-  public void sendUploadBinaryAppeal(ClientFilter owner, String binaryId,
-      int chunkSize, boolean manifestOnly, List<Integer> requestedChunks) {
-    UploadBinaryAppeal appeal = new UploadBinaryAppeal();
-    appeal.owner = owner;
-    appeal.binaryId = binaryId;
-    appeal.chunkSize = chunkSize;
-    appeal.manifestOnly = manifestOnly;
-    appeal.requestedChunks = requestedChunks;
-
-    sendUploadBinaryAppeal(appeal);
-  }
-
-  public void sendUploadBinaryAppeal(String binaryPushcaURI, boolean withAcknowledge,
-      List<Integer> requestedChunks) {
-    PushcaURI uri = new PushcaURI(binaryPushcaURI);
-    UploadBinaryAppeal appeal = new UploadBinaryAppeal();
-    appeal.owner = uri.getUploadBinaryAppeal().owner;
-    appeal.binaryId = uri.getUploadBinaryAppeal().binaryId;
-    appeal.chunkSize = uri.getUploadBinaryAppeal().chunkSize;
-    appeal.manifestOnly = withAcknowledge;
-    appeal.requestedChunks = requestedChunks;
-
-    sendUploadBinaryAppeal(appeal);
-  }
-
-  private synchronized void sendUploadBinaryAppeal(UploadBinaryAppeal appeal) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("owner", appeal.owner);
-    metaData.put("binaryId", appeal.binaryId);
-    metaData.put("chunkSize", appeal.chunkSize);
-    metaData.put("manifestOnly", appeal.manifestOnly);
-    metaData.put("requestedChunks", appeal.requestedChunks);
-
-    String response = sendCommand(SEND_UPLOAD_BINARY_APPEAL, metaData);
-    if (!"SUCCESS".equals(response)) {
-      throw new IllegalStateException("Cannot send upload binary appeal: " + toJson(appeal));
-    }
-  }
-
-  public synchronized PChannel createChannel(String id, @NotNull String name,
-      ClientFilter... filters) {
-    return createChannel(id, name, false, filters);
-  }
-
-  public synchronized PChannel createChannel(String id, @NotNull String name,
-      boolean closePrivate, ClientFilter... filters) {
-    String channelId = StringUtils.isEmpty(id) ? ID_GENERATOR.generate().toString() : id;
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("id", channelId);
-    metaData.put("name", name);
-    metaData.put("filters", filters);
-    if (closePrivate) {
-      metaData.put("closePrivate", true);
-    }
-    requireSuccess(sendCommand(CREATE_CHANNEL, metaData), "Cannot create channel " + name);
-    return new PChannel(channelId, name, closePrivate ? Boolean.TRUE : null);
-  }
-
-  public synchronized void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channelReference(channel));
-    metaData.put("filters", filters);
-    requireSuccess(sendCommand(ADD_MEMBERS_TO_CHANNEL, metaData),
-        "Cannot add members to channel " + channel.name);
-  }
-
-  public synchronized List<ChannelWithInfo> getChannels(@NotNull ClientFilter filter) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("filter", filter);
-    String responseJson = sendCommand(GET_CHANNELS, metaData);
-    GetChannelsWsResponse response = fromJson(responseJson, GetChannelsWsResponse.class);
-    requireNoError(response.error, "Cannot retrieve list of channels");
-    return response.body.channels;
-  }
-
-  public synchronized List<ChannelWithInfo> getChannels(@NotNull List<String> ids) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("ids", ids);
-    String responseJson = sendCommand(GET_CHANNELS_PUBLIC_INFO, metaData);
-    GetChannelsWsResponse response = fromJson(responseJson, GetChannelsWsResponse.class);
-    requireNoError(response.error, "Cannot retrieve list of channels");
-    return response.body.channels;
-  }
-
-  public synchronized Set<ClientFilter> getChannelMembers(@NotNull PChannel channel) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channelReference(channel));
-    String responseJson = sendCommand(GET_CHANNEL_MEMBERS, metaData);
-    GetChannelMembersWsResponse response =
-        fromJson(responseJson, GetChannelMembersWsResponse.class);
-    requireNoError(response.error, "Cannot list channel members");
-    return response.body;
-  }
-
-  public synchronized ChannelHistoryPage getChannelHistory(@NotNull PChannel channel,
-      Integer offset) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channelReference(channel));
-    if (offset != null) {
-      metaData.put("offset", offset);
-    }
-    String responseJson = sendCommand(GET_CHANNEL_HISTORY, metaData);
-    GetChannelHistoryWsResponse response =
-        fromJson(responseJson, GetChannelHistoryWsResponse.class);
-    requireNoError(response.error, "Cannot load history of channel " + channel.name);
-    return response.body;
-  }
-
-  public synchronized void markChannelAsRead(@NotNull PChannel channel, ClientFilter filter) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channelReference(channel));
-    metaData.put("filter", filter);
-    requireSuccess(sendCommand(MARK_CHANNEL_AS_READ, metaData),
-        "Cannot mark channel as read: " + channel.name);
-  }
-
-  public synchronized String sendMessageToChannel(@NotNull PChannel channel,
-      List<ClientFilter> mentioned, String message) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channelReference(channel));
-    if (!isEmpty(mentioned)) {
-      metaData.put("mentioned", mentioned);
-    }
-    metaData.put("message", message);
-    String responseJson = sendCommand(SEND_MESSAGE_TO_CHANNEL, metaData);
-
-    SendMessageToChannelWsResponse response =
-        fromJson(responseJson, SendMessageToChannelWsResponse.class);
-    requireNoError(response.error, "Cannot send message to channel " + channel.name);
-    return response.body.messageId;
-  }
-
-  public void sendAsBinaryMessageToChannel(@NotNull PChannel channel,
-      List<ClientFilter> mentioned, String message) {
-    ChannelMessage channelMessage = new ChannelMessage();
-    channelMessage.messageId = ID_GENERATOR.generate().toString();
-    channelMessage.channelId = channel.id;
-    channelMessage.mentioned = mentioned;
-    channelMessage.sendTime = Instant.now().toEpochMilli();
-    channelMessage.sender = this.client;
-    channelMessage.body = message;
-    sendAsBinaryMessage(channel.hashCode(), toJson(channelMessage), null, false);
-  }
-
-  public synchronized void removeMeFromChannel(@NotNull PChannel channel) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channelReference(channel));
-    requireSuccess(sendCommand(REMOVE_ME_FROM_CHANNEL, metaData),
-        "Cannot remove myself from channel " + channel.name);
-  }
-
-  public synchronized void removeChannel(@NotNull PChannel channel) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channelReference(channel));
-    requireSuccess(sendCommand(REMOVE_CHANNEL, metaData),
-        "Cannot remove channel " + channel.name);
-  }
-
-  public synchronized void addImpression(@NotNull PChannel channel,
-      @NotNull PImpression impression) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channelReference(channel));
-    metaData.put("impression", impression);
-    requireSuccess(sendCommand(ADD_IMPRESSION, metaData),
-        "Cannot add impression for channel " + channel.name);
-  }
-
-  public synchronized void removeImpression(@NotNull PChannel channel,
-      @NotNull PImpression impression) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("channel", channelReference(channel));
-    metaData.put("impression", impression);
-    requireSuccess(sendCommand(Command.REMOVE_IMPRESSION, metaData),
-        "Cannot remove impression in channel " + channel.name);
-  }
-
-  public synchronized List<ResourceImpressionCounters> getImpressionStat(
-      @NotNull List<String> ids) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("ids", ids);
-    String responseJson = sendCommand(GET_IMPRESSION_STAT, metaData);
-    GetImpressionStatWsResponse response =
-        fromJson(responseJson, GetImpressionStatWsResponse.class);
-    requireNoError(response.error, "Cannot load impression statistic");
-    return response.body;
-  }
-
-  /**
-   * close private flag is assigned on creation only, so it is never sent with other commands
-   */
-  private static PChannel channelReference(PChannel channel) {
-    return new PChannel(channel.id, channel.name);
-  }
-
-  private static void requireSuccess(String response, String failureMessage) {
-    if (DEFAULT_RESPONSE.equals(response)) {
-      return;
-    }
-    String error = response;
-    try {
-      SimpleWsResponse errorResponse = fromJson(response, SimpleWsResponse.class);
-      if (StringUtils.isNotEmpty(errorResponse.error)) {
-        error = errorResponse.error;
-      }
-    } catch (Exception ex) {
-      // not a json, keep raw response as error
-    }
-    throw new PushcaCommandException(failureMessage, error);
-  }
-
-  private static void requireNoError(String error, String failureMessage) {
-    if (StringUtils.isNotEmpty(error)) {
-      throw new PushcaCommandException(failureMessage, error);
-    }
-  }
-
-  public void removeUnusedFilters() {
-    filterRegistry.entrySet().stream()
-        .filter(entry -> Instant.now().toEpochMilli() - entry.getValue() > Duration.ofHours(1)
-            .toMillis())
-        .map(Entry::getKey)
-        .forEach(this::removeFilter);
-  }
-
-  private void registerFilter(ClientFilter filter) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("filter", filter);
-    String response = sendCommand(REGISTER_FILTER, metaData);
-    if (!"SUCCESS".equals(response)) {
-      throw new IllegalStateException("Cannot register filter " + toJson(filter));
-    }
-  }
-
-  private void removeFilter(ClientFilter filter) {
-    Map<String, Object> metaData = new HashMap<>();
-    metaData.put("filter", filter);
-    String response = sendCommand(REMOVE_FILTER, metaData);
-    if (!"SUCCESS".equals(response)) {
-      throw new IllegalStateException("Cannot remove filter " + toJson(filter));
-    }
-    filterRegistry.remove(filter);
-  }
-
-  private CompletableFuture<String> registerCallback(String id, String details) {
-    CompletableFuture<String> callback = new CompletableFuture<>();
-    callback.whenComplete((dId, error) -> waitingHall.remove(dId));
-    waitingHall.put(id, callback);
-    return CompletableFuture.supplyAsync(() -> {
-          try {
-            return callback.get(CALLBACK_TIMEOUT_SEC, TimeUnit.SECONDS);
-          } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-          } catch (ExecutionException | TimeoutException error) {
-            LOGGER.error("Failed callback: client {}, id {}, details {}, error {}",
-                client.accountId, id, details,
-                error.getMessage() == null ? error.getClass().getName() : error.getMessage());
-          }
-          callback.complete(id);
-          return null;
-        },
-        acknowledgeTimeoutScheduler);
-  }
-
-  private String executeWithRepeatOnFailure(String id, Runnable operation) {
-    return executeWithRepeatOnFailure(id, operation, "");
-  }
-
-  private String executeWithRepeatOnFailure(String id, Runnable operation, String details) {
-    Exception error = null;
-    for (int i = 0; i < PushcaWebSocket.MAX_REPEAT_ATTEMPT_NUMBER; i++) {
-      operation.run();
-      try {
-        String response = registerCallback(id, details).get();
-        if (response != null) {
-          return response;
+        if (PONG.equals(inMessage)) {
+            LOGGER.debug("Pong was received: client {}", getClientInfo());
+            return;
         }
-      } catch (Exception e) {
-        error = e;
-        LOGGER.error("Failed execute operation attempt: details " + details, e);
-      }
+        String message = inMessage;
+        String[] parts = message.split(MESSAGE_PARTS_DELIMITER);
+        if (parts.length > 1) {
+            if (isValidMessageType(parts[1])) {
+                MessageType type = MessageType.valueOf(parts[1]);
+                switch (type) {
+                    case ACKNOWLEDGE:
+                        LOGGER.debug(MessageFormat.format("Acknowledge was received: {0}", parts[0]));
+                        waitingHall.computeIfPresent(parts[0], (key, callback) -> {
+                            callback.complete(DEFAULT_RESPONSE);
+                            return callback;
+                        });
+                        return;
+                    case GATEWAY_REQUEST:
+                        String path = parts[2];
+                        GatewayRequestHeader header = fromJson(parts[3], GatewayRequestHeader.class);
+                        byte[] requestPayload = new byte[0];
+                        if (parts.length == 5) {
+                            requestPayload = Base64.getDecoder().decode(parts[4]);
+                        }
+                        BiFunction<GatewayRequestHeader, byte[], byte[]> gatewayProcessor =
+                                gatewayProcessors.get(path);
+                        if (gatewayProcessor != null) {
+                            byte[] responsePayload = gatewayProcessor.apply(header, requestPayload);
+                            if (responsePayload == null) {
+                                responsePayload = new byte[0];
+                            }
+                            sendGatewayResponse(parts[0], responsePayload);
+                        }
+                        return;
+                    case BINARY_MANIFEST:
+                        processBinaryManifest(parts[2], binaryManifestConsumer);
+                        sendAcknowledge(parts[0]);
+                        return;
+                    case CHANNEL_MESSAGE:
+                        if (channelMessageConsumer != null) {
+                            channelMessageConsumer.accept(this, fromJson(parts[2], ChannelMessage.class));
+                        }
+                        return;
+                    case CHANNEL_EVENT:
+                        if (channelEventConsumer != null) {
+                            channelEventConsumer.accept(this, fromJson(parts[2], ChannelEvent.class));
+                        }
+                        return;
+                    case RESPONSE:
+                        LOGGER.debug(MessageFormat.format("Response was received: {0}", parts[0]));
+                        waitingHall.computeIfPresent(parts[0], (key, callback) -> {
+                            callback.complete(parts.length < 3 ? DEFAULT_RESPONSE : parts[2]);
+                            return callback;
+                        });
+                        return;
+                    case UPLOAD_BINARY_APPEAL:
+                        UploadBinaryAppeal appeal = fromJson(parts[2], UploadBinaryAppeal.class);
+                        asyncExecutor.execute(
+                                () -> sendBinary(appeal)
+                        );
+                        return;
+                }
+            }
+            sendAcknowledge(parts[0]);
+            message = parts[1];
+        }
+        if (messageConsumer != null) {
+            messageConsumer.accept(this, message);
+        }
     }
-    throw new WebsocketConnectionIsBrokenException(error);
-  }
 
-  private void refreshAndCleanupJob() {
-    if (isOpen()) {
-      try {
-        refreshToken();
-      } catch (RuntimeException e) {
-        // the next run tries again; a token that stays unrefreshed is replaced by a new sign in (keepAliveJob)
-        LOGGER.warn("Token refresh of {} failed: {}", getClientInfo(), e.getMessage());
-      }
-      removeExpiredManifests();
-      removeUnusedFilters();
+    private void processBinaryManifest(String json,
+                                       BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer) {
+        BinaryObjectData binaryObjectData = fromJson(json, BinaryObjectData.class);
+        if (!binaryObjectData.redOnly) {
+            binaries.putIfAbsent(binaryObjectData.id, binaryObjectData);
+        }
+        if (binaryManifestConsumer != null) {
+            binaryManifestConsumer.accept(this, binaryObjectData);
+        }
     }
-  }
 
-  void keepAliveJob() {
-    if (signInError != null) {
-      return;
+    public synchronized void sendAcknowledge(String id) {
+        if (!isOpen()) {
+            throw new WebsocketConnectionIsNotOpenException();
+        }
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("messageId", id);
+        CommandWithId cmd = PushcaMessageFactory.buildCommandMessage(id, ACKNOWLEDGE, metaData);
+        webSocket.send(cmd.commandBody);
     }
-    WebSocketApi current = webSocket;
-    if (current == null || current.getWebSocketState() == CLOSED) {
-      closeWebSocketConnection();
-      if (this.baseWsUrl == null
-          || isTokenOutdated(tokenHolder.getTime(), Instant.now().toEpochMilli())) {
-        doSignIn();
-      } else {
-        reConnect();
-      }
-    }
-  }
 
-  /**
-   * Whether a token set or refreshed at {@code tokenTime} has missed its refreshes by {@code now}: reconnecting with
-   * it would soon fail, so the client signs in again instead.
-   */
-  static boolean isTokenOutdated(long tokenTime, long now) {
-    return now - tokenTime > TOKEN_REUSE_LIMIT.toMillis();
-  }
+    public void sendGatewayResponse(String id, byte[] response) {
+        if (!isOpen()) {
+            throw new WebsocketConnectionIsNotOpenException();
+        }
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("id", id);
+        metaData.put("payload", Base64.getEncoder().encodeToString(response));
+        webSocket.send(
+                PushcaMessageFactory.buildCommandMessage(
+                        id,
+                        SEND_GATEWAY_RESPONSE,
+                        metaData
+                ).commandBody
+        );
+    }
 
-  private void refreshToken() {
-    String responseJson = sendCommand(REFRESH_TOKEN, null);
-    RefreshTokenWsResponse refreshTokenWsResponse =
-        fromJson(responseJson, RefreshTokenWsResponse.class);
-    if (StringUtils.isNotEmpty(refreshTokenWsResponse.error)) {
-      throw new IllegalStateException(
-          "Failed refresh token attempt: " + refreshTokenWsResponse.error);
+    public void sendAcknowledge(UUID binaryId, int order, int clientHash) {
+        String id = buildAcknowledgeId(binaryId.toString(), order, clientHash);
+        sendAcknowledge(id);
     }
-    if (StringUtils.isNotEmpty(refreshTokenWsResponse.body)) {
-      tokenHolder.set(refreshTokenWsResponse.body);
-    }
-  }
 
-  private void reConnect() {
-    LOGGER.debug("Re-connect attempt: client {}, base url {}", client.accountId, baseWsUrl);
-    try {
-      this.webSocket = wsConnectionFactory.createConnection(
-          new URI(baseWsUrl + tokenHolder.get()),
-          wsConnectTimeoutMs,
-          wsMessageConsumer,
-          wsDataConsumer,
-          wsOnCloseListener,
-          wsSslContext
-      );
-    } catch (Exception ex) {
-      LOGGER.error("Failed open ws connection attempt", ex);
-    }
-  }
+    public synchronized void sendMessageWithAcknowledge(String msgId, @NotNull PClient dest,
+                                                        boolean preserveOrder, String message) {
+        String id = StringUtils.isEmpty(msgId) ? ID_GENERATOR.generate().toString() : msgId;
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("id", id);
+        metaData.put("client", dest);
+        metaData.put("sender", client);
+        metaData.put("message", message);
+        metaData.put("preserveOrder", preserveOrder);
 
-  private OpenConnectionResponse openConnection(String pushcaApiUrl, String pusherId,
-      String apiKey, PClient client, String passwordHash) throws IOException {
-    URL url = new URL(pushcaApiUrl + "/open-connection");
-    URLConnection httpsConn = url.openConnection();
-    httpsConn.addRequestProperty("User-Agent", "Mozilla");
-    httpsConn.setRequestProperty("Method", "POST");
-    httpsConn.setRequestProperty("Content-Type", "application/json");
-    httpsConn.setRequestProperty("Accept", "application/json");
-    httpsConn.setDoOutput(true);
-    OpenConnectionRequest request =
-        new OpenConnectionRequest(client, pusherId, apiKey, passwordHash);
-    try (OutputStream os = httpsConn.getOutputStream()) {
-      byte[] input = toJson(request).getBytes(StandardCharsets.UTF_8);
-      os.write(input, 0, input.length);
+        sendCommand(id, SEND_MESSAGE_WITH_ACKNOWLEDGE, metaData);
     }
-    if (httpsConn instanceof HttpURLConnection httpConn) {
-      int status = httpConn.getResponseCode();
-      if (status == HttpURLConnection.HTTP_UNAUTHORIZED || status == HttpURLConnection.HTTP_FORBIDDEN) {
-        throw new PushcaAuthenticationException(getClientInfo(), status);
-      }
-    }
-    StringBuilder responseJson = new StringBuilder();
-    try (BufferedReader br = new BufferedReader(
-        new InputStreamReader(httpsConn.getInputStream(), StandardCharsets.UTF_8))) {
-      String responseLine;
-      while ((responseLine = br.readLine()) != null) {
-        responseJson.append(responseLine.trim());
-      }
-    }
-    return fromJson(responseJson.toString(), OpenConnectionResponse.class);
-  }
 
-  public String sendCommand(Command command, Map<String, Object> metaData) {
-    return sendCommand(null, command, metaData);
-  }
+    public synchronized byte[] sendGatewayRequest(@NotNull ClientFilter dest,
+                                                  boolean preserveOrder, String path, byte[] requestPayload) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("receiver", dest);
+        metaData.put("preserveOrder", preserveOrder);
+        metaData.put("path", path);
+        byte[] payload = requestPayload == null ? new byte[0] : requestPayload;
+        metaData.put("payload", Base64.getEncoder().encodeToString(payload));
 
-  public String sendCommand(String id, Command command, Map<String, Object> metaData) {
-    if (!isOpen()) {
-      throw new WebsocketConnectionIsNotOpenException();
+        String responseJson = sendCommand(SEND_GATEWAY_REQUEST, metaData);
+        SimpleWsResponse response = fromJson(responseJson, SimpleWsResponse.class);
+        if (StringUtils.isNotEmpty(response.error)) {
+            throw new IllegalStateException("Failed attempt to send gateway request: " + response.error);
+        }
+        return Base64.getDecoder().decode(response.body);
     }
-    CommandWithId cmd = (metaData == null) ? PushcaMessageFactory.buildCommandMessage(id, command) :
-        PushcaMessageFactory.buildCommandMessage(id, command, metaData);
-    return executeWithRepeatOnFailure(
-        cmd.id,
-        () -> webSocket.send(cmd.commandBody),
-        MessageFormat.format("command {0}, metadata {1}", command.name(), toJson(metaData))
-    );
-  }
 
-  private void removeExpiredManifests() {
-    long now = System.currentTimeMillis();
-    List<String> ids = binaries.values().stream()
-        .filter(b -> (now - b.created) > Duration.ofMinutes(30).toMillis())
-        .map(b -> b.id)
-        .toList();
-    ids.forEach(binaries::remove);
-  }
 
-  @Override
-  public void close() {
-    Optional.ofNullable(refreshAndCleanupScheduler).ifPresent(ExecutorService::shutdown);
-    Optional.ofNullable(keepAliveScheduler).ifPresent(ExecutorService::shutdown);
-    // without this their threads outlive the client; shutdown, not shutdownNow, so commands and
-    // incoming messages already in progress still complete
-    acknowledgeTimeoutScheduler.shutdown();
-    if (asyncExecutor instanceof ExecutorService executorService) {
-      executorService.shutdown();
+    public void sendMessageWithAcknowledge(String id, PClient dest, String message) {
+        sendMessageWithAcknowledge(id, dest, false, message);
     }
-    closeWebSocketConnection();
-  }
+
+    public synchronized void broadcastMessage(String id, @NotNull ClientFilter dest,
+                                              boolean preserveOrder, String message) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("id", id);
+        metaData.put("filter", dest);
+        metaData.put("sender", client);
+        metaData.put("message", message);
+        metaData.put("preserveOrder", preserveOrder);
+
+        sendCommand(SEND_MESSAGE, metaData);
+    }
+
+    public void broadcastMessage(@NotNull ClientFilter dest, String message) {
+        broadcastMessage(null, dest, false, message);
+    }
+
+    public void sendMessage(String id, @NotNull PClient dest, boolean preserveOrder, String message) {
+        broadcastMessage(id, new ClientFilter(dest), preserveOrder, message);
+    }
+
+    public void sendMessage(PClient dest, String message) {
+        sendMessage(null, dest, false, message);
+    }
+
+    public void broadcastAsBinaryMessage(@NotNull ClientFilter dest, String message, UUID id) {
+        filterRegistry.computeIfAbsent(dest, filter -> {
+            registerFilter(filter);
+            return Instant.now().toEpochMilli();
+        });
+        filterRegistry.computeIfPresent(dest, (filter, time) -> Instant.now().toEpochMilli());
+        sendAsBinaryMessage(dest.hashCode(), message, id, false);
+    }
+
+    public void broadcastAsBinaryMessage(@NotNull ClientFilter dest, String message) {
+        broadcastAsBinaryMessage(dest, message, null);
+    }
+
+    public void sendAsBinaryMessage(UUID id, @NotNull PClient dest, String message,
+                                    boolean withAcknowledge) {
+        sendAsBinaryMessage(dest.hashCode(), message, id, withAcknowledge);
+    }
+
+    public synchronized void sendAsBinaryMessage(int destHashCode, String strMessage, UUID id,
+                                                 boolean withAcknowledge) {
+        byte[] message = binaryPayloadTransformer.getEncoder().apply(strMessage);
+        UUID binaryMsgId = (id == null) ? ID_GENERATOR.generate() : id;
+        byte[] prefix = toDatagramPrefix(
+                BinaryType.BINARY_MESSAGE,
+                destHashCode,
+                withAcknowledge,
+                binaryMsgId,
+                0
+        );
+        byte[] binary = addAll(prefix, message);
+        executeWithRepeatOnFailure(
+                binaryMsgId.toString(),
+                () -> webSocket.send(binary)
+        );
+    }
+
+    public void sendAsBinaryMessage(@NotNull PClient dest, String message) {
+        sendAsBinaryMessage(null, dest, message, false);
+    }
+
+    public byte[] loadBinaryById(String binaryId) throws IOException {
+        String fileName = MessageFormat.format(INTERNAL_BINARY_FILE_NAME_PATTERN, binaryId);
+        File file = new File(fileName);
+        return Files.readAllBytes(file.toPath());
+    }
+
+    public BinaryObjectData prepareBinaryManifest(byte[] data, String name, String id,
+                                                  int chunkSize) {
+        String binaryId = id;
+        if (StringUtils.isEmpty(binaryId)) {
+            binaryId = StringUtils.isEmpty(name) ? ID_GENERATOR.generate().toString() :
+                    UUID.nameUUIDFromBytes(name.getBytes(StandardCharsets.UTF_8)).toString();
+        }
+        final String binaryIdFinal = binaryId;
+        return binaries.computeIfAbsent(binaryId, v -> {
+            byte[] binaryBytes = data;
+            if (ArrayUtils.isEmpty(binaryBytes)) {
+                try {
+                    binaryBytes = loadBinaryById(id);
+                } catch (IOException e) {
+                    throw new IllegalArgumentException("Cannot load binary with id = " + id, e);
+                }
+                if (ArrayUtils.isEmpty(binaryBytes)) {
+                    throw new IllegalArgumentException(
+                            MessageFormat.format("Binary with id {0} was not found", id));
+                }
+            }
+            return toBinaryObjectData(
+                    binaryIdFinal,
+                    name,
+                    client,
+                    BmvObjectUtils.splitToChunks(binaryBytes, chunkSize),
+                    pusherId
+            );
+        });
+    }
+
+    @Override
+    public synchronized void sendBinaryManifest(@NotNull ClientFilter dest,
+                                                BinaryObjectData manifest) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("dest", dest);
+        metaData.put("manifest", manifest);
+
+        sendCommand(manifest.id, SEND_BINARY_MANIFEST, metaData);
+    }
+
+    public void sendBinary(@NotNull PClient dest, byte[] data) {
+        sendBinary(dest, data, false);
+    }
+
+    public void sendBinary(@NotNull PClient dest, byte[] data, boolean withAcknowledge) {
+        sendBinary(dest, data, null, null, DEFAULT_CHUNK_SIZE, withAcknowledge, null);
+    }
+
+    public synchronized void sendBinary(@NotNull PClient dest, byte[] data, String name, String id,
+                                        int chunkSize, boolean withAcknowledge, List<Integer> requestedChunks) {
+        BinaryObjectData manifest = prepareBinaryManifest(data, name, id, chunkSize);
+        asyncExecutor.execute(() -> storeBinary(manifest.id, data));
+        sendBinaryManifest(new ClientFilter(dest),
+                deepClone(manifest, BinaryObjectData.class).setRedOnly(false));
+        sendBinary(dest, manifest, withAcknowledge, requestedChunks);
+    }
+
+    public void sendBinary(UploadBinaryAppeal uploadBinaryAppeal) {
+        BinaryObjectData manifest = prepareBinaryManifest(
+                null, "", uploadBinaryAppeal.binaryId, uploadBinaryAppeal.chunkSize);
+        if (uploadBinaryAppeal.manifestOnly || isEmpty(uploadBinaryAppeal.requestedChunks)) {
+            sendBinaryManifest(new ClientFilter(uploadBinaryAppeal.sender),
+                    deepClone(manifest, BinaryObjectData.class).setRedOnly(false));
+        }
+        if (uploadBinaryAppeal.manifestOnly) {
+            return;
+        }
+        sendBinary(
+                uploadBinaryAppeal.sender,
+                manifest, true,
+                uploadBinaryAppeal.requestedChunks
+        );
+    }
+
+    private void sendBinary(PClient dest, BinaryObjectData binaryObjectData, boolean withAcknowledge,
+                            List<Integer> requestedChunks) {
+        UUID binaryId = UUID.fromString(binaryObjectData.id);
+        Predicate<Datagram> filter =
+                requestedChunks == null ? dgm -> Boolean.TRUE : dgm -> requestedChunks.contains(dgm.order);
+        List<Datagram> datagrams = binaryObjectData.getDatagrams().stream()
+                .filter(filter)
+                .peek(datagram -> datagram.prefix =
+                        toDatagramPrefix(
+                                BinaryType.FILE,
+                                dest.hashCode(), withAcknowledge,
+                                binaryId, datagram.order
+                        ))
+                .toList();
+
+        for (Datagram datagram : datagrams) {
+            final String responseId =
+                    buildAcknowledgeId(binaryObjectData.id, datagram.order, dest.hashCode());
+            executeWithRepeatOnFailure(
+                    responseId,
+                    () -> webSocket.send(addAll(datagram.prefix, datagram.data))
+            );
+        }
+    }
+
+    public void sendUploadBinaryAppeal(ClientFilter owner, String binaryId,
+                                       int chunkSize, boolean manifestOnly, List<Integer> requestedChunks) {
+        UploadBinaryAppeal appeal = new UploadBinaryAppeal();
+        appeal.owner = owner;
+        appeal.binaryId = binaryId;
+        appeal.chunkSize = chunkSize;
+        appeal.manifestOnly = manifestOnly;
+        appeal.requestedChunks = requestedChunks;
+
+        sendUploadBinaryAppeal(appeal);
+    }
+
+    public void sendUploadBinaryAppeal(String binaryPushcaURI, boolean withAcknowledge,
+                                       List<Integer> requestedChunks) {
+        PushcaURI uri = new PushcaURI(binaryPushcaURI);
+        UploadBinaryAppeal appeal = new UploadBinaryAppeal();
+        appeal.owner = uri.getUploadBinaryAppeal().owner;
+        appeal.binaryId = uri.getUploadBinaryAppeal().binaryId;
+        appeal.chunkSize = uri.getUploadBinaryAppeal().chunkSize;
+        appeal.manifestOnly = withAcknowledge;
+        appeal.requestedChunks = requestedChunks;
+
+        sendUploadBinaryAppeal(appeal);
+    }
+
+    private synchronized void sendUploadBinaryAppeal(UploadBinaryAppeal appeal) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("owner", appeal.owner);
+        metaData.put("binaryId", appeal.binaryId);
+        metaData.put("chunkSize", appeal.chunkSize);
+        metaData.put("manifestOnly", appeal.manifestOnly);
+        metaData.put("requestedChunks", appeal.requestedChunks);
+
+        String response = sendCommand(SEND_UPLOAD_BINARY_APPEAL, metaData);
+        if (!"SUCCESS".equals(response)) {
+            throw new IllegalStateException("Cannot send upload binary appeal: " + toJson(appeal));
+        }
+    }
+
+    public synchronized PChannel createChannel(String id, @NotNull String name,
+                                               ClientFilter... filters) {
+        return createChannel(id, name, false, filters);
+    }
+
+    public synchronized PChannel createChannel(String id, @NotNull String name,
+                                               boolean closePrivate, ClientFilter... filters) {
+        String channelId = StringUtils.isEmpty(id) ? ID_GENERATOR.generate().toString() : id;
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("id", channelId);
+        metaData.put("name", name);
+        metaData.put("filters", filters);
+        if (closePrivate) {
+            metaData.put("closePrivate", true);
+        }
+        requireSuccess(sendCommand(CREATE_CHANNEL, metaData), "Cannot create channel " + name);
+        return new PChannel(channelId, name, closePrivate ? Boolean.TRUE : null);
+    }
+
+    public synchronized void addMembersToChannel(@NotNull PChannel channel, ClientFilter... filters) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("channel", channelReference(channel));
+        metaData.put("filters", filters);
+        requireSuccess(sendCommand(ADD_MEMBERS_TO_CHANNEL, metaData),
+                "Cannot add members to channel " + channel.name);
+    }
+
+    public synchronized List<ChannelWithInfo> getChannels(@NotNull ClientFilter filter) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("filter", filter);
+        String responseJson = sendCommand(GET_CHANNELS, metaData);
+        GetChannelsWsResponse response = fromJson(responseJson, GetChannelsWsResponse.class);
+        requireNoError(response.error, "Cannot retrieve list of channels");
+        return response.body.channels;
+    }
+
+    public synchronized List<ChannelWithInfo> getChannels(@NotNull List<String> ids) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("ids", ids);
+        String responseJson = sendCommand(GET_CHANNELS_PUBLIC_INFO, metaData);
+        GetChannelsWsResponse response = fromJson(responseJson, GetChannelsWsResponse.class);
+        requireNoError(response.error, "Cannot retrieve list of channels");
+        return response.body.channels;
+    }
+
+    public synchronized Set<ClientFilter> getChannelMembers(@NotNull PChannel channel) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("channel", channelReference(channel));
+        String responseJson = sendCommand(GET_CHANNEL_MEMBERS, metaData);
+        GetChannelMembersWsResponse response =
+                fromJson(responseJson, GetChannelMembersWsResponse.class);
+        requireNoError(response.error, "Cannot list channel members");
+        return response.body;
+    }
+
+    public synchronized ChannelHistoryPage getChannelHistory(@NotNull PChannel channel,
+                                                             Integer offset) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("channel", channelReference(channel));
+        if (offset != null) {
+            metaData.put("offset", offset);
+        }
+        String responseJson = sendCommand(GET_CHANNEL_HISTORY, metaData);
+        GetChannelHistoryWsResponse response =
+                fromJson(responseJson, GetChannelHistoryWsResponse.class);
+        requireNoError(response.error, "Cannot load history of channel " + channel.name);
+        return response.body;
+    }
+
+    public synchronized void markChannelAsRead(@NotNull PChannel channel, ClientFilter filter) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("channel", channelReference(channel));
+        metaData.put("filter", filter);
+        requireSuccess(sendCommand(MARK_CHANNEL_AS_READ, metaData),
+                "Cannot mark channel as read: " + channel.name);
+    }
+
+    public synchronized String sendMessageToChannel(@NotNull PChannel channel,
+                                                    List<ClientFilter> mentioned, String message) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("channel", channelReference(channel));
+        if (!isEmpty(mentioned)) {
+            metaData.put("mentioned", mentioned);
+        }
+        metaData.put("message", message);
+        String responseJson = sendCommand(SEND_MESSAGE_TO_CHANNEL, metaData);
+
+        SendMessageToChannelWsResponse response =
+                fromJson(responseJson, SendMessageToChannelWsResponse.class);
+        requireNoError(response.error, "Cannot send message to channel " + channel.name);
+        return response.body.messageId;
+    }
+
+    public void sendAsBinaryMessageToChannel(@NotNull PChannel channel,
+                                             List<ClientFilter> mentioned, String message) {
+        ChannelMessage channelMessage = new ChannelMessage();
+        channelMessage.messageId = ID_GENERATOR.generate().toString();
+        channelMessage.channelId = channel.id;
+        channelMessage.mentioned = mentioned;
+        channelMessage.sendTime = Instant.now().toEpochMilli();
+        channelMessage.sender = this.client;
+        channelMessage.body = message;
+        sendAsBinaryMessage(channel.hashCode(), toJson(channelMessage), null, false);
+    }
+
+    public synchronized void removeMeFromChannel(@NotNull PChannel channel) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("channel", channelReference(channel));
+        requireSuccess(sendCommand(REMOVE_ME_FROM_CHANNEL, metaData),
+                "Cannot remove myself from channel " + channel.name);
+    }
+
+    public synchronized void removeChannel(@NotNull PChannel channel) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("channel", channelReference(channel));
+        requireSuccess(sendCommand(REMOVE_CHANNEL, metaData),
+                "Cannot remove channel " + channel.name);
+    }
+
+    public synchronized void addImpression(@NotNull PChannel channel,
+                                           @NotNull PImpression impression) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("channel", channelReference(channel));
+        metaData.put("impression", impression);
+        requireSuccess(sendCommand(ADD_IMPRESSION, metaData),
+                "Cannot add impression for channel " + channel.name);
+    }
+
+    public synchronized void removeImpression(@NotNull PChannel channel,
+                                              @NotNull PImpression impression) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("channel", channelReference(channel));
+        metaData.put("impression", impression);
+        requireSuccess(sendCommand(Command.REMOVE_IMPRESSION, metaData),
+                "Cannot remove impression in channel " + channel.name);
+    }
+
+    public synchronized List<ResourceImpressionCounters> getImpressionStat(
+            @NotNull List<String> ids) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("ids", ids);
+        String responseJson = sendCommand(GET_IMPRESSION_STAT, metaData);
+        GetImpressionStatWsResponse response =
+                fromJson(responseJson, GetImpressionStatWsResponse.class);
+        requireNoError(response.error, "Cannot load impression statistic");
+        return response.body;
+    }
+
+    /**
+     * close private flag is assigned on creation only, so it is never sent with other commands
+     */
+    private static PChannel channelReference(PChannel channel) {
+        return new PChannel(channel.id, channel.name);
+    }
+
+    private static void requireSuccess(String response, String failureMessage) {
+        if (DEFAULT_RESPONSE.equals(response)) {
+            return;
+        }
+        String error = response;
+        try {
+            SimpleWsResponse errorResponse = fromJson(response, SimpleWsResponse.class);
+            if (StringUtils.isNotEmpty(errorResponse.error)) {
+                error = errorResponse.error;
+            }
+        } catch (Exception ex) {
+            // not a json, keep raw response as error
+        }
+        throw new PushcaCommandException(failureMessage, error);
+    }
+
+    private static void requireNoError(String error, String failureMessage) {
+        if (StringUtils.isNotEmpty(error)) {
+            throw new PushcaCommandException(failureMessage, error);
+        }
+    }
+
+    public void removeUnusedFilters() {
+        filterRegistry.entrySet().stream()
+                .filter(entry -> Instant.now().toEpochMilli() - entry.getValue() > Duration.ofHours(1)
+                        .toMillis())
+                .map(Entry::getKey)
+                .forEach(this::removeFilter);
+    }
+
+    private void registerFilter(ClientFilter filter) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("filter", filter);
+        String response = sendCommand(REGISTER_FILTER, metaData);
+        if (!"SUCCESS".equals(response)) {
+            throw new IllegalStateException("Cannot register filter " + toJson(filter));
+        }
+    }
+
+    private void removeFilter(ClientFilter filter) {
+        Map<String, Object> metaData = new HashMap<>();
+        metaData.put("filter", filter);
+        String response = sendCommand(REMOVE_FILTER, metaData);
+        if (!"SUCCESS".equals(response)) {
+            throw new IllegalStateException("Cannot remove filter " + toJson(filter));
+        }
+        filterRegistry.remove(filter);
+    }
+
+    private CompletableFuture<String> registerCallback(String id, String details) {
+        CompletableFuture<String> callback = new CompletableFuture<>();
+        callback.whenComplete((dId, error) -> waitingHall.remove(dId));
+        waitingHall.put(id, callback);
+        return CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return callback.get(CALLBACK_TIMEOUT_SEC, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } catch (ExecutionException | TimeoutException error) {
+                        LOGGER.error("Failed callback: client {}, id {}, details {}, error {}",
+                                client.accountId, id, details,
+                                error.getMessage() == null ? error.getClass().getName() : error.getMessage());
+                    }
+                    callback.complete(id);
+                    return null;
+                },
+                acknowledgeTimeoutScheduler);
+    }
+
+    private String executeWithRepeatOnFailure(String id, Runnable operation) {
+        return executeWithRepeatOnFailure(id, operation, "");
+    }
+
+    private String executeWithRepeatOnFailure(String id, Runnable operation, String details) {
+        Exception error = null;
+        for (int i = 0; i < PushcaWebSocket.MAX_REPEAT_ATTEMPT_NUMBER; i++) {
+            operation.run();
+            try {
+                String response = registerCallback(id, details).get();
+                if (response != null) {
+                    return response;
+                }
+            } catch (Exception e) {
+                error = e;
+                LOGGER.error("Failed execute operation attempt: details " + details, e);
+            }
+        }
+        throw new WebsocketConnectionIsBrokenException(error);
+    }
+
+    private void refreshAndCleanupJob() {
+        if (isOpen()) {
+            try {
+                refreshToken();
+            } catch (RuntimeException e) {
+                // the next run tries again; a token that stays unrefreshed is replaced by a new sign in (keepAliveJob)
+                LOGGER.warn("Token refresh of {} failed: {}", getClientInfo(), e.getMessage());
+            }
+            removeExpiredManifests();
+            removeUnusedFilters();
+        }
+    }
+
+    void keepAliveJob() {
+        if (signInError != null) {
+            return;
+        }
+        WebSocketApi current = webSocket;
+        if (current == null || current.getWebSocketState() == CLOSED) {
+            closeWebSocketConnection();
+            if (this.baseWsUrl == null
+                    || isTokenOutdated(tokenHolder.getTime(), Instant.now().toEpochMilli())) {
+                doSignIn();
+            } else {
+                reConnect();
+            }
+        }
+        if (!isOpen()) {
+            return;
+        }
+        long now = Instant.now().toEpochMilli();
+        // not open: signing in or reconnecting failed, the next run tries again
+        if ((now - lastIdlePingSentTimestamp.get()) > PING_INTERVAL.toMillis()) {
+            sendPing();
+            lastIdlePingSentTimestamp.set(now);
+        }
+    }
+
+    /**
+     * Whether a token set or refreshed at {@code tokenTime} has missed its refreshes by {@code now}: reconnecting with
+     * it would soon fail, so the client signs in again instead.
+     */
+    static boolean isTokenOutdated(long tokenTime, long now) {
+        return now - tokenTime > TOKEN_REUSE_LIMIT.toMillis();
+    }
+
+    private void refreshToken() {
+        String responseJson = sendCommand(REFRESH_TOKEN, null);
+        RefreshTokenWsResponse refreshTokenWsResponse =
+                fromJson(responseJson, RefreshTokenWsResponse.class);
+        if (StringUtils.isNotEmpty(refreshTokenWsResponse.error)) {
+            throw new IllegalStateException(
+                    "Failed refresh token attempt: " + refreshTokenWsResponse.error);
+        }
+        if (StringUtils.isNotEmpty(refreshTokenWsResponse.body)) {
+            tokenHolder.set(refreshTokenWsResponse.body);
+        }
+    }
+
+    private void reConnect() {
+        LOGGER.debug("Re-connect attempt: client {}, base url {}", client.accountId, baseWsUrl);
+        try {
+            this.webSocket = wsConnectionFactory.createConnection(
+                    new URI(baseWsUrl + tokenHolder.get()),
+                    wsConnectTimeoutMs,
+                    wsMessageConsumer,
+                    wsDataConsumer,
+                    wsOnCloseListener,
+                    wsSslContext
+            );
+        } catch (Exception ex) {
+            LOGGER.error("Failed open ws connection attempt", ex);
+        }
+    }
+
+    private OpenConnectionResponse openConnection(String pushcaApiUrl, String pusherId,
+                                                  String apiKey, PClient client, String passwordHash) throws IOException {
+        URL url = new URL(pushcaApiUrl + "/open-connection");
+        URLConnection httpsConn = url.openConnection();
+        httpsConn.addRequestProperty("User-Agent", "Mozilla");
+        httpsConn.setRequestProperty("Method", "POST");
+        httpsConn.setRequestProperty("Content-Type", "application/json");
+        httpsConn.setRequestProperty("Accept", "application/json");
+        httpsConn.setDoOutput(true);
+        OpenConnectionRequest request =
+                new OpenConnectionRequest(client, pusherId, apiKey, passwordHash);
+        try (OutputStream os = httpsConn.getOutputStream()) {
+            byte[] input = toJson(request).getBytes(StandardCharsets.UTF_8);
+            os.write(input, 0, input.length);
+        }
+        if (httpsConn instanceof HttpURLConnection httpConn) {
+            int status = httpConn.getResponseCode();
+            if (status == HttpURLConnection.HTTP_UNAUTHORIZED || status == HttpURLConnection.HTTP_FORBIDDEN) {
+                throw new PushcaAuthenticationException(getClientInfo(), status);
+            }
+        }
+        StringBuilder responseJson = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(httpsConn.getInputStream(), StandardCharsets.UTF_8))) {
+            String responseLine;
+            while ((responseLine = br.readLine()) != null) {
+                responseJson.append(responseLine.trim());
+            }
+        }
+        return fromJson(responseJson.toString(), OpenConnectionResponse.class);
+    }
+
+    public String sendCommand(Command command, Map<String, Object> metaData) {
+        return sendCommand(null, command, metaData);
+    }
+
+    public String sendCommand(String id, Command command, Map<String, Object> metaData) {
+        if (!isOpen()) {
+            throw new WebsocketConnectionIsNotOpenException();
+        }
+        CommandWithId cmd = (metaData == null) ? PushcaMessageFactory.buildCommandMessage(id, command) :
+                PushcaMessageFactory.buildCommandMessage(id, command, metaData);
+        return executeWithRepeatOnFailure(
+                cmd.id,
+                () -> webSocket.send(cmd.commandBody),
+                MessageFormat.format("command {0}, metadata {1}", command.name(), toJson(metaData))
+        );
+    }
+
+    private void removeExpiredManifests() {
+        long now = System.currentTimeMillis();
+        List<String> ids = binaries.values().stream()
+                .filter(b -> (now - b.created) > Duration.ofMinutes(30).toMillis())
+                .map(b -> b.id)
+                .toList();
+        ids.forEach(binaries::remove);
+    }
+
+    @Override
+    public void close() {
+        Optional.ofNullable(refreshAndCleanupScheduler).ifPresent(ExecutorService::shutdown);
+        Optional.ofNullable(keepAliveScheduler).ifPresent(ExecutorService::shutdown);
+        // without this their threads outlive the client; shutdown, not shutdownNow, so commands and
+        // incoming messages already in progress still complete
+        acknowledgeTimeoutScheduler.shutdown();
+        if (asyncExecutor instanceof ExecutorService executorService) {
+            executorService.shutdown();
+        }
+        closeWebSocketConnection();
+    }
 }
