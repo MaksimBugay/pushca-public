@@ -22,6 +22,7 @@ import static bmv.org.pushca.core.Command.GET_CHANNEL_HISTORY;
 import static bmv.org.pushca.core.Command.GET_CHANNEL_MEMBERS;
 import static bmv.org.pushca.core.Command.GET_IMPRESSION_STAT;
 import static bmv.org.pushca.core.Command.MARK_CHANNEL_AS_READ;
+import static bmv.org.pushca.core.Command.PING;
 import static bmv.org.pushca.core.Command.REFRESH_TOKEN;
 import static bmv.org.pushca.core.Command.REGISTER_FILTER;
 import static bmv.org.pushca.core.Command.REMOVE_CHANNEL;
@@ -138,6 +139,8 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
   public static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
   public static final int MAX_REPEAT_ATTEMPT_NUMBER = 3;
   public static final int CALLBACK_TIMEOUT_SEC = 10;
+  // the server's answer to PING
+  private static final String PONG = "PONG";
   public static final String INTERNAL_BINARY_FILE_NAME_PATTERN = "binaries//{0}.pushca";
   private final String requestedPusherId;
   private String pusherId;
@@ -283,6 +286,14 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     return pusherId;
   }
 
+  @Override
+  public void sendPing() {
+    if (!isOpen()) {
+      throw new WebsocketConnectionIsNotOpenException();
+    }
+    webSocket.send(PushcaMessageFactory.buildCommandMessage(null, PING).commandBody);
+  }
+
   public void processBinary(WebSocketApi ws, byte[] binary,
       BiConsumer<PushcaWebSocketApi, Binary> dataConsumer,
       BiConsumer<PushcaWebSocketApi, BinaryWithHeader> unknownDatagramConsumer,
@@ -411,6 +422,10 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
       BiConsumer<PushcaWebSocketApi, BinaryObjectData> binaryManifestConsumer,
       Map<String, BiFunction<GatewayRequestHeader, byte[], byte[]>> gatewayProcessors) {
     if (StringUtils.isEmpty(inMessage)) {
+      return;
+    }
+    if (PONG.equals(inMessage)) {
+      LOGGER.debug("Pong was received: client {}", getClientInfo());
       return;
     }
     String message = inMessage;
@@ -1024,7 +1039,7 @@ public class PushcaWebSocket implements Closeable, PushcaWebSocketApi {
     }
   }
 
-  private void keepAliveJob() {
+  void keepAliveJob() {
     if (signInError != null) {
       return;
     }

@@ -32,6 +32,11 @@ public interface PushcaWebSocketApi {
   String getPusherInstanceId();
 
   /**
+   * sends PING to Pushca without waiting for an answer; the server's PONG is not passed to the message consumer
+   */
+  void sendPing();
+
+  /**
    * @return whether the connection is open now: signed in and connected. While it isn't, commands throw
    * {@link bmv.org.pushca.client.exception.WebsocketConnectionIsNotOpenException}, and the client signs in or
    * reconnects by itself
